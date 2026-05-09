@@ -1,6 +1,6 @@
 import { saveSettings, type SubcastSettings } from '../utils/settings';
 
-const WHISPER_MODELS = ['tiny', 'base', 'small', 'medium', 'large-v3'] as const;
+const WHISPER_MODELS = ['tiny', 'base', 'small', 'medium', 'large-v3', 'large-v3-turbo'] as const;
 
 export default defineEventHandler(async (event) => {
   const body = (await readBody(event)) as Partial<SubcastSettings>;

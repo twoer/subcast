@@ -23,7 +23,7 @@ export default defineEventHandler(() => {
   const transcribes = db
     .prepare(
       `SELECT t.id, t.video_sha, t.status, t.model, t.total_chunks, t.done_chunks,
-              t.created_at, t.error_msg, v.original_name
+              t.created_at, t.error_msg, v.original_name, v.display_name
        FROM transcribe_tasks t
        LEFT JOIN videos v ON v.sha256 = t.video_sha
        WHERE t.status IN ('queued','running') OR t.created_at > ?
@@ -32,12 +32,12 @@ export default defineEventHandler(() => {
     .all(cutoff) as Array<{
       id: string; video_sha: string; status: string; model: string;
       total_chunks: number | null; done_chunks: number; created_at: number;
-      error_msg: string | null; original_name: string | null;
+      error_msg: string | null; original_name: string | null; display_name: string | null;
     }>;
   const translates = db
     .prepare(
       `SELECT t.id, t.video_sha, t.target_lang, t.status, t.model, t.progress_pct,
-              t.priority, t.created_at, t.error_msg, v.original_name
+              t.priority, t.created_at, t.error_msg, v.original_name, v.display_name
        FROM translate_tasks t
        LEFT JOIN videos v ON v.sha256 = t.video_sha
        WHERE t.status IN ('queued','running') OR t.created_at > ?
@@ -46,7 +46,7 @@ export default defineEventHandler(() => {
     .all(cutoff) as Array<{
       id: string; video_sha: string; target_lang: string; status: string;
       model: string; progress_pct: number; priority: number; created_at: number;
-      error_msg: string | null; original_name: string | null;
+      error_msg: string | null; original_name: string | null; display_name: string | null;
     }>;
 
   const items: QueueItem[] = [];
@@ -58,7 +58,7 @@ export default defineEventHandler(() => {
       kind: 'transcribe',
       id: t.id,
       videoSha: t.video_sha,
-      videoName: t.original_name ?? t.video_sha.slice(0, 12),
+      videoName: t.display_name ?? t.original_name ?? t.video_sha.slice(0, 12),
       status: t.status,
       model: t.model,
       progressPct: pct,
@@ -73,7 +73,7 @@ export default defineEventHandler(() => {
       kind: 'translate',
       id: t.id,
       videoSha: t.video_sha,
-      videoName: t.original_name ?? t.video_sha.slice(0, 12),
+      videoName: t.display_name ?? t.original_name ?? t.video_sha.slice(0, 12),
       status: t.status,
       model: t.model,
       progressPct: t.progress_pct,

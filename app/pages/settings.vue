@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/select';
 
 interface Settings {
-  whisperModel: 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
+  whisperModel: 'tiny' | 'base' | 'small' | 'medium' | 'large-v3' | 'large-v3-turbo';
   ollamaModel: string;
   cacheLimitGB: number;
   silenceThresholdMs: number;
@@ -36,6 +36,7 @@ interface Resp {
 interface CacheItem {
   sha256: string;
   originalName: string;
+  displayName: string | null;
   ext: string;
   videoBytes: number;
   cacheBytes: number;
@@ -57,7 +58,7 @@ function fmtBytes(n: number): string {
   return `${n} B`;
 }
 
-const WHISPER_MODELS = ['tiny', 'base', 'small', 'medium', 'large-v3'] as const;
+const WHISPER_MODELS = ['tiny', 'base', 'small', 'medium', 'large-v3', 'large-v3-turbo'] as const;
 
 const settings = ref<Settings | null>(null);
 const hardware = ref<Hardware | null>(null);
@@ -160,10 +161,13 @@ const dirty = computed(() => {
   return JSON.stringify(settings.value) !== JSON.stringify(draft.value);
 });
 
-onMounted(() => {
-  void load();
-  void refreshCache();
+onMounted(async () => {
+  await load();
+  await refreshCache();
   loadCueFontSize();
+  if (window.location.hash === '#cache') {
+    nextTick(() => document.getElementById('cache')?.scrollIntoView({ behavior: 'smooth' }));
+  }
 });
 </script>
 
@@ -337,7 +341,7 @@ onMounted(() => {
         </div>
       </section>
 
-      <section v-if="cache" class="surface-1 mt-6 rounded-xl border border-border/50 p-6">
+      <section id="cache" v-if="cache" class="surface-1 mt-6 rounded-xl border border-border/50 p-6">
         <div class="mb-4 flex items-center justify-between">
           <h2 class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             <Database class="h-3.5 w-3.5" />
@@ -378,7 +382,7 @@ onMounted(() => {
                   :to="`/player/${item.sha256}`"
                   class="max-w-xs truncate font-medium text-foreground hover:underline"
                   :title="item.originalName"
-                >{{ item.originalName }}</NuxtLink>
+                >{{ item.displayName || item.originalName }}</NuxtLink>
                 <span class="font-mono text-[11px] text-muted-foreground">
                   {{ fmtBytes(item.videoBytes + item.cacheBytes) }}
                 </span>
@@ -464,7 +468,7 @@ onMounted(() => {
             {{ t('settings.cache.deleteOneTitle') }}
           </DialogTitle>
           <DialogDescription class="pt-1">
-            {{ t('settings.cache.deleteOneDesc', { name: pendingDelete?.originalName ?? '' }) }}
+            {{ t('settings.cache.deleteOneDesc', { name: (pendingDelete?.displayName || pendingDelete?.originalName) ?? '' }) }}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

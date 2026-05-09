@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { parseVtt, type Cue } from './vtt';
 
 export interface TranscribeOptions {
-  model?: 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
+  model?: 'tiny' | 'base' | 'small' | 'medium' | 'large-v3' | 'large-v3-turbo';
   /** Whisper sampling temperature. Default 0 (greedy). Higher = more diverse. */
   temperature?: number;
   /**

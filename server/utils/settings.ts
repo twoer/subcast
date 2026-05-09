@@ -1,7 +1,7 @@
 import { getDb } from './db';
 
 export interface SubcastSettings {
-  whisperModel: 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
+  whisperModel: 'tiny' | 'base' | 'small' | 'medium' | 'large-v3' | 'large-v3-turbo';
   ollamaModel: string;
   cacheLimitGB: number;
   silenceThresholdMs: number;

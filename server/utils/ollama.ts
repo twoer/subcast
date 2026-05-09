@@ -239,9 +239,16 @@ export async function translateAll(
         if (opts.signal?.aborted) throw new Error('CANCELED');
         const single = await tryBatch([cue], targetLang, ctx, model, opts.signal);
         if (!single) {
-          throw new Error(
-            `BATCH_RETRY_EXHAUSTED on cue at ${cue.startMs}ms: "${cue.text.slice(0, 60)}"`,
-          );
+          logEvent({
+            level: 'warn',
+            event: 'translate_cue_fallback',
+            batchIdx,
+            cueStartMs: cue.startMs,
+            cueText: cue.text.slice(0, 60),
+          });
+          segCues.push({ startMs: cue.startMs, endMs: cue.endMs, text: cue.text });
+          context.push({ src: cue.text.trim(), tr: cue.text.trim() });
+          continue;
         }
         segCues.push({ startMs: cue.startMs, endMs: cue.endMs, text: single[0]! });
         context.push({ src: cue.text.trim(), tr: single[0]!.trim() });

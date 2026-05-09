@@ -11,7 +11,7 @@ export interface HardwareInfo {
   gpu: 'apple-silicon' | 'nvidia' | 'integrated' | 'none' | 'unknown';
   tier: HardwareTier;
   recommended: {
-    whisperModel: 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
+    whisperModel: 'tiny' | 'base' | 'small' | 'medium' | 'large-v3' | 'large-v3-turbo';
     ollamaModel: string;
   };
   lanIp?: string;
@@ -53,7 +53,7 @@ function recommendModels(tier: HardwareTier): HardwareInfo['recommended'] {
     case 'recommended':
       return { whisperModel: 'medium', ollamaModel: 'qwen2.5:7b' };
     case 'high':
-      return { whisperModel: 'large-v3', ollamaModel: 'qwen2.5:14b' };
+      return { whisperModel: 'large-v3-turbo', ollamaModel: 'qwen2.5:14b' };
   }
 }
 

@@ -22,12 +22,27 @@
       "completed": "Completed",
       "failed": "Failed",
       "canceled": "Canceled"
+    },
+    "library": {
+      "title": "Recent videos",
+      "noSubs": "No subtitles",
+      "viewAll": "View all in settings",
+      "more": "More",
+      "rename": "Rename",
+      "renameDesc": "Leave empty to restore the original filename.",
+      "renameConfirm": "Save",
+      "cancel": "Cancel",
+      "justNow": "just now",
+      "minutesAgo": "{n}m ago",
+      "hoursAgo": "{n}h ago",
+      "daysAgo": "{n}d ago"
     }
   },
   "health": {
     "missing": "Some dependencies are missing",
     "recheck": "Re-check",
-    "copy": "Copy"
+    "copy": "Copy",
+    "copied": "Copied"
   },
   "companion": {
     "title": "Companion subtitles detected",

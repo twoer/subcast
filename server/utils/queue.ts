@@ -828,6 +828,12 @@ class TranslateQueue {
 
     // Live tail
     const live = this.active;
+    if (task.progress_pct > 0) {
+      yield {
+        event: 'batch-progress',
+        data: { taskId, progressPct: task.progress_pct },
+      };
+    }
     if (live.doneCues.length > 0) {
       yield {
         event: 'cue-translated',

@@ -104,6 +104,10 @@ function migrate(db: Database.Database): void {
     `);
     db.pragma('user_version = 5');
   }
+  if (version < 6) {
+    db.exec(`ALTER TABLE videos ADD COLUMN display_name TEXT`);
+    db.pragma('user_version = 6');
+  }
 }
 
 export const SUBCAST_PATHS = {

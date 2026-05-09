@@ -5,6 +5,7 @@ import { getDb, SUBCAST_PATHS } from '../../utils/db';
 interface CacheEntry {
   sha256: string;
   originalName: string;
+  displayName: string | null;
   ext: string;
   videoBytes: number;
   cacheBytes: number;
@@ -33,12 +34,13 @@ export default defineEventHandler(() => {
   const db = getDb();
   const rows = db
     .prepare(
-      `SELECT sha256, original_name, ext, size_bytes, created_at, last_opened_at
+      `SELECT sha256, original_name, display_name, ext, size_bytes, created_at, last_opened_at
        FROM videos ORDER BY last_opened_at DESC`,
     )
     .all() as Array<{
       sha256: string;
       original_name: string;
+      display_name: string | null;
       ext: string;
       size_bytes: number;
       created_at: number;
@@ -65,6 +67,7 @@ export default defineEventHandler(() => {
     items.push({
       sha256: r.sha256,
       originalName: r.original_name,
+      displayName: r.display_name,
       ext: r.ext,
       videoBytes,
       cacheBytes,
