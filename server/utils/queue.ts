@@ -8,6 +8,7 @@ import { getDb, SUBCAST_PATHS } from './db';
 import { logEvent } from './log';
 import { DEFAULT_TRANSLATE_MODEL, translateAll } from './ollama';
 import { detectHallucination, type HallucinationReason } from './quality';
+import { loadSettings } from './settings';
 import { extractWav, probeDurationS, transcribeChunk } from './whisper';
 import { parseVtt, serializeVtt, type Cue } from './vtt';
 
@@ -65,7 +66,8 @@ class TranscribeQueue {
     return true;
   }
 
-  ensureTask(videoSha: string, model = 'base'): TranscribeTaskRow {
+  ensureTask(videoSha: string, model?: string): TranscribeTaskRow {
+    const effectiveModel = model ?? loadSettings().whisperModel;
     const db = getDb();
     const existing = db
       .prepare(
@@ -81,12 +83,12 @@ class TranscribeQueue {
     db.prepare(
       `INSERT INTO transcribe_tasks (id, video_sha, status, model, created_at)
        VALUES (?, ?, 'queued', ?, ?)`,
-    ).run(id, videoSha, model, Date.now());
+    ).run(id, videoSha, effectiveModel, Date.now());
     return {
       id,
       video_sha: videoSha,
       status: 'queued',
-      model,
+      model: effectiveModel,
       total_chunks: null,
       done_chunks: 0,
       error_msg: null,
@@ -519,7 +521,8 @@ interface ActiveTranslateTask {
 class TranslateQueue {
   private active: ActiveTranslateTask | null = null;
 
-  ensureTask(videoSha: string, lang: string, model = DEFAULT_TRANSLATE_MODEL): TranslateTaskRow {
+  ensureTask(videoSha: string, lang: string, model?: string): TranslateTaskRow {
+    const effectiveModel = model ?? loadSettings().ollamaModel ?? DEFAULT_TRANSLATE_MODEL;
     const db = getDb();
     const existing = db
       .prepare(
@@ -542,13 +545,13 @@ class TranslateQueue {
     db.prepare(
       `INSERT INTO translate_tasks (id, video_sha, target_lang, status, model, created_at)
        VALUES (?, ?, ?, 'queued', ?, ?)`,
-    ).run(id, videoSha, lang, model, Date.now());
+    ).run(id, videoSha, lang, effectiveModel, Date.now());
     return {
       id,
       video_sha: videoSha,
       target_lang: lang,
       status: 'queued',
-      model,
+      model: effectiveModel,
       progress_pct: 0,
       priority: 0,
       error_msg: null,

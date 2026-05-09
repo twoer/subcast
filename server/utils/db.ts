@@ -95,6 +95,15 @@ function migrate(db: Database.Database): void {
     `);
     db.pragma('user_version = 4');
   }
+  if (version < 5) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key             TEXT PRIMARY KEY,
+        value           TEXT NOT NULL
+      );
+    `);
+    db.pragma('user_version = 5');
+  }
 }
 
 export const SUBCAST_PATHS = {

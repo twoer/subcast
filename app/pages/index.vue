@@ -15,6 +15,18 @@ interface QueueItem {
   errorMsg?: string | null;
 }
 
+interface HealthFix {
+  id: string;
+  description: string;
+  command: string;
+}
+interface HealthResp {
+  health: { ready: boolean; missing: string[] };
+  fixes: HealthFix[];
+  hardware: { tier: string; totalMemoryGB: number; gpu: string; lanIp?: string };
+  lanUrl: string | null;
+}
+
 const SUB_EXT_RE = /\.(srt|vtt|ass)$/i;
 const VIDEO_EXT_RE = /\.(mp4|mkv|mov|webm|mp3|wav|m4a)$/i;
 
@@ -25,7 +37,26 @@ const fileInput = ref<HTMLInputElement | null>(null);
 const pendingPair = ref<{ video: File; subtitle: File } | null>(null);
 
 const queueItems = ref<QueueItem[]>([]);
+const healthData = ref<HealthResp | null>(null);
 let pollHandle: ReturnType<typeof setInterval> | null = null;
+let healthHandle: ReturnType<typeof setInterval> | null = null;
+
+async function refreshHealth() {
+  try {
+    const res = await $fetch<HealthResp>('/api/health');
+    healthData.value = res;
+  } catch {
+    /* network blip */
+  }
+}
+
+async function copyToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    /* clipboard may be unavailable in non-secure context */
+  }
+}
 
 async function refreshQueue() {
   try {
@@ -146,10 +177,13 @@ const activeCount = computed(
 
 onMounted(() => {
   void refreshQueue();
+  void refreshHealth();
   pollHandle = setInterval(refreshQueue, 2_000);
+  healthHandle = setInterval(refreshHealth, 10_000);
 });
 onBeforeUnmount(() => {
   if (pollHandle) clearInterval(pollHandle);
+  if (healthHandle) clearInterval(healthHandle);
 });
 
 function fmtKindLabel(item: QueueItem): string {
@@ -162,7 +196,42 @@ function fmtKindLabel(item: QueueItem): string {
 <template>
   <main class="min-h-screen p-8 bg-gray-50">
     <div class="max-w-3xl mx-auto">
-      <h1 class="text-3xl font-bold mb-6 text-center">Subcast</h1>
+      <header class="flex items-center justify-between mb-6">
+        <h1 class="text-3xl font-bold">Subcast</h1>
+        <div class="flex items-center gap-3 text-xs text-gray-500">
+          <span v-if="healthData?.lanUrl" class="font-mono">
+            LAN: {{ healthData.lanUrl }}
+          </span>
+          <NuxtLink to="/settings" class="text-blue-600 hover:underline">Settings →</NuxtLink>
+        </div>
+      </header>
+
+      <div
+        v-if="healthData && !healthData.health.ready"
+        class="mb-6 bg-amber-50 border border-amber-300 rounded p-4"
+      >
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-sm font-semibold text-amber-900">
+            Some dependencies are missing
+          </h2>
+          <button
+            class="text-xs text-amber-800 hover:underline"
+            @click="refreshHealth"
+          >Re-check</button>
+        </div>
+        <ul class="space-y-2 text-sm">
+          <li v-for="fix in healthData.fixes" :key="fix.id" class="text-amber-900">
+            <div class="font-medium">{{ fix.description }}</div>
+            <div class="flex gap-2 items-start mt-1">
+              <code class="flex-1 bg-amber-100 rounded px-2 py-1 text-xs font-mono break-all">{{ fix.command }}</code>
+              <button
+                class="text-xs px-2 py-1 rounded bg-amber-200 hover:bg-amber-300 whitespace-nowrap"
+                @click="copyToClipboard(fix.command)"
+              >Copy</button>
+            </div>
+          </li>
+        </ul>
+      </div>
 
       <div
         class="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center bg-white hover:border-blue-400 transition"
