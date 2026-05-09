@@ -137,13 +137,17 @@ export async function transcribeChunk(
 
   const ofPrefix = sliceWavPath.replace(/\.wav$/, '');
   try {
+    // NOTE: do NOT pass `-ml N` here. whisper.cpp's max-segment-length
+    // truncation is byte-oriented and slices CJK characters mid-UTF-8,
+    // producing U+FFFD replacement chars for Chinese / Japanese / Korean
+    // input. Letting whisper segment at natural silence boundaries gives
+    // longer-but-clean cues that the cue list still renders fine.
     const args: string[] = [
       '-m', modelPath,
       '-f', sliceWavPath,
       '--output-vtt',
       '-of', ofPrefix,
       '-l', 'auto',
-      '-ml', '20',
     ];
     if (typeof opts.temperature === 'number') {
       args.push('-tp', String(opts.temperature));
