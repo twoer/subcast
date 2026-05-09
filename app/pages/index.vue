@@ -125,11 +125,13 @@ function pickPair(files: File[]): { video: File; subtitle: File } | null {
   return { video: v, subtitle: matched };
 }
 
+const { t, locale, locales, setLocale } = useI18n();
+
 async function handleFiles(files: File[]) {
   if (files.length === 0) return;
   const videos = files.filter((f) => VIDEO_EXT_RE.test(f.name));
   if (videos.length === 0) {
-    error.value = 'No video file in the drop';
+    error.value = t('index.noVideo');
     return;
   }
   const pair = pickPair(files);
@@ -188,8 +190,8 @@ onBeforeUnmount(() => {
 
 function fmtKindLabel(item: QueueItem): string {
   return item.kind === 'transcribe'
-    ? `Transcribe · whisper:${item.model}`
-    : `Translate · ${item.targetLang} · ${item.model}`;
+    ? `${t('index.transcribing')} · whisper:${item.model}`
+    : `${t('index.translating')} · ${item.targetLang} · ${item.model}`;
 }
 </script>
 
@@ -197,12 +199,19 @@ function fmtKindLabel(item: QueueItem): string {
   <main class="min-h-screen p-8 bg-gray-50">
     <div class="max-w-3xl mx-auto">
       <header class="flex items-center justify-between mb-6">
-        <h1 class="text-3xl font-bold">Subcast</h1>
+        <h1 class="text-3xl font-bold">{{ t('app.title') }}</h1>
         <div class="flex items-center gap-3 text-xs text-gray-500">
           <span v-if="healthData?.lanUrl" class="font-mono">
-            LAN: {{ healthData.lanUrl }}
+            {{ t('app.lan') }}: {{ healthData.lanUrl }}
           </span>
-          <NuxtLink to="/settings" class="text-blue-600 hover:underline">Settings →</NuxtLink>
+          <select
+            :value="locale"
+            class="bg-white border border-gray-300 rounded px-2 py-1 text-xs"
+            @change="setLocale(($event.target as HTMLSelectElement).value as 'en' | 'zh')"
+          >
+            <option v-for="l in locales" :key="l.code" :value="l.code">{{ l.name }}</option>
+          </select>
+          <NuxtLink to="/settings" class="text-blue-600 hover:underline">{{ t('app.settings') }} →</NuxtLink>
         </div>
       </header>
 
@@ -212,12 +221,12 @@ function fmtKindLabel(item: QueueItem): string {
       >
         <div class="flex items-center justify-between mb-2">
           <h2 class="text-sm font-semibold text-amber-900">
-            Some dependencies are missing
+            {{ t('health.missing') }}
           </h2>
           <button
             class="text-xs text-amber-800 hover:underline"
             @click="refreshHealth"
-          >Re-check</button>
+          >{{ t('health.recheck') }}</button>
         </div>
         <ul class="space-y-2 text-sm">
           <li v-for="fix in healthData.fixes" :key="fix.id" class="text-amber-900">
@@ -227,7 +236,7 @@ function fmtKindLabel(item: QueueItem): string {
               <button
                 class="text-xs px-2 py-1 rounded bg-amber-200 hover:bg-amber-300 whitespace-nowrap"
                 @click="copyToClipboard(fix.command)"
-              >Copy</button>
+              >{{ t('health.copy') }}</button>
             </div>
           </li>
         </ul>
@@ -239,14 +248,14 @@ function fmtKindLabel(item: QueueItem): string {
         @drop="onDrop"
       >
         <p class="mb-4 text-gray-600">
-          Drop a video file (optionally with .srt/.vtt/.ass), or
+          {{ t('index.drop') }}
         </p>
         <button
           class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
           :disabled="isUploading"
           @click="fileInput?.click()"
         >
-          {{ isUploading ? 'Uploading…' : 'Choose files' }}
+          {{ isUploading ? t('index.uploading') : t('index.choose') }}
         </button>
         <input
           ref="fileInput"
@@ -262,9 +271,9 @@ function fmtKindLabel(item: QueueItem): string {
 
       <section v-if="queueItems.length > 0" class="mt-8">
         <div class="flex items-center justify-between mb-2">
-          <h2 class="text-sm uppercase tracking-wide text-gray-700">Queue</h2>
+          <h2 class="text-sm uppercase tracking-wide text-gray-700">{{ t('index.queue') }}</h2>
           <span class="text-xs text-gray-500">
-            {{ activeCount }} active / {{ queueItems.length }} recent
+            {{ t('index.queueMeta', { active: activeCount, total: queueItems.length }) }}
           </span>
         </div>
         <ul class="space-y-2">
@@ -319,7 +328,7 @@ function fmtKindLabel(item: QueueItem): string {
               v-if="item.status === 'queued' || item.status === 'running'"
               class="text-xs px-2 py-1 rounded bg-red-50 text-red-700 hover:bg-red-100"
               @click="cancelTask(item)"
-            >Cancel</button>
+            >{{ t('index.cancel') }}</button>
           </li>
         </ul>
       </section>
@@ -331,9 +340,9 @@ function fmtKindLabel(item: QueueItem): string {
       @click.self="dialogChoose(false)"
     >
       <div class="bg-white rounded-lg p-6 w-full max-w-md">
-        <h3 class="text-lg font-semibold mb-3">伴生字幕检测</h3>
+        <h3 class="text-lg font-semibold mb-3">{{ t('companion.title') }}</h3>
         <p class="text-sm text-gray-700 mb-4">
-          Found a subtitle file alongside the video:
+          {{ t('companion.body') }}
         </p>
         <div class="bg-gray-50 rounded p-3 text-xs font-mono mb-4 space-y-1">
           <div>🎬 {{ pendingPair.video.name }}</div>
@@ -343,11 +352,11 @@ function fmtKindLabel(item: QueueItem): string {
           <button
             class="px-3 py-1.5 text-sm rounded bg-gray-200 hover:bg-gray-300"
             @click="dialogChoose(false)"
-          >忽略并重新转写</button>
+          >{{ t('companion.ignore') }}</button>
           <button
             class="px-3 py-1.5 text-sm rounded bg-blue-600 text-white hover:bg-blue-700"
             @click="dialogChoose(true)"
-          >使用现有字幕</button>
+          >{{ t('companion.useExisting') }}</button>
         </div>
       </div>
     </div>
