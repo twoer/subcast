@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 import { getDb, SUBCAST_PATHS } from './db';
+import { logEvent } from './log';
+import { detectHallucination, type HallucinationReason } from './quality';
 import { extractWav, probeDurationS, transcribeChunk } from './whisper';
 import { serializeVtt, type Cue } from './vtt';
 
@@ -24,6 +26,17 @@ export interface TranscribeTaskRow {
 }
 
 const CHUNK_SEC = 30;
+
+/**
+ * F2 hallucination retry parameter ladder per design §5 A.
+ * Attempt 1 is the canonical greedy pass; 2-3 escalate temperature and
+ * disable previous-text conditioning to break out of repetition loops.
+ */
+const RETRY_PARAMS: ReadonlyArray<{ temperature: number; noContext: boolean }> = [
+  { temperature: 0.0, noContext: false },
+  { temperature: 0.4, noContext: true },
+  { temperature: 0.8, noContext: true },
+];
 
 interface ActiveTask {
   taskId: string;
@@ -143,27 +156,89 @@ class TranscribeQueue {
           emit({ event: 'status', data: { taskId, status: 'canceled' } });
           return;
         }
-        const cues = await transcribeChunk(
-          wavPath,
-          chunkIdx,
-          CHUNK_SEC,
-          durationS,
-          { model: model as Parameters<typeof transcribeChunk>[4]['model'] },
-        );
+
         const startMs = chunkIdx * CHUNK_SEC * 1000;
         const endMs = Math.round(
           Math.min((chunkIdx + 1) * CHUNK_SEC, durationS) * 1000,
         );
+        const chunkDurationMs = endMs - startMs;
+
+        // F2 retry ladder: try up to 3 param combinations; accept the first
+        // that passes hallucination detection. If all fail, keep attempt-1's
+        // cues and mark the chunk 'suspect'.
+        let firstCues: Cue[] | null = null;
+        let acceptedCues: Cue[] | null = null;
+        let quality: 'ok' | 'suspect' = 'ok';
+        let retryCount = 0;
+        let lastReason: HallucinationReason | null = null;
+
+        for (let attempt = 0; attempt < RETRY_PARAMS.length; attempt++) {
+          if (aborted()) break;
+          const params = RETRY_PARAMS[attempt]!;
+          const cues = await transcribeChunk(wavPath, chunkIdx, CHUNK_SEC, durationS, {
+            model: model as Parameters<typeof transcribeChunk>[4]['model'],
+            temperature: params.temperature,
+            noContext: params.noContext,
+          });
+          if (firstCues === null) firstCues = cues;
+          const reason = detectHallucination(cues, chunkDurationMs);
+          if (!reason) {
+            acceptedCues = cues;
+            retryCount = attempt;
+            break;
+          }
+          lastReason = reason;
+          logEvent({
+            level: 'warn',
+            event: 'chunk_hallucination',
+            taskId,
+            chunkIdx,
+            attempt: attempt + 1,
+            reason,
+          });
+          if (attempt < RETRY_PARAMS.length - 1) {
+            emit({
+              event: 'chunk-retry',
+              data: { taskId, chunkIdx, attempt: attempt + 1, reason },
+            });
+          }
+        }
+
+        if (acceptedCues === null) {
+          // all 3 attempts failed → keep first attempt's cues, mark suspect
+          acceptedCues = firstCues!;
+          quality = 'suspect';
+          retryCount = RETRY_PARAMS.length - 1;
+          logEvent({
+            level: 'error',
+            event: 'chunk_suspect_persisted',
+            taskId,
+            chunkIdx,
+            reason: lastReason,
+          });
+        }
+
         db.prepare(
-          `INSERT INTO chunks (task_id, chunk_idx, start_ms, end_ms, cues_json)
-           VALUES (?, ?, ?, ?, ?)
-           ON CONFLICT(task_id, chunk_idx) DO UPDATE SET cues_json = excluded.cues_json`,
-        ).run(taskId, chunkIdx, startMs, endMs, JSON.stringify(cues));
+          `INSERT INTO chunks (task_id, chunk_idx, start_ms, end_ms, cues_json, quality, retry_count)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(task_id, chunk_idx) DO UPDATE SET
+             cues_json = excluded.cues_json,
+             quality = excluded.quality,
+             retry_count = excluded.retry_count`,
+        ).run(
+          taskId,
+          chunkIdx,
+          startMs,
+          endMs,
+          JSON.stringify(acceptedCues),
+          quality,
+          retryCount,
+        );
         db.prepare(`UPDATE transcribe_tasks SET done_chunks = ? WHERE id = ?`).run(
           chunkIdx + 1,
           taskId,
         );
-        for (const cue of cues) {
+        for (const cue of acceptedCues) {
           emit({
             event: 'cue',
             data: {
@@ -172,18 +247,13 @@ class TranscribeQueue {
               startMs: cue.startMs,
               endMs: cue.endMs,
               text: cue.text,
+              quality,
             },
           });
         }
         emit({
           event: 'chunk-complete',
-          data: {
-            taskId,
-            chunkIdx,
-            doneChunks: chunkIdx + 1,
-            totalChunks,
-            quality: 'ok',
-          },
+          data: { taskId, chunkIdx, doneChunks: chunkIdx + 1, totalChunks, quality },
         });
       }
 
@@ -270,9 +340,9 @@ class TranscribeQueue {
 
     const historyRows = db
       .prepare(
-        `SELECT chunk_idx, cues_json FROM chunks WHERE task_id = ? ORDER BY chunk_idx ASC`,
+        `SELECT chunk_idx, cues_json, quality FROM chunks WHERE task_id = ? ORDER BY chunk_idx ASC`,
       )
-      .all(taskId) as { chunk_idx: number; cues_json: string }[];
+      .all(taskId) as { chunk_idx: number; cues_json: string; quality: string }[];
     const lastHistoryIdx = historyRows.length === 0
       ? -1
       : Math.max(...historyRows.map((r) => r.chunk_idx));
@@ -310,6 +380,7 @@ class TranscribeQueue {
             startMs: cue.startMs,
             endMs: cue.endMs,
             text: cue.text,
+            quality: row.quality,
           },
         };
       }

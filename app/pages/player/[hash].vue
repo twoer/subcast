@@ -5,7 +5,14 @@ interface CueData {
   startMs: number;
   endMs: number;
   text: string;
+  quality?: 'ok' | 'suspect';
 }
+
+type ListItem =
+  | { kind: 'cue'; cue: CueData; idx: number }
+  | { kind: 'silence'; afterIdx: number; durationS: number };
+
+const SILENCE_THRESHOLD_MS = 10_000;
 
 const route = useRoute();
 const hash = computed(() => String(route.params.hash));
@@ -55,6 +62,25 @@ const activeIdx = computed(() => {
   const t = currentTime.value * 1000;
   return cues.value.findIndex((c) => c.startMs <= t && t < c.endMs);
 });
+
+const listItems = computed<ListItem[]>(() => {
+  const out: ListItem[] = [];
+  cues.value.forEach((c, idx) => {
+    if (idx > 0) {
+      const prev = cues.value[idx - 1]!;
+      const gap = c.startMs - prev.endMs;
+      if (gap >= SILENCE_THRESHOLD_MS) {
+        out.push({ kind: 'silence', afterIdx: idx - 1, durationS: gap / 1000 });
+      }
+    }
+    out.push({ kind: 'cue', cue: c, idx });
+  });
+  return out;
+});
+
+const suspectCount = computed(
+  () => cues.value.filter((c) => c.quality === 'suspect').length,
+);
 
 function jumpTo(ms: number) {
   if (videoRef.value) videoRef.value.currentTime = ms / 1000;
@@ -150,20 +176,40 @@ watch(activeIdx, (idx) => {
       <section class="mt-6">
         <div class="flex items-center justify-between mb-2">
           <h2 class="text-sm text-gray-300 uppercase tracking-wide">Subtitles</h2>
-          <span class="text-xs text-gray-500">{{ cues.length }} cues</span>
+          <div class="flex items-center gap-3 text-xs text-gray-500">
+            <span>{{ cues.length }} cues</span>
+            <span
+              v-if="suspectCount > 0"
+              class="px-1.5 py-0.5 rounded bg-amber-900/50 text-amber-300"
+              title="Whisper marked these chunks as low confidence"
+            >{{ suspectCount }} suspect</span>
+          </div>
         </div>
         <ul class="space-y-1 max-h-[40vh] overflow-y-auto bg-gray-900/50 rounded p-2 font-mono text-sm">
-          <li
-            v-for="(cue, idx) in cues"
-            :key="cue.chunkIdx"
-            :data-cue-idx="idx"
-            class="px-3 py-1.5 rounded cursor-pointer transition-colors"
-            :class="idx === activeIdx ? 'bg-blue-600 text-white' : 'hover:bg-gray-800 text-gray-300'"
-            @click="jumpTo(cue.startMs)"
-          >
-            <span class="text-xs opacity-70 mr-3">{{ fmtTime(cue.startMs) }}</span>
-            <span>{{ cue.text }}</span>
-          </li>
+          <template v-for="(item, i) in listItems" :key="i">
+            <li
+              v-if="item.kind === 'silence'"
+              class="text-center text-gray-600 text-xs select-none py-1"
+            >── 无语音 {{ Math.round(item.durationS) }}s ──</li>
+            <li
+              v-else
+              :data-cue-idx="item.idx"
+              class="px-3 py-1.5 rounded cursor-pointer transition-colors border"
+              :class="[
+                item.idx === activeIdx ? 'bg-blue-600 text-white border-blue-400' : 'hover:bg-gray-800 text-gray-300 border-transparent',
+                item.cue.quality === 'suspect' ? 'border-amber-500/60' : '',
+              ]"
+              :title="item.cue.quality === 'suspect' ? '转写质量可能异常（已重试 2 次）' : ''"
+              @click="jumpTo(item.cue.startMs)"
+            >
+              <span class="text-xs opacity-70 mr-3">{{ fmtTime(item.cue.startMs) }}</span>
+              <span>{{ item.cue.text }}</span>
+              <span
+                v-if="item.cue.quality === 'suspect'"
+                class="ml-2 text-amber-400 text-xs"
+              >⚠</span>
+            </li>
+          </template>
           <li v-if="cues.length === 0 && status === 'running'" class="text-gray-500 text-center py-4">
             Transcribing… first cue in 30-60s
           </li>

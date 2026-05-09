@@ -6,6 +6,14 @@ import { parseVtt, type Cue } from './vtt';
 
 export interface TranscribeOptions {
   model?: 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
+  /** Whisper sampling temperature. Default 0 (greedy). Higher = more diverse. */
+  temperature?: number;
+  /**
+   * If true, pass --no-context to whisper-cli (i.e., disable
+   * condition_on_previous_text). Used by F2 hallucination retries when the
+   * default greedy pass produces repetitive output.
+   */
+  noContext?: boolean;
 }
 
 const NW_ROOT = join(
@@ -129,19 +137,23 @@ export async function transcribeChunk(
 
   const ofPrefix = sliceWavPath.replace(/\.wav$/, '');
   try {
-    const wc = await spawnAndWait(CLI_PATH, [
-      '-m',
-      modelPath,
-      '-f',
-      sliceWavPath,
+    const args: string[] = [
+      '-m', modelPath,
+      '-f', sliceWavPath,
       '--output-vtt',
-      '-of',
-      ofPrefix,
-      '-l',
-      'auto',
-      '-ml',
-      '20',
-    ]);
+      '-of', ofPrefix,
+      '-l', 'auto',
+      '-ml', '20',
+    ];
+    if (typeof opts.temperature === 'number') {
+      args.push('-tp', String(opts.temperature));
+    }
+    if (opts.noContext) {
+      // whisper-cli has no `--no-context`; set max-context tokens to 0,
+      // which disables condition_on_previous_text equivalently.
+      args.push('-mc', '0');
+    }
+    const wc = await spawnAndWait(CLI_PATH, args);
     if (wc.code !== 0) {
       throw new Error(`whisper-cli chunk ${chunkIdx} failed: ${wc.stderr}`);
     }
