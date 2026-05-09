@@ -76,6 +76,25 @@ function migrate(db: Database.Database): void {
     `);
     db.pragma('user_version = 3');
   }
+  if (version < 4) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS translate_tasks (
+        id              TEXT PRIMARY KEY,
+        video_sha       TEXT NOT NULL REFERENCES videos(sha256),
+        target_lang     TEXT NOT NULL,
+        status          TEXT NOT NULL,
+        model           TEXT NOT NULL,
+        progress_pct    INTEGER NOT NULL DEFAULT 0,
+        priority        INTEGER NOT NULL DEFAULT 0,
+        error_msg       TEXT,
+        created_at      INTEGER NOT NULL,
+        completed_at    INTEGER,
+        UNIQUE (video_sha, target_lang)
+      );
+      CREATE INDEX IF NOT EXISTS idx_translate_priority ON translate_tasks(status, priority DESC, created_at ASC);
+    `);
+    db.pragma('user_version = 4');
+  }
 }
 
 export const SUBCAST_PATHS = {
