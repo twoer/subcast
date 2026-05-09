@@ -1,0 +1,147 @@
+{
+  "app": {
+    "title": "Subcast",
+    "lan": "LAN",
+    "settings": "Settings",
+    "back": "Back",
+    "switchTo": "Switch to {lang}"
+  },
+  "index": {
+    "drop": "Drop a video file (optionally with .srt/.vtt/.ass), or",
+    "choose": "Choose files",
+    "uploading": "Uploading…",
+    "queue": "Queue",
+    "queueMeta": "{active} active / {total} recent",
+    "cancel": "Cancel",
+    "transcribing": "Transcribing",
+    "translating": "Translating",
+    "noVideo": "No video file in the drop",
+    "status": {
+      "queued": "Queued",
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed",
+      "canceled": "Canceled"
+    }
+  },
+  "health": {
+    "missing": "Some dependencies are missing",
+    "recheck": "Re-check",
+    "copy": "Copy"
+  },
+  "companion": {
+    "title": "Companion subtitles detected",
+    "body": "Found a subtitle file alongside the video:",
+    "useExisting": "Use existing",
+    "ignore": "Ignore & re-transcribe"
+  },
+  "player": {
+    "subtitles": "Subtitles",
+    "original": "Original",
+    "cues": "{n} cues",
+    "suspect": "{n} suspect",
+    "suspectTitle": "Whisper marked these chunks as low confidence",
+    "suspectCueTitle": "Transcription quality may be off (retried 2 times)",
+    "noAudio": "── no audio {n}s ──",
+    "firstCueDelay": "Transcribing… first cue in 30-60s",
+    "translatingShort": "Translating…",
+    "shortcuts": "Keyboard shortcuts",
+    "subtitleStyle": "Subtitle style",
+    "fontSize": "Font size",
+    "color": "Color",
+    "customColor": "Custom color",
+    "bgOpacity": "Background opacity",
+    "reset": "Reset to defaults",
+    "translateProgress": "Translating {pct}%",
+    "cache": "cache",
+    "status": {
+      "idle": "idle",
+      "running": "running",
+      "done": "done",
+      "error": "error"
+    },
+    "shortcutDescriptions": {
+      "playPause": "Play / Pause",
+      "seek5": "Seek -/+ 5s",
+      "seek10": "Seek -/+ 10s (YouTube)",
+      "volume": "Volume +/- 10%",
+      "speed": "Speed -/+ one step",
+      "mute": "Toggle mute",
+      "fullscreen": "Toggle fullscreen",
+      "subs": "Toggle subtitles",
+      "jumpPct": "Jump to 10%-90% of video",
+      "help": "Show this help",
+      "esc": "Close dialog"
+    },
+    "errors": {
+      "disconnected": "Lost connection to the translation service. Make sure Ollama is running.",
+      "FATAL_UNKNOWN": "Translation failed unexpectedly. Please try again.",
+      "TASK_NOT_FOUND": "This translation task has expired. Try switching the language again.",
+      "fallback": "Translation failed. Please try again.",
+      "retry": "Retry"
+    },
+    "cancelTranslation": "Cancel translation",
+    "cancelTranslationTitle": "Cancel this translation?",
+    "cancelTranslationDesc": "Cues translated so far will be kept. You can resume by switching to this language again later.",
+    "cancelTranslationConfirm": "Stop translation",
+    "cancel": "Cancel"
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Per-user preferences and on-disk cache management.",
+    "hardware": "Hardware",
+    "tier": "Tier",
+    "ram": "RAM",
+    "cpu": "CPU",
+    "gpu": "GPU",
+    "platform": "Platform",
+    "recommended": "Recommended",
+    "applyRecommended": "Apply recommended to draft",
+    "preferences": "Preferences",
+    "section": "Preferences",
+    "whisperModel": "Whisper model",
+    "whisperHint": "Bigger = more accurate but slower. Changes apply to new transcribe tasks.",
+    "ollamaModel": "Ollama model",
+    "ollamaHint": "Use the exact tag visible in `ollama list`. Recommended: {model}.",
+    "cacheLimit": "Cache size limit",
+    "silenceThreshold": "Silence threshold",
+    "silenceHint": "Inter-cue gaps ≥ this duration get a 「── no audio ──」divider in the cue list.",
+    "cueFontSize": "Cue list font size",
+    "cueFontSizeHint": "Affects only the subtitle list panel; video subtitles are configured in the player.",
+    "debugTitle": "Debug mode",
+    "debugDescription": "Keep raw paths and filenames in JSONL logs.",
+    "debugMode": "Debug mode (keep raw paths/filenames in JSONL logs)",
+    "save": "Save",
+    "saved": "Saved",
+    "saving": "Saving…",
+    "resetDraft": "Reset",
+    "lastSaved": "Last saved {time}",
+    "loading": "Loading hardware info…",
+    "tierLabels": {
+      "entry": "Entry",
+      "standard": "Standard",
+      "recommended": "Recommended",
+      "high": "High"
+    },
+    "cache": {
+      "title": "Cache",
+      "totals": "{count} videos · {size}",
+      "noVideos": "No cached videos yet",
+      "noVideosDesc": "Drag a video into the home page and it will appear here.",
+      "noSubtitles": "No subtitles",
+      "deleteOne": "Delete",
+      "deleteOneTitle": "Delete this video?",
+      "deleteOneDesc": "{name} and its cached subtitles will be removed. This cannot be undone.",
+      "clearAll": "Clear all",
+      "clearAllTitle": "Clear all cached data?",
+      "clearAllDesc": "This will delete every cached video and subtitle file. This action cannot be undone.",
+      "cancel": "Cancel",
+      "confirm": "Delete"
+    },
+    "diagnostic": {
+      "title": "Diagnostic",
+      "body": "ZIP with sanitized JSONL logs (last 7d), settings, hardware info, installed models. No video content or cue text.",
+      "export": "Export ZIP"
+    }
+  }
+}

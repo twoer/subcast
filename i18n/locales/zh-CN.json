@@ -1,0 +1,147 @@
+{
+  "app": {
+    "title": "Subcast",
+    "lan": "局域网",
+    "settings": "设置",
+    "back": "返回",
+    "switchTo": "切换到 {lang}"
+  },
+  "index": {
+    "drop": "拖入视频文件（可附带 .srt/.vtt/.ass 字幕），或",
+    "choose": "选择文件",
+    "uploading": "上传中…",
+    "queue": "任务队列",
+    "queueMeta": "{active} 进行中 / {total} 最近",
+    "cancel": "取消",
+    "transcribing": "转写中",
+    "translating": "翻译中",
+    "noVideo": "拖入的内容里没有视频文件",
+    "status": {
+      "queued": "排队中",
+      "running": "运行中",
+      "completed": "已完成",
+      "failed": "失败",
+      "canceled": "已取消"
+    }
+  },
+  "health": {
+    "missing": "缺少必要的依赖",
+    "recheck": "重新检测",
+    "copy": "复制"
+  },
+  "companion": {
+    "title": "伴生字幕检测",
+    "body": "在视频旁发现字幕文件：",
+    "useExisting": "使用现有字幕",
+    "ignore": "忽略并重新转写"
+  },
+  "player": {
+    "subtitles": "字幕",
+    "original": "原始音轨",
+    "cues": "{n} 条",
+    "suspect": "{n} 条可疑",
+    "suspectTitle": "Whisper 把这些 chunk 标记为低置信度",
+    "suspectCueTitle": "转写质量可能异常（已重试 2 次）",
+    "noAudio": "── 无语音 {n}s ──",
+    "firstCueDelay": "转写中…首条字幕约 30-60s 后出现",
+    "translatingShort": "翻译中…",
+    "shortcuts": "键盘快捷键",
+    "subtitleStyle": "字幕样式",
+    "fontSize": "字号",
+    "color": "颜色",
+    "customColor": "自定义颜色",
+    "bgOpacity": "背景透明度",
+    "reset": "恢复默认",
+    "translateProgress": "翻译中 {pct}%",
+    "cache": "缓存",
+    "status": {
+      "idle": "空闲",
+      "running": "运行中",
+      "done": "完成",
+      "error": "错误"
+    },
+    "shortcutDescriptions": {
+      "playPause": "播放 / 暂停",
+      "seek5": "后退 / 前进 5 秒",
+      "seek10": "后退 / 前进 10 秒（YouTube 风格）",
+      "volume": "音量 ± 10%",
+      "speed": "倍速 ± 一档",
+      "mute": "静音切换",
+      "fullscreen": "全屏切换",
+      "subs": "字幕开关",
+      "jumpPct": "跳转视频 10%-90% 进度",
+      "help": "显示此帮助",
+      "esc": "关闭对话框"
+    },
+    "errors": {
+      "disconnected": "与翻译服务的连接已断开，请确认 Ollama 正在运行。",
+      "FATAL_UNKNOWN": "翻译时出现意外错误，请稍后重试。",
+      "TASK_NOT_FOUND": "此翻译任务已失效，请重新切换语言。",
+      "fallback": "翻译失败，请重试。",
+      "retry": "重试"
+    },
+    "cancelTranslation": "取消翻译",
+    "cancelTranslationTitle": "取消当前翻译？",
+    "cancelTranslationDesc": "已完成的字幕会保留，下次切换到该语言可以继续翻译。",
+    "cancelTranslationConfirm": "停止翻译",
+    "cancel": "取消"
+  },
+  "settings": {
+    "title": "设置",
+    "subtitle": "用户偏好与本地缓存管理。",
+    "hardware": "硬件",
+    "tier": "档位",
+    "ram": "内存",
+    "cpu": "CPU",
+    "gpu": "GPU",
+    "platform": "平台",
+    "recommended": "推荐",
+    "applyRecommended": "应用推荐配置到草稿",
+    "preferences": "偏好设置",
+    "section": "偏好设置",
+    "whisperModel": "Whisper 模型",
+    "whisperHint": "越大越精准但越慢。更改对新转写任务生效。",
+    "ollamaModel": "Ollama 模型",
+    "ollamaHint": "使用 `ollama list` 显示的完整 tag。推荐：{model}。",
+    "cacheLimit": "缓存大小上限",
+    "silenceThreshold": "静音阈值",
+    "silenceHint": "字幕间隔 ≥ 此时长会在列表插入「── 无语音 ──」分隔符。",
+    "cueFontSize": "字幕列表字号",
+    "cueFontSizeHint": "仅影响右侧字幕列表面板；视频字幕样式在播放器内单独设置。",
+    "debugTitle": "调试模式",
+    "debugDescription": "JSONL 日志保留原始路径与文件名。",
+    "debugMode": "调试模式（JSONL 日志保留原始路径/文件名）",
+    "save": "保存",
+    "saved": "已保存",
+    "saving": "保存中…",
+    "resetDraft": "撤销",
+    "lastSaved": "上次保存 {time}",
+    "loading": "正在加载硬件信息…",
+    "tierLabels": {
+      "entry": "入门",
+      "standard": "标准",
+      "recommended": "推荐",
+      "high": "高配"
+    },
+    "cache": {
+      "title": "缓存",
+      "totals": "{count} 个视频 · {size}",
+      "noVideos": "暂无已缓存的视频",
+      "noVideosDesc": "在首页拖入视频后会出现在这里。",
+      "noSubtitles": "无字幕",
+      "deleteOne": "删除",
+      "deleteOneTitle": "删除该视频？",
+      "deleteOneDesc": "「{name}」及其缓存字幕将被删除，此操作不可撤销。",
+      "clearAll": "全部清除",
+      "clearAllTitle": "清除所有缓存？",
+      "clearAllDesc": "将删除所有缓存视频与字幕文件。此操作不可撤销。",
+      "cancel": "取消",
+      "confirm": "删除"
+    },
+    "diagnostic": {
+      "title": "诊断包",
+      "body": "导出 ZIP，包含脱敏后的 JSONL 日志（近 7 天）、设置、硬件信息、已安装模型。不包含任何视频或字幕文本。",
+      "export": "导出 ZIP"
+    }
+  }
+}

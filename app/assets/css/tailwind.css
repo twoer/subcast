@@ -1,0 +1,159 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /*
+   * Tokens follow the "Soft UI Evolution" recommendation from
+   * ui-ux-pro-max for SaaS tools: blue-driven primary (#2563EB),
+   * subtle slate background, refined surfaces with soft shadows.
+   * CTA accent (orange-500) is reserved for the single primary
+   * action per screen.
+   */
+  :root {
+    --background: 210 40% 98%;        /* slate-50 #F8FAFC */
+    --foreground: 222 47% 11%;        /* slate-900 #0F172A */
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 217 91% 60%;           /* blue-500 #3B82F6 */
+    --primary-foreground: 0 0% 100%;
+    --primary-strong: 221 83% 53%;    /* blue-600 #2563EB */
+
+    --secondary: 215 28% 92%;         /* slate-200 */
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 215 28% 95%;             /* slate-100 */
+    --muted-foreground: 215 16% 47%;  /* slate-500 */
+
+    --accent: 215 28% 95%;
+    --accent-foreground: 222 47% 11%;
+
+    --cta: 24 95% 53%;                /* orange-500 #F97316 */
+    --cta-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;         /* red-600 */
+    --destructive-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;            /* amber-500 */
+    --warning-foreground: 28 80% 14%;
+
+    --success: 142 71% 45%;           /* green-500 */
+    --success-foreground: 0 0% 100%;
+
+    --border: 215 25% 88%;            /* slate-200 with a touch of warmth */
+    --input: 215 25% 88%;
+    --ring: 217 91% 60%;
+
+    --radius: 0.625rem;               /* 10px — softer than 8 */
+  }
+
+  .dark {
+    --background: 222 47% 6%;         /* slate-950 #020617 */
+    --foreground: 210 40% 96%;        /* slate-100 */
+
+    --card: 222 47% 9%;               /* slate-900 with a hint of lift */
+    --card-foreground: 210 40% 96%;
+
+    --popover: 222 47% 9%;
+    --popover-foreground: 210 40% 96%;
+
+    --primary: 217 91% 65%;
+    --primary-foreground: 222 47% 11%;
+    --primary-strong: 221 83% 60%;
+
+    --secondary: 215 28% 17%;
+    --secondary-foreground: 210 40% 96%;
+
+    --muted: 215 28% 14%;
+    --muted-foreground: 215 16% 70%;
+
+    --accent: 215 28% 17%;
+    --accent-foreground: 210 40% 96%;
+
+    --cta: 24 95% 60%;
+    --cta-foreground: 28 80% 12%;
+
+    --destructive: 0 72% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --warning: 38 92% 60%;
+    --warning-foreground: 28 80% 12%;
+
+    --success: 142 71% 55%;
+    --success-foreground: 0 0% 100%;
+
+    --border: 215 28% 18%;
+    --input: 215 28% 18%;
+    --ring: 217 91% 65%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    /* Inter ships with several stylistic alternates that visibly improve
+     * tabular numbers and disambiguate I/l/1 — turn them on globally. */
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+      Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  }
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo,
+      Monaco, Consolas, monospace;
+  }
+  /*
+   * Keep the browser's default focus ring as a fallback for elements that
+   * don't ship a custom one (native checkbox, range slider, color picker).
+   * shadcn buttons/inputs override this with their own ring-2 ring-ring.
+   */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  /* Surface elevation system — soft shadows that work in light & dark.
+   * shadcn cards use bare `border` by default; these classes upgrade
+   * key surfaces (hero cards, modals) without breaking compactness. */
+  .surface-1 {
+    @apply bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04),0_1px_1px_rgba(15,23,42,0.03)];
+  }
+  .surface-2 {
+    @apply bg-card shadow-[0_4px_12px_rgba(15,23,42,0.06),0_2px_4px_rgba(15,23,42,0.04)];
+  }
+  .surface-3 {
+    @apply bg-card shadow-[0_12px_32px_rgba(15,23,42,0.08),0_4px_8px_rgba(15,23,42,0.04)];
+  }
+  .dark .surface-1 {
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 1px rgba(0, 0, 0, 0.3);
+  }
+  .dark .surface-2 {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+  .dark .surface-3 {
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Reduced motion — kill non-essential transitions */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
