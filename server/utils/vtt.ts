@@ -16,6 +16,24 @@ function tsToMs(h: string, m: string, s: string, ms: string): number {
   );
 }
 
+function msToTs(ms: number): string {
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  const s = Math.floor((ms % 60_000) / 1_000);
+  const k = ms % 1_000;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(k).padStart(3, '0')}`;
+}
+
+export function serializeVtt(cues: readonly Cue[]): string {
+  const out = ['WEBVTT', ''];
+  for (const cue of cues) {
+    out.push(`${msToTs(cue.startMs)} --> ${msToTs(cue.endMs)}`);
+    out.push(cue.text);
+    out.push('');
+  }
+  return out.join('\n');
+}
+
 export function parseVtt(content: string): Cue[] {
   const lines = content.replace(/\r\n/g, '\n').split('\n');
   const cues: Cue[] = [];

@@ -34,6 +34,19 @@ function migrate(db: Database.Database): void {
     `);
     db.pragma('user_version = 1');
   }
+  if (version < 2) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS subtitles (
+        video_sha       TEXT NOT NULL REFERENCES videos(sha256),
+        lang            TEXT NOT NULL,
+        kind            TEXT NOT NULL,
+        cues_count      INTEGER NOT NULL,
+        completed_at    INTEGER NOT NULL,
+        PRIMARY KEY (video_sha, lang)
+      );
+    `);
+    db.pragma('user_version = 2');
+  }
 }
 
 export const SUBCAST_PATHS = {

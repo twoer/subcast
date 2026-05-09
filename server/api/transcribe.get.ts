@@ -1,8 +1,11 @@
 // server/api/transcribe.get.ts
-// Nitro auto-imports getDb / SUBCAST_PATHS / transcribeOnce / formatSse.
-import { join } from 'node:path';
+// Nitro auto-imports getDb / SUBCAST_PATHS / transcribeOnce / formatSse /
+// parseVtt / serializeVtt.
 import { existsSync } from 'node:fs';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import type { Cue } from '~~/server/utils/vtt';
 
 let isTranscribing = false;
 
@@ -18,10 +21,21 @@ export default defineEventHandler(async (event) => {
     .get(hash) as { sha256: string; ext: string } | undefined;
   if (!row) throw createError({ statusCode: 404, statusMessage: 'VIDEO_NOT_FOUND' });
 
-  if (isTranscribing) {
+  const cacheDir = join(SUBCAST_PATHS.cache, row.sha256);
+  const vttPath = join(cacheDir, 'original.vtt');
+  const metaPath = join(cacheDir, 'meta.json');
+
+  const cachedRow = db
+    .prepare(
+      "SELECT cues_count FROM subtitles WHERE video_sha = ? AND lang = 'original'",
+    )
+    .get(hash) as { cues_count: number } | undefined;
+  const fromCache = !!cachedRow && existsSync(vttPath);
+
+  if (!fromCache && isTranscribing) {
     throw createError({ statusCode: 409, statusMessage: 'ALREADY_RUNNING' });
   }
-  isTranscribing = true;
+  if (!fromCache) isTranscribing = true;
 
   setResponseHeaders(event, {
     'Content-Type': 'text/event-stream; charset=utf-8',
@@ -41,24 +55,47 @@ export default defineEventHandler(async (event) => {
 
   return new Promise<void>((resolve, reject) => {
     const stream = event.node.res;
-
     let frameId = 0;
     const send = (frame: { event: string; data: Record<string, unknown> }) => {
       stream.write(formatSse({ ...frame, id: frameId++ }));
     };
-
-    const heartbeat = setInterval(() => {
-      stream.write(': heartbeat\n\n');
-    }, 15_000);
+    const heartbeat = setInterval(() => stream.write(': heartbeat\n\n'), 15_000);
 
     (async () => {
       try {
+        if (fromCache) {
+          send({
+            event: 'status',
+            data: { taskId, requestId, status: 'running', model: 'base', fromCache: true },
+          });
+          const vtt = await readFile(vttPath, 'utf8');
+          const cues = parseVtt(vtt);
+          let chunkIdx = 0;
+          for (const cue of cues) {
+            send({
+              event: 'cue',
+              data: {
+                taskId,
+                requestId,
+                chunkIdx: chunkIdx++,
+                startMs: cue.startMs,
+                endMs: cue.endMs,
+                text: cue.text,
+              },
+            });
+          }
+          send({ event: 'done', data: { taskId, requestId, totalCues: chunkIdx, fromCache: true } });
+          return;
+        }
+
         send({
           event: 'status',
-          data: { taskId, requestId, status: 'running', model: 'base' },
+          data: { taskId, requestId, status: 'running', model: 'base', fromCache: false },
         });
+        const collected: Cue[] = [];
         let chunkIdx = 0;
         for await (const cue of transcribeOnce(videoPath)) {
+          collected.push(cue);
           send({
             event: 'cue',
             data: {
@@ -71,6 +108,33 @@ export default defineEventHandler(async (event) => {
             },
           });
         }
+
+        await mkdir(cacheDir, { recursive: true });
+        await writeFile(vttPath, serializeVtt(collected), 'utf8');
+        await writeFile(
+          metaPath,
+          JSON.stringify(
+            {
+              sha256: row.sha256,
+              originalName: undefined,
+              ext: row.ext,
+              transcribedAt: Date.now(),
+              cuesCount: collected.length,
+              model: 'base',
+            },
+            null,
+            2,
+          ),
+          'utf8',
+        );
+        db.prepare(
+          `INSERT INTO subtitles (video_sha, lang, kind, cues_count, completed_at)
+           VALUES (?, 'original', 'transcribed', ?, ?)
+           ON CONFLICT(video_sha, lang) DO UPDATE SET
+             cues_count = excluded.cues_count,
+             completed_at = excluded.completed_at`,
+        ).run(row.sha256, collected.length, Date.now());
+
         send({ event: 'done', data: { taskId, requestId, totalCues: chunkIdx } });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -80,7 +144,7 @@ export default defineEventHandler(async (event) => {
         });
       } finally {
         clearInterval(heartbeat);
-        isTranscribing = false;
+        if (!fromCache) isTranscribing = false;
         stream.end();
         resolve();
       }
@@ -88,7 +152,7 @@ export default defineEventHandler(async (event) => {
 
     event.node.req.on('close', () => {
       clearInterval(heartbeat);
-      isTranscribing = false;
+      if (!fromCache) isTranscribing = false;
     });
   });
 });
