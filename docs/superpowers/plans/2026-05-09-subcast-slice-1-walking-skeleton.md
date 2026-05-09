@@ -434,8 +434,7 @@ Place a small `.wav` (5-10 seconds of speech) at `/tmp/sample.wav` (e.g., `say -
 Create a one-off `server/api/whisper-smoke.get.ts`:
 
 ```ts
-import { transcribeOnce } from '~/server/utils/whisper';
-
+// Nitro auto-imports transcribeOnce from server/utils/whisper.ts.
 export default defineEventHandler(async () => {
   const cues = [];
   for await (const cue of transcribeOnce('/tmp/sample.wav')) {
@@ -491,13 +490,13 @@ export function formatSse(frame: SseFrame): string {
 
 ```ts
 // server/api/upload.post.ts
+// Nitro auto-imports getDb / SUBCAST_PATHS from server/utils/db.ts.
 import { createWriteStream } from 'node:fs';
 import { mkdir, rename } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { Writable, Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createHash } from 'node:crypto';
-import { getDb, SUBCAST_PATHS } from '~/server/utils/db';
 
 const ALLOWED_EXT = ['.mp4', '.mkv', '.mov', '.webm', '.mp3', '.wav', '.m4a'];
 const MAX_BYTES = 2 * 1024 * 1024 * 1024; // 2GB
@@ -591,12 +590,10 @@ git commit -m "feat(slice-1): POST /api/upload with streaming sha256 + videos ro
 
 ```ts
 // server/api/transcribe.get.ts
+// Nitro auto-imports getDb / SUBCAST_PATHS / transcribeOnce / formatSse.
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { getDb, SUBCAST_PATHS } from '~/server/utils/db';
-import { transcribeOnce } from '~/server/utils/whisper';
-import { formatSse } from '~/server/utils/sse';
 
 let isTranscribing = false;
 
