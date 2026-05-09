@@ -60,7 +60,7 @@
   "dependencies": {
     "better-sqlite3": "^11.3.0",
     "nodejs-whisper": "^0.2.9",
-    "nuxt": "^3.14.0",
+    "nuxt": "^4.4.0",
     "vue": "^3.5.0",
     "vue-router": "^4.4.0"
   },
@@ -76,8 +76,6 @@
 }
 ```
 
-> Note: Nuxt 4 ships under `nuxt@^3.14` with the `app/` directory layout enabled by default (Nuxt 4 compatibility mode). If a true Nuxt 4 stable channel is published by the time of execution, bump version + remove the note.
-
 - [ ] **Step 2: Install deps**
 
 Run: `pnpm install`
@@ -89,7 +87,6 @@ Expected: pnpm completes; `node_modules/` populated; no peer-dep errors.
 // nuxt.config.ts
 export default defineNuxtConfig({
   compatibilityDate: '2026-05-01',
-  future: { compatibilityVersion: 4 },
   modules: ['@nuxtjs/tailwindcss'],
   css: ['~/assets/css/tailwind.css'],
   typescript: { strict: true, typeCheck: false },
