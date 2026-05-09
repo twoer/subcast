@@ -1,12 +1,14 @@
-// Restart recovery: any 'running' task that was active before this Nitro
-// process started gets demoted to 'queued', then the queue picks the next one
-// up. Combined with the chunks table this implements §5 "重启恢复" + §3
-// "断点续传" walking-skeleton-of-resume.
+// Restart recovery for both queues. Any 'running' task is demoted to 'queued';
+// the queue then picks the next one. Translation has no chunk-level resume
+// (single-shot per spec §5), so a running translate task restarts from
+// scratch — but its progress is independent and short.
 import { getDb } from '../utils/db';
-import { transcribeQueue } from '../utils/queue';
+import { transcribeQueue, translateQueue } from '../utils/queue';
 
 export default defineNitroPlugin(async () => {
   const db = getDb();
   db.prepare(`UPDATE transcribe_tasks SET status='queued' WHERE status='running'`).run();
+  db.prepare(`UPDATE translate_tasks SET status='queued', progress_pct=0 WHERE status='running'`).run();
   await transcribeQueue.tryStartNext();
+  await translateQueue.tryStartNext();
 });
