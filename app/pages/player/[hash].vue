@@ -26,6 +26,30 @@ const SUPPORTED_LANGS: Array<{ code: string; label: string }> = [
   { code: 'es-ES', label: 'Español' },
 ];
 
+const SPEEDS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+
+interface SubtitleStyle {
+  fontSize: number; // em
+  color: string;
+  bgOpacity: number; // 0..1
+}
+const DEFAULT_STYLE: SubtitleStyle = { fontSize: 1.0, color: '#ffffff', bgOpacity: 0.6 };
+const STYLE_KEY = 'subcast.subtitleStyle';
+
+const SHORTCUTS: Array<{ keys: string; action: string }> = [
+  { keys: 'Space / K', action: 'Play / Pause' },
+  { keys: '← / →', action: 'Seek -/+ 5s' },
+  { keys: 'J / L', action: 'Seek -/+ 10s (YouTube)' },
+  { keys: '↑ / ↓', action: 'Volume +/- 10%' },
+  { keys: '< / >', action: 'Speed -/+ one step' },
+  { keys: 'M', action: 'Toggle mute' },
+  { keys: 'F', action: 'Toggle fullscreen' },
+  { keys: 'C', action: 'Toggle subtitles' },
+  { keys: '1-9', action: 'Jump to 10%-90% of video' },
+  { keys: '?', action: 'Show this help' },
+  { keys: 'Esc', action: 'Close dialog' },
+];
+
 const route = useRoute();
 const hash = computed(() => String(route.params.hash));
 
@@ -40,6 +64,20 @@ const errMsg = ref<string | null>(null);
 const fromCache = ref(false);
 const currentTime = ref(0);
 const translateProgress = ref<number | null>(null);
+
+// Slice 7 player UX
+const playbackRate = ref(1.0);
+const showHelp = ref(false);
+const showSettings = ref(false);
+const subsVisible = ref(true);
+const subtitleStyle = ref<SubtitleStyle>({ ...DEFAULT_STYLE });
+
+const cueFontSize = computed(() => `${subtitleStyle.value.fontSize}em`);
+const cueColor = computed(() => subtitleStyle.value.color);
+const cueBg = computed(() => {
+  const a = subtitleStyle.value.bgOpacity;
+  return `rgba(0, 0, 0, ${a})`;
+});
 
 const esByLang: Record<string, EventSource | null> = {};
 
@@ -58,37 +96,35 @@ function getOrCreateTrack(): TextTrack | null {
     const el = v.querySelector('track');
     if (el) track = (el as HTMLTrackElement).track;
   }
-  if (track) {
-    track.mode = 'showing';
-    return track;
-  }
-  return null;
+  return track ?? null;
+}
+
+function applyTrackVisibility() {
+  const t = getOrCreateTrack();
+  if (!t) return;
+  t.mode = subsVisible.value ? 'showing' : 'hidden';
 }
 
 function clearTrack() {
-  const track = getOrCreateTrack();
-  if (!track) return;
-  // Iterate backwards because removeCue mutates the live list
-  const list = track.cues;
-  if (!list) return;
-  for (let i = list.length - 1; i >= 0; i--) {
-    track.removeCue(list[i]!);
-  }
+  const t = getOrCreateTrack();
+  if (!t?.cues) return;
+  for (let i = t.cues.length - 1; i >= 0; i--) t.removeCue(t.cues[i]!);
 }
 
 function addCueToTrack(cue: CueData) {
-  const track = getOrCreateTrack();
-  if (!track) return;
+  const t = getOrCreateTrack();
+  if (!t) return;
   try {
-    track.addCue(new VTTCue(cue.startMs / 1000, cue.endMs / 1000, cue.text));
+    t.addCue(new VTTCue(cue.startMs / 1000, cue.endMs / 1000, cue.text));
   } catch {
-    /* VTTCue may not be available in some browsers */
+    /* unsupported in some browsers */
   }
 }
 
 function rebuildTrackFor(lang: string) {
   clearTrack();
   for (const c of cuesByLang.value[lang] ?? []) addCueToTrack(c);
+  applyTrackVisibility();
 }
 
 const activeIdx = computed(() => {
@@ -119,6 +155,176 @@ function jumpTo(ms: number) {
   if (videoRef.value) videoRef.value.currentTime = ms / 1000;
 }
 
+function setPlaybackRate(rate: number) {
+  playbackRate.value = rate;
+  if (videoRef.value) videoRef.value.playbackRate = rate;
+}
+
+function bumpSpeed(delta: number) {
+  const i = SPEEDS.indexOf(playbackRate.value);
+  const next = SPEEDS[Math.max(0, Math.min(SPEEDS.length - 1, (i < 0 ? 2 : i) + delta))]!;
+  setPlaybackRate(next);
+}
+
+function togglePlay() {
+  const v = videoRef.value;
+  if (!v) return;
+  if (v.paused) void v.play();
+  else v.pause();
+}
+
+function seekBy(deltaS: number) {
+  const v = videoRef.value;
+  if (!v) return;
+  v.currentTime = Math.max(0, Math.min(v.duration || Infinity, v.currentTime + deltaS));
+}
+
+function bumpVolume(delta: number) {
+  const v = videoRef.value;
+  if (!v) return;
+  v.volume = Math.max(0, Math.min(1, v.volume + delta));
+  v.muted = false;
+}
+
+function toggleMute() {
+  const v = videoRef.value;
+  if (!v) return;
+  v.muted = !v.muted;
+}
+
+function toggleFullscreen() {
+  const v = videoRef.value;
+  if (!v) return;
+  if (document.fullscreenElement) void document.exitFullscreen();
+  else void v.requestFullscreen();
+}
+
+function toggleSubs() {
+  subsVisible.value = !subsVisible.value;
+  applyTrackVisibility();
+}
+
+function jumpPercent(pct: number) {
+  const v = videoRef.value;
+  if (!v || !Number.isFinite(v.duration)) return;
+  v.currentTime = (v.duration * pct) / 100;
+}
+
+function shouldIgnore(e: KeyboardEvent): boolean {
+  const t = e.target as HTMLElement | null;
+  if (!t) return false;
+  if (t.isContentEditable) return true;
+  const tag = t.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+}
+
+function onKeyDown(e: KeyboardEvent) {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (shouldIgnore(e)) return;
+
+  if (showHelp.value || showSettings.value) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      showHelp.value = false;
+      showSettings.value = false;
+    }
+    return;
+  }
+
+  switch (e.key) {
+    case ' ':
+    case 'k':
+    case 'K':
+      e.preventDefault();
+      togglePlay();
+      break;
+    case 'ArrowLeft':
+      e.preventDefault();
+      seekBy(-5);
+      break;
+    case 'ArrowRight':
+      e.preventDefault();
+      seekBy(5);
+      break;
+    case 'j':
+    case 'J':
+      e.preventDefault();
+      seekBy(-10);
+      break;
+    case 'l':
+    case 'L':
+      e.preventDefault();
+      seekBy(10);
+      break;
+    case 'ArrowUp':
+      e.preventDefault();
+      bumpVolume(0.1);
+      break;
+    case 'ArrowDown':
+      e.preventDefault();
+      bumpVolume(-0.1);
+      break;
+    case '<':
+    case ',':
+      e.preventDefault();
+      bumpSpeed(-1);
+      break;
+    case '>':
+    case '.':
+      e.preventDefault();
+      bumpSpeed(1);
+      break;
+    case 'm':
+    case 'M':
+      e.preventDefault();
+      toggleMute();
+      break;
+    case 'f':
+    case 'F':
+      e.preventDefault();
+      toggleFullscreen();
+      break;
+    case 'c':
+    case 'C':
+      e.preventDefault();
+      toggleSubs();
+      break;
+    case '?':
+      e.preventDefault();
+      showHelp.value = true;
+      break;
+    default:
+      if (/^[1-9]$/.test(e.key)) {
+        e.preventDefault();
+        jumpPercent(parseInt(e.key, 10) * 10);
+      }
+  }
+}
+
+function loadStyleFromStorage() {
+  if (!import.meta.client) return;
+  try {
+    const raw = localStorage.getItem(STYLE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<SubtitleStyle>;
+      subtitleStyle.value = { ...DEFAULT_STYLE, ...parsed };
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function saveStyleToStorage() {
+  if (!import.meta.client) return;
+  try {
+    localStorage.setItem(STYLE_KEY, JSON.stringify(subtitleStyle.value));
+  } catch {
+    /* ignore quota */
+  }
+}
+
+watch(subtitleStyle, saveStyleToStorage, { deep: true });
+
 function openOriginalStream() {
   langStatus.value.original = 'running';
   status.value = 'running';
@@ -148,7 +354,7 @@ function openOriginalStream() {
 }
 
 function openTranslateStream(lang: string) {
-  if (esByLang[lang]) return; // already open
+  if (esByLang[lang]) return;
   langStatus.value[lang] = 'running';
   if (currentLang.value === lang) status.value = 'running';
   cuesByLang.value[lang] = cuesByLang.value[lang] ?? [];
@@ -170,7 +376,6 @@ function openTranslateStream(lang: string) {
     const arr = cuesByLang.value[lang]!;
     for (const c of data.cues as CueData[]) arr.push(c);
     if (currentLang.value === lang) {
-      // append-only update to track
       for (const c of data.cues as CueData[]) addCueToTrack(c);
     }
   });
@@ -215,7 +420,6 @@ function onLangChange(newLang: string) {
   fromCache.value = false;
   currentLang.value = newLang;
   rebuildTrackFor(newLang);
-  // Reflect status of the just-selected language (if known)
   status.value = langStatus.value[newLang] ?? 'idle';
   if (newLang === 'original') {
     if ((cuesByLang.value.original?.length ?? 0) === 0 && !esByLang.original) {
@@ -223,7 +427,6 @@ function onLangChange(newLang: string) {
     }
     return;
   }
-  // Need to (re)open translate stream if not already loaded or in flight
   if (!cuesByLang.value[newLang] || cuesByLang.value[newLang]!.length === 0) {
     openTranslateStream(newLang);
   } else if (langStatus.value[newLang] !== 'done' && !esByLang[newLang]) {
@@ -232,17 +435,24 @@ function onLangChange(newLang: string) {
 }
 
 onMounted(() => {
+  loadStyleFromStorage();
   openOriginalStream();
+  window.addEventListener('keydown', onKeyDown);
 });
 
 onBeforeUnmount(() => {
   for (const k of Object.keys(esByLang)) esByLang[k]?.close();
+  window.removeEventListener('keydown', onKeyDown);
 });
 
 watch(activeIdx, (idx) => {
   if (idx < 0) return;
   const el = document.querySelector(`[data-cue-idx="${idx}"]`);
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+
+watch(playbackRate, (r) => {
+  if (videoRef.value) videoRef.value.playbackRate = r;
 });
 </script>
 
@@ -264,6 +474,23 @@ watch(activeIdx, (idx) => {
               <template v-else-if="langStatus[l.code] === 'error'">✗</template>
             </option>
           </select>
+          <select
+            :value="playbackRate"
+            class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm"
+            @change="setPlaybackRate(parseFloat(($event.target as HTMLSelectElement).value))"
+          >
+            <option v-for="s in SPEEDS" :key="s" :value="s">{{ s }}x</option>
+          </select>
+          <button
+            class="px-2 py-1 rounded bg-gray-800 border border-gray-700 hover:bg-gray-700 text-xs"
+            title="Subtitle style"
+            @click="showSettings = true"
+          >Aa</button>
+          <button
+            class="px-2 py-1 rounded bg-gray-800 border border-gray-700 hover:bg-gray-700 text-xs"
+            title="Keyboard shortcuts (?)"
+            @click="showHelp = true"
+          >?</button>
           <span class="text-gray-400 font-mono text-xs">{{ hash.slice(0, 12) }}…</span>
           <span
             v-if="fromCache"
@@ -285,7 +512,9 @@ watch(activeIdx, (idx) => {
         </div>
       </header>
 
-      <p v-if="errMsg" class="mb-4 text-red-400 text-sm bg-red-950/40 p-3 rounded">{{ errMsg }}</p>
+      <p v-if="errMsg" class="mb-4 text-red-400 text-sm bg-red-950/40 p-3 rounded">
+        {{ errMsg }}
+      </p>
 
       <div class="bg-black rounded overflow-hidden">
         <video
@@ -302,7 +531,9 @@ watch(activeIdx, (idx) => {
 
       <section class="mt-6">
         <div class="flex items-center justify-between mb-2">
-          <h2 class="text-sm text-gray-300 uppercase tracking-wide">Subtitles · {{ currentLang }}</h2>
+          <h2 class="text-sm text-gray-300 uppercase tracking-wide">
+            Subtitles · {{ currentLang }}
+          </h2>
           <div class="flex items-center gap-3 text-xs text-gray-500">
             <span>{{ cues.length }} cues</span>
             <span
@@ -344,5 +575,104 @@ watch(activeIdx, (idx) => {
         </ul>
       </section>
     </div>
+
+    <!-- Help dialog -->
+    <div
+      v-if="showHelp"
+      class="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50"
+      @click.self="showHelp = false"
+    >
+      <div class="bg-gray-900 rounded-lg p-6 w-full max-w-md">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold">Keyboard shortcuts</h3>
+          <button
+            class="text-gray-400 hover:text-gray-100"
+            @click="showHelp = false"
+          >✕</button>
+        </div>
+        <table class="w-full text-sm">
+          <tbody>
+            <tr v-for="s in SHORTCUTS" :key="s.keys" class="border-b border-gray-800">
+              <td class="py-1.5 font-mono text-blue-300">{{ s.keys }}</td>
+              <td class="py-1.5 text-gray-300">{{ s.action }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Subtitle style settings -->
+    <div
+      v-if="showSettings"
+      class="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50"
+      @click.self="showSettings = false"
+    >
+      <div class="bg-gray-900 rounded-lg p-6 w-full max-w-sm">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold">Subtitle style</h3>
+          <button
+            class="text-gray-400 hover:text-gray-100"
+            @click="showSettings = false"
+          >✕</button>
+        </div>
+        <div class="space-y-4 text-sm">
+          <div>
+            <label class="block text-gray-300 mb-1">
+              Font size <span class="text-gray-500 ml-2">{{ subtitleStyle.fontSize.toFixed(2) }}em</span>
+            </label>
+            <input
+              v-model.number="subtitleStyle.fontSize"
+              type="range"
+              min="0.6"
+              max="2.0"
+              step="0.05"
+              class="w-full"
+            />
+          </div>
+          <div>
+            <label class="block text-gray-300 mb-1">Color</label>
+            <input
+              v-model="subtitleStyle.color"
+              type="color"
+              class="h-8 w-16 rounded"
+            />
+          </div>
+          <div>
+            <label class="block text-gray-300 mb-1">
+              Background opacity <span class="text-gray-500 ml-2">{{ Math.round(subtitleStyle.bgOpacity * 100) }}%</span>
+            </label>
+            <input
+              v-model.number="subtitleStyle.bgOpacity"
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              class="w-full"
+            />
+          </div>
+          <button
+            class="text-xs text-gray-400 hover:text-gray-200 underline"
+            @click="subtitleStyle = { ...DEFAULT_STYLE }"
+          >Reset to defaults</button>
+        </div>
+      </div>
+    </div>
   </main>
 </template>
+
+<style>
+/*
+ * Slice 7 native subtitle styling. Vue 3 SFC v-bind() lets us push the
+ * reactive style values into ::cue, which is the WebVTT pseudo-element the
+ * browser uses to render text inside <track default kind="subtitles">.
+ *
+ * Browser support: Chrome / Edge / Safari all honor ::cue. Firefox is
+ * partial (color works, background-color is sometimes capped). For Slice 7
+ * this is enough; deeper customization can land later via a custom overlay.
+ */
+::cue {
+  font-size: v-bind(cueFontSize);
+  color: v-bind(cueColor);
+  background-color: v-bind(cueBg);
+}
+</style>
