@@ -1,5 +1,7 @@
 <!-- app/pages/index.vue -->
 <script setup lang="ts">
+import { AlertCircle, Upload } from 'lucide-vue-next';
+
 interface QueueItem {
   kind: 'transcribe' | 'translate';
   id: string;
@@ -193,70 +195,88 @@ function fmtKindLabel(item: QueueItem): string {
     ? `${t('index.transcribing')} · whisper:${item.model}`
     : `${t('index.translating')} · ${item.targetLang} · ${item.model}`;
 }
+
+function statusBadgeVariant(s: QueueItem['status']) {
+  switch (s) {
+    case 'running': return 'default';
+    case 'queued': return 'secondary';
+    case 'failed': return 'destructive';
+    case 'canceled':
+    case 'completed':
+    default: return 'outline';
+  }
+}
 </script>
 
 <template>
-  <main class="min-h-screen p-8 bg-gray-50">
-    <div class="max-w-3xl mx-auto">
-      <header class="flex items-center justify-between mb-6">
+  <main class="min-h-screen bg-background p-8">
+    <div class="mx-auto max-w-3xl">
+      <header class="mb-6 flex items-center justify-between">
         <h1 class="text-3xl font-bold">{{ t('app.title') }}</h1>
-        <div class="flex items-center gap-3 text-xs text-gray-500">
+        <div class="flex items-center gap-3 text-xs text-muted-foreground">
           <span v-if="healthData?.lanUrl" class="font-mono">
             {{ t('app.lan') }}: {{ healthData.lanUrl }}
           </span>
           <select
             :value="locale"
-            class="bg-white border border-gray-300 rounded px-2 py-1 text-xs"
+            class="rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
             @change="setLocale(($event.target as HTMLSelectElement).value as 'en' | 'zh')"
           >
             <option v-for="l in locales" :key="l.code" :value="l.code">{{ l.name }}</option>
           </select>
-          <NuxtLink to="/settings" class="text-blue-600 hover:underline">{{ t('app.settings') }} →</NuxtLink>
+          <NuxtLink to="/settings" class="text-primary hover:underline">{{ t('app.settings') }} →</NuxtLink>
         </div>
       </header>
 
-      <div
+      <Alert
         v-if="healthData && !healthData.health.ready"
-        class="mb-6 bg-amber-50 border border-amber-300 rounded p-4"
+        class="mb-6 border-amber-300 bg-amber-50 text-amber-900"
       >
-        <div class="flex items-center justify-between mb-2">
-          <h2 class="text-sm font-semibold text-amber-900">
-            {{ t('health.missing') }}
-          </h2>
-          <button
-            class="text-xs text-amber-800 hover:underline"
+        <AlertCircle class="h-4 w-4 !text-amber-800" />
+        <AlertTitle class="flex items-center justify-between text-amber-900">
+          <span>{{ t('health.missing') }}</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            class="h-7 text-xs text-amber-900 hover:bg-amber-100"
             @click="refreshHealth"
-          >{{ t('health.recheck') }}</button>
-        </div>
-        <ul class="space-y-2 text-sm">
-          <li v-for="fix in healthData.fixes" :key="fix.id" class="text-amber-900">
-            <div class="font-medium">{{ fix.description }}</div>
-            <div class="flex gap-2 items-start mt-1">
-              <code class="flex-1 bg-amber-100 rounded px-2 py-1 text-xs font-mono break-all">{{ fix.command }}</code>
-              <button
-                class="text-xs px-2 py-1 rounded bg-amber-200 hover:bg-amber-300 whitespace-nowrap"
-                @click="copyToClipboard(fix.command)"
-              >{{ t('health.copy') }}</button>
-            </div>
-          </li>
-        </ul>
-      </div>
+          >{{ t('health.recheck') }}</Button>
+        </AlertTitle>
+        <AlertDescription>
+          <ul class="mt-2 space-y-2 text-sm">
+            <li v-for="fix in healthData.fixes" :key="fix.id">
+              <div class="font-medium">{{ fix.description }}</div>
+              <div class="mt-1 flex items-start gap-2">
+                <code class="flex-1 break-all rounded bg-amber-100 px-2 py-1 font-mono text-xs">
+                  {{ fix.command }}
+                </code>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  class="h-7 whitespace-nowrap text-xs"
+                  @click="copyToClipboard(fix.command)"
+                >{{ t('health.copy') }}</Button>
+              </div>
+            </li>
+          </ul>
+        </AlertDescription>
+      </Alert>
 
       <div
-        class="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center bg-white hover:border-blue-400 transition"
+        class="rounded-lg border-2 border-dashed border-input bg-card p-12 text-center transition hover:border-primary"
         @dragover.prevent
         @drop="onDrop"
       >
-        <p class="mb-4 text-gray-600">
+        <p class="mb-4 text-muted-foreground">
           {{ t('index.drop') }}
         </p>
-        <button
-          class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+        <Button
           :disabled="isUploading"
           @click="fileInput?.click()"
         >
+          <Upload class="h-4 w-4" />
           {{ isUploading ? t('index.uploading') : t('index.choose') }}
-        </button>
+        </Button>
         <input
           ref="fileInput"
           type="file"
@@ -267,7 +287,7 @@ function fmtKindLabel(item: QueueItem): string {
         />
       </div>
 
-      <p v-if="error" class="mt-4 text-red-600 text-sm">{{ error }}</p>
+      <p v-if="error" class="mt-4 text-sm text-destructive">{{ error }}</p>
 
       <section v-if="queueItems.length > 0" class="mt-8">
         <div class="flex items-center justify-between mb-2">
@@ -280,43 +300,32 @@ function fmtKindLabel(item: QueueItem): string {
           <li
             v-for="item in queueItems"
             :key="`${item.kind}:${item.id}`"
-            class="bg-white rounded p-3 flex items-center justify-between gap-3 border border-gray-200"
+            class="flex items-center justify-between gap-3 rounded border bg-card p-3"
           >
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2 text-sm">
                 <NuxtLink
                   :to="`/player/${item.videoSha}`"
-                  class="font-medium text-gray-900 hover:underline truncate max-w-xs"
+                  class="truncate max-w-xs font-medium text-foreground hover:underline"
                   :title="item.videoName"
                 >{{ item.videoName }}</NuxtLink>
-                <span
-                  class="px-1.5 py-0.5 rounded text-xs"
-                  :class="{
-                    'bg-yellow-100 text-yellow-800': item.status === 'running',
-                    'bg-blue-100 text-blue-800': item.status === 'queued',
-                    'bg-green-100 text-green-800': item.status === 'completed',
-                    'bg-red-100 text-red-800': item.status === 'failed',
-                    'bg-gray-200 text-gray-700': item.status === 'canceled',
-                  }"
-                >{{ item.status }}</span>
+                <Badge :variant="statusBadgeVariant(item.status)">
+                  {{ item.status }}
+                </Badge>
               </div>
-              <div class="text-xs text-gray-500 mt-1">{{ fmtKindLabel(item) }}</div>
-              <div
+              <div class="mt-1 text-xs text-muted-foreground">{{ fmtKindLabel(item) }}</div>
+              <Progress
                 v-if="item.status === 'running' || item.status === 'queued'"
-                class="mt-2 h-1.5 w-full bg-gray-200 rounded overflow-hidden"
-              >
-                <div
-                  class="h-full bg-blue-500 transition-all"
-                  :style="{ width: `${item.progressPct}%` }"
-                ></div>
-              </div>
+                :model-value="item.progressPct"
+                class="mt-2 h-1.5"
+              />
               <p
                 v-if="item.errorMsg"
-                class="text-xs text-red-600 mt-1 truncate"
+                class="mt-1 truncate text-xs text-destructive"
                 :title="item.errorMsg"
               >{{ item.errorMsg }}</p>
             </div>
-            <div class="text-xs text-gray-500 whitespace-nowrap">
+            <div class="whitespace-nowrap text-xs text-muted-foreground">
               <template v-if="item.kind === 'transcribe' && item.totalChunks">
                 {{ item.doneChunks }}/{{ item.totalChunks }} chunks
               </template>
@@ -324,41 +333,40 @@ function fmtKindLabel(item: QueueItem): string {
                 {{ item.progressPct }}%
               </template>
             </div>
-            <button
+            <Button
               v-if="item.status === 'queued' || item.status === 'running'"
-              class="text-xs px-2 py-1 rounded bg-red-50 text-red-700 hover:bg-red-100"
+              variant="destructive"
+              size="sm"
+              class="h-7"
               @click="cancelTask(item)"
-            >{{ t('index.cancel') }}</button>
+            >{{ t('index.cancel') }}</Button>
           </li>
         </ul>
       </section>
     </div>
 
-    <div
-      v-if="pendingPair"
-      class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
-      @click.self="dialogChoose(false)"
+    <Dialog
+      :open="pendingPair !== null"
+      @update:open="(v: boolean) => { if (!v) dialogChoose(false) }"
     >
-      <div class="bg-white rounded-lg p-6 w-full max-w-md">
-        <h3 class="text-lg font-semibold mb-3">{{ t('companion.title') }}</h3>
-        <p class="text-sm text-gray-700 mb-4">
-          {{ t('companion.body') }}
-        </p>
-        <div class="bg-gray-50 rounded p-3 text-xs font-mono mb-4 space-y-1">
-          <div>🎬 {{ pendingPair.video.name }}</div>
-          <div>📝 {{ pendingPair.subtitle.name }}</div>
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{{ t('companion.title') }}</DialogTitle>
+          <DialogDescription>{{ t('companion.body') }}</DialogDescription>
+        </DialogHeader>
+        <div class="space-y-1 rounded bg-muted p-3 font-mono text-xs">
+          <div>🎬 {{ pendingPair?.video.name }}</div>
+          <div>📝 {{ pendingPair?.subtitle.name }}</div>
         </div>
-        <div class="flex gap-2 justify-end">
-          <button
-            class="px-3 py-1.5 text-sm rounded bg-gray-200 hover:bg-gray-300"
-            @click="dialogChoose(false)"
-          >{{ t('companion.ignore') }}</button>
-          <button
-            class="px-3 py-1.5 text-sm rounded bg-blue-600 text-white hover:bg-blue-700"
-            @click="dialogChoose(true)"
-          >{{ t('companion.useExisting') }}</button>
-        </div>
-      </div>
-    </div>
+        <DialogFooter>
+          <Button variant="secondary" @click="dialogChoose(false)">
+            {{ t('companion.ignore') }}
+          </Button>
+          <Button @click="dialogChoose(true)">
+            {{ t('companion.useExisting') }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </main>
 </template>

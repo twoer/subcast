@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { Trash2, Download, ChevronLeft } from 'lucide-vue-next';
+
 interface Settings {
   whisperModel: 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
   ollamaModel: string;
@@ -153,19 +155,22 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="min-h-screen p-8 bg-gray-50">
-    <div class="max-w-2xl mx-auto">
-      <header class="flex items-center justify-between mb-6">
+  <main class="min-h-screen bg-background p-8">
+    <div class="mx-auto max-w-2xl">
+      <header class="mb-6 flex items-center justify-between">
         <h1 class="text-2xl font-bold">Settings</h1>
-        <NuxtLink to="/" class="text-blue-600 hover:underline text-sm">← Back</NuxtLink>
+        <NuxtLink to="/" class="flex items-center gap-1 text-sm text-primary hover:underline">
+          <ChevronLeft class="h-4 w-4" />
+          Back
+        </NuxtLink>
       </header>
 
-      <p v-if="errMsg" class="mb-4 text-red-600 text-sm bg-red-50 border border-red-200 rounded p-3">
-        {{ errMsg }}
-      </p>
+      <Alert v-if="errMsg" variant="destructive" class="mb-4">
+        <AlertDescription>{{ errMsg }}</AlertDescription>
+      </Alert>
 
-      <section v-if="hardware" class="mb-6 bg-white rounded p-5 border border-gray-200">
-        <h2 class="text-sm uppercase tracking-wide text-gray-700 mb-3">Hardware</h2>
+      <section v-if="hardware" class="mb-6 rounded border bg-card p-5">
+        <h2 class="mb-3 text-sm uppercase tracking-wide text-muted-foreground">Hardware</h2>
         <dl class="grid grid-cols-2 gap-y-1.5 text-sm">
           <dt class="text-gray-500">Tier</dt>
           <dd class="font-medium">
@@ -187,22 +192,22 @@ onMounted(() => {
             whisper={{ hardware.recommended.whisperModel }} · ollama={{ hardware.recommended.ollamaModel }}
           </dd>
         </dl>
-        <button
-          class="mt-4 text-xs px-3 py-1.5 rounded bg-blue-50 text-blue-700 hover:bg-blue-100"
+        <Button
+          variant="secondary"
+          size="sm"
+          class="mt-4"
           @click="applyRecommended"
-        >Apply recommended → draft</button>
+        >Apply recommended → draft</Button>
       </section>
 
-      <section v-if="draft" class="bg-white rounded p-5 border border-gray-200 space-y-5">
-        <h2 class="text-sm uppercase tracking-wide text-gray-700">Settings</h2>
+      <section v-if="draft" class="space-y-5 rounded border bg-card p-5">
+        <h2 class="text-sm uppercase tracking-wide text-muted-foreground">Settings</h2>
 
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">
-            Whisper model
-          </label>
+          <Label class="mb-1 block text-sm font-medium">Whisper model</Label>
           <select
             v-model="draft.whisperModel"
-            class="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           >
             <option v-for="m in WHISPER_MODELS" :key="m" :value="m">
               {{ m }}
@@ -211,56 +216,54 @@ onMounted(() => {
               </template>
             </option>
           </select>
-          <p class="text-xs text-gray-500 mt-1">
+          <p class="mt-1 text-xs text-muted-foreground">
             Bigger = more accurate but slower. Changes apply to new transcribe tasks.
           </p>
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">
-            Ollama model
-          </label>
+          <Label class="mb-1 block text-sm font-medium">Ollama model</Label>
           <input
             v-model="draft.ollamaModel"
             type="text"
-            class="w-full px-3 py-2 border border-gray-300 rounded text-sm font-mono"
+            class="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             placeholder="qwen2.5:7b"
           />
-          <p class="text-xs text-gray-500 mt-1">
+          <p class="mt-1 text-xs text-muted-foreground">
             Use the exact tag visible in <code>ollama list</code>. Recommended:
             <code>{{ hardware?.recommended.ollamaModel }}</code>.
           </p>
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">
+          <Label class="mb-1 block text-sm font-medium">
             Cache size limit
-            <span class="text-gray-500 ml-2">{{ draft.cacheLimitGB }} GB</span>
-          </label>
+            <span class="ml-2 text-muted-foreground">{{ draft.cacheLimitGB }} GB</span>
+          </Label>
           <input
             v-model.number="draft.cacheLimitGB"
             type="range"
             min="1"
             max="100"
             step="1"
-            class="w-full"
+            class="w-full accent-primary"
           />
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">
+          <Label class="mb-1 block text-sm font-medium">
             Silence threshold
-            <span class="text-gray-500 ml-2">{{ Math.round(draft.silenceThresholdMs / 1000) }}s</span>
-          </label>
+            <span class="ml-2 text-muted-foreground">{{ Math.round(draft.silenceThresholdMs / 1000) }}s</span>
+          </Label>
           <input
             v-model.number="draft.silenceThresholdMs"
             type="range"
             min="3000"
             max="60000"
             step="1000"
-            class="w-full"
+            class="w-full accent-primary"
           />
-          <p class="text-xs text-gray-500 mt-1">
+          <p class="mt-1 text-xs text-muted-foreground">
             Inter-cue gaps ≥ this duration get a 「── 无语音 ──」divider in the cue list.
           </p>
         </div>
@@ -270,116 +273,129 @@ onMounted(() => {
             id="debug"
             v-model="draft.debugMode"
             type="checkbox"
+            class="h-4 w-4 rounded border-input accent-primary"
           />
-          <label for="debug" class="text-sm text-gray-700">
+          <Label for="debug" class="text-sm font-normal">
             Debug mode (keep raw paths/filenames in JSONL logs)
-          </label>
+          </Label>
         </div>
 
-        <div class="flex items-center gap-3 pt-2 border-t border-gray-200">
-          <button
+        <div class="flex items-center gap-3 border-t pt-3">
+          <Button
             :disabled="!dirty || saving"
-            class="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
             @click="save"
           >
             {{ saving ? 'Saving…' : dirty ? 'Save' : 'Saved' }}
-          </button>
-          <button
+          </Button>
+          <Button
             v-if="dirty"
-            class="text-sm text-gray-500 hover:underline"
+            variant="ghost"
+            size="sm"
             @click="draft = { ...settings! }"
-          >Reset</button>
-          <span v-if="savedAt" class="text-xs text-gray-500">
+          >Reset</Button>
+          <span v-if="savedAt" class="text-xs text-muted-foreground">
             Last saved: {{ new Date(savedAt).toLocaleTimeString() }}
           </span>
         </div>
       </section>
 
-      <section v-if="cache" class="mt-6 bg-white rounded p-5 border border-gray-200">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-sm uppercase tracking-wide text-gray-700">
-            Cache
-          </h2>
-          <span class="text-xs text-gray-500">
+      <section v-if="cache" class="mt-6 rounded border bg-card p-5">
+        <div class="mb-3 flex items-center justify-between">
+          <h2 class="text-sm uppercase tracking-wide text-muted-foreground">Cache</h2>
+          <span class="text-xs text-muted-foreground">
             {{ cache.totals.count }} videos · {{ fmtBytes(cache.totals.bytes) }} total
           </span>
         </div>
 
         <div class="mb-4">
-          <div class="h-2 w-full bg-gray-200 rounded overflow-hidden">
-            <div
-              class="h-full transition-all"
-              :class="cacheOverThreshold ? 'bg-red-500' : 'bg-blue-500'"
-              :style="{ width: `${Math.round(cacheUsageRatio * 100)}%` }"
-            ></div>
-          </div>
-          <p class="text-xs mt-1" :class="cacheOverThreshold ? 'text-red-600 font-medium' : 'text-gray-500'">
+          <Progress
+            :model-value="Math.round(cacheUsageRatio * 100)"
+            class="h-2"
+            :class="cacheOverThreshold ? '[&>div]:bg-destructive' : ''"
+          />
+          <p
+            class="mt-1 text-xs"
+            :class="cacheOverThreshold ? 'font-medium text-destructive' : 'text-muted-foreground'"
+          >
             <template v-if="cacheOverThreshold">⚠️ </template>
             {{ fmtBytes(cache.totals.bytes) }} / {{ settings?.cacheLimitGB }} GB
             ({{ Math.round(cacheUsageRatio * 100) }}%)
           </p>
         </div>
 
-        <ul v-if="cache.items.length > 0" class="space-y-2 max-h-[40vh] overflow-y-auto">
+        <ul v-if="cache.items.length > 0" class="max-h-[40vh] space-y-2 overflow-y-auto">
           <li
             v-for="item in cache.items"
             :key="item.sha256"
-            class="flex items-center justify-between gap-3 py-2 border-b border-gray-100"
+            class="flex items-center justify-between gap-3 border-b py-2"
           >
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2 text-sm">
                 <NuxtLink
                   :to="`/player/${item.sha256}`"
-                  class="font-medium text-gray-900 hover:underline truncate max-w-xs"
+                  class="truncate max-w-xs font-medium hover:underline"
                   :title="item.originalName"
                 >{{ item.originalName }}</NuxtLink>
-                <span class="text-xs text-gray-500">
+                <span class="text-xs text-muted-foreground">
                   {{ fmtBytes(item.videoBytes + item.cacheBytes) }}
                 </span>
               </div>
-              <div class="text-xs text-gray-500 mt-0.5">
+              <div class="mt-0.5 text-xs text-muted-foreground">
                 <template v-if="item.langs.length > 0">
                   {{ item.langs.join(' · ') }}
                 </template>
                 <template v-else>(no subtitles)</template>
               </div>
             </div>
-            <button
-              class="text-xs px-2 py-1 rounded bg-red-50 text-red-700 hover:bg-red-100"
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              class="text-destructive hover:bg-destructive/10 hover:text-destructive"
               @click="deleteOne(item)"
-            >Delete</button>
+            >
+              <Trash2 class="h-4 w-4" />
+            </Button>
           </li>
         </ul>
-        <p v-else class="text-sm text-gray-500 text-center py-3">
+        <p v-else class="py-3 text-center text-sm text-muted-foreground">
           No cached videos yet.
         </p>
 
-        <div class="mt-3 pt-3 border-t border-gray-200 flex justify-end">
-          <button
+        <div class="mt-3 flex justify-end border-t pt-3">
+          <Button
             v-if="cache.totals.count > 0"
-            class="text-sm px-3 py-1.5 rounded bg-red-100 text-red-800 hover:bg-red-200"
+            variant="destructive"
+            size="sm"
             @click="clearAll"
-          >Clear all</button>
+          >
+            <Trash2 class="h-4 w-4" />
+            Clear all
+          </Button>
         </div>
       </section>
 
-      <section class="mt-6 bg-white rounded p-5 border border-gray-200">
+      <section class="mt-6 rounded border bg-card p-5">
         <div class="flex items-center justify-between">
           <div>
-            <h2 class="text-sm uppercase tracking-wide text-gray-700">Diagnostic</h2>
-            <p class="text-xs text-gray-500 mt-1">
+            <h2 class="text-sm uppercase tracking-wide text-muted-foreground">Diagnostic</h2>
+            <p class="mt-1 text-xs text-muted-foreground">
               ZIP with sanitized JSONL logs (last 7d), settings, hardware info,
               installed models. No video content or cue text.
             </p>
           </div>
-          <button
-            class="text-sm px-3 py-1.5 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 whitespace-nowrap"
+          <Button
+            variant="secondary"
+            size="sm"
+            class="whitespace-nowrap"
             @click="downloadDiagnostic"
-          >Export ZIP</button>
+          >
+            <Download class="h-4 w-4" />
+            Export ZIP
+          </Button>
         </div>
       </section>
 
-      <p v-if="!hardware && !errMsg" class="text-center text-gray-500 mt-8">
+      <p v-if="!hardware && !errMsg" class="mt-8 text-center text-muted-foreground">
         Loading hardware info…
       </p>
     </div>

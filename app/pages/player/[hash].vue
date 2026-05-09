@@ -1,5 +1,7 @@
 <!-- app/pages/player/[hash].vue -->
 <script setup lang="ts">
+import { Type, Keyboard } from 'lucide-vue-next';
+
 interface CueData {
   startMs: number;
   endMs: number;
@@ -464,7 +466,7 @@ watch(playbackRate, (r) => {
         <div class="flex items-center gap-2 text-sm">
           <select
             :value="currentLang"
-            class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm"
+            class="rounded-md border border-gray-700 bg-gray-800 px-2 py-1 text-sm text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
             @change="onLangChange(($event.target as HTMLSelectElement).value)"
           >
             <option v-for="l in SUPPORTED_LANGS" :key="l.code" :value="l.code">
@@ -476,39 +478,49 @@ watch(playbackRate, (r) => {
           </select>
           <select
             :value="playbackRate"
-            class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm"
+            class="rounded-md border border-gray-700 bg-gray-800 px-2 py-1 text-sm text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
             @change="setPlaybackRate(parseFloat(($event.target as HTMLSelectElement).value))"
           >
             <option v-for="s in SPEEDS" :key="s" :value="s">{{ s }}x</option>
           </select>
-          <button
-            class="px-2 py-1 rounded bg-gray-800 border border-gray-700 hover:bg-gray-700 text-xs"
+          <Button
+            variant="outline"
+            size="icon-sm"
+            class="border-gray-700 bg-gray-800 text-gray-100 hover:bg-gray-700 hover:text-gray-100"
             title="Subtitle style"
             @click="showSettings = true"
-          >Aa</button>
-          <button
-            class="px-2 py-1 rounded bg-gray-800 border border-gray-700 hover:bg-gray-700 text-xs"
+          >
+            <Type class="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            class="border-gray-700 bg-gray-800 text-gray-100 hover:bg-gray-700 hover:text-gray-100"
             title="Keyboard shortcuts (?)"
             @click="showHelp = true"
-          >?</button>
+          >
+            <Keyboard class="h-4 w-4" />
+          </Button>
           <span class="text-gray-400 font-mono text-xs">{{ hash.slice(0, 12) }}…</span>
-          <span
+          <Badge
             v-if="fromCache"
-            class="px-2 py-0.5 rounded bg-blue-900 text-blue-200 text-xs"
-          >cache</span>
-          <span
-            class="px-2 py-0.5 rounded text-xs"
+            variant="outline"
+            class="border-blue-700 bg-blue-900/40 text-blue-200"
+          >cache</Badge>
+          <Badge
+            variant="outline"
             :class="{
-              'bg-yellow-700 text-yellow-100': status === 'running',
-              'bg-green-700 text-green-100': status === 'done',
-              'bg-red-700 text-red-100': status === 'error',
-              'bg-gray-700 text-gray-200': status === 'idle',
+              'border-yellow-700 bg-yellow-900/40 text-yellow-200': status === 'running',
+              'border-green-700 bg-green-900/40 text-green-200': status === 'done',
+              'border-red-700 bg-red-900/40 text-red-200': status === 'error',
+              'border-gray-700 bg-gray-800 text-gray-300': status === 'idle',
             }"
-          >{{ status }}</span>
-          <span
+          >{{ status }}</Badge>
+          <Badge
             v-if="translateProgress !== null && currentLang !== 'original'"
-            class="px-2 py-0.5 rounded bg-purple-900 text-purple-200 text-xs"
-          >翻译中 {{ translateProgress }}%</span>
+            variant="outline"
+            class="border-purple-700 bg-purple-900/40 text-purple-200"
+          >翻译中 {{ translateProgress }}%</Badge>
         </div>
       </header>
 
@@ -536,11 +548,12 @@ watch(playbackRate, (r) => {
           </h2>
           <div class="flex items-center gap-3 text-xs text-gray-500">
             <span>{{ cues.length }} cues</span>
-            <span
+            <Badge
               v-if="suspectCount > 0"
-              class="px-1.5 py-0.5 rounded bg-amber-900/50 text-amber-300"
+              variant="outline"
+              class="border-amber-700 bg-amber-900/40 text-amber-300"
               title="Whisper marked these chunks as low confidence"
-            >{{ suspectCount }} suspect</span>
+            >{{ suspectCount }} suspect</Badge>
           </div>
         </div>
         <ul class="space-y-1 max-h-[40vh] overflow-y-auto bg-gray-900/50 rounded p-2 font-mono text-sm">
@@ -576,20 +589,11 @@ watch(playbackRate, (r) => {
       </section>
     </div>
 
-    <!-- Help dialog -->
-    <div
-      v-if="showHelp"
-      class="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50"
-      @click.self="showHelp = false"
-    >
-      <div class="bg-gray-900 rounded-lg p-6 w-full max-w-md">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="text-lg font-semibold">Keyboard shortcuts</h3>
-          <button
-            class="text-gray-400 hover:text-gray-100"
-            @click="showHelp = false"
-          >✕</button>
-        </div>
+    <Dialog v-model:open="showHelp">
+      <DialogContent class="max-w-md border-gray-800 bg-gray-900 text-gray-100">
+        <DialogHeader>
+          <DialogTitle>Keyboard shortcuts</DialogTitle>
+        </DialogHeader>
         <table class="w-full text-sm">
           <tbody>
             <tr v-for="s in SHORTCUTS" :key="s.keys" class="border-b border-gray-800">
@@ -598,28 +602,19 @@ watch(playbackRate, (r) => {
             </tr>
           </tbody>
         </table>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
 
-    <!-- Subtitle style settings -->
-    <div
-      v-if="showSettings"
-      class="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50"
-      @click.self="showSettings = false"
-    >
-      <div class="bg-gray-900 rounded-lg p-6 w-full max-w-sm">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="text-lg font-semibold">Subtitle style</h3>
-          <button
-            class="text-gray-400 hover:text-gray-100"
-            @click="showSettings = false"
-          >✕</button>
-        </div>
+    <Dialog v-model:open="showSettings">
+      <DialogContent class="max-w-sm border-gray-800 bg-gray-900 text-gray-100">
+        <DialogHeader>
+          <DialogTitle>Subtitle style</DialogTitle>
+        </DialogHeader>
         <div class="space-y-4 text-sm">
           <div>
-            <label class="block text-gray-300 mb-1">
-              Font size <span class="text-gray-500 ml-2">{{ subtitleStyle.fontSize.toFixed(2) }}em</span>
-            </label>
+            <Label class="mb-1 block text-gray-300">
+              Font size <span class="ml-2 text-gray-500">{{ subtitleStyle.fontSize.toFixed(2) }}em</span>
+            </Label>
             <input
               v-model.number="subtitleStyle.fontSize"
               type="range"
@@ -630,7 +625,7 @@ watch(playbackRate, (r) => {
             />
           </div>
           <div>
-            <label class="block text-gray-300 mb-1">Color</label>
+            <Label class="mb-1 block text-gray-300">Color</Label>
             <input
               v-model="subtitleStyle.color"
               type="color"
@@ -638,9 +633,9 @@ watch(playbackRate, (r) => {
             />
           </div>
           <div>
-            <label class="block text-gray-300 mb-1">
-              Background opacity <span class="text-gray-500 ml-2">{{ Math.round(subtitleStyle.bgOpacity * 100) }}%</span>
-            </label>
+            <Label class="mb-1 block text-gray-300">
+              Background opacity <span class="ml-2 text-gray-500">{{ Math.round(subtitleStyle.bgOpacity * 100) }}%</span>
+            </Label>
             <input
               v-model.number="subtitleStyle.bgOpacity"
               type="range"
@@ -650,13 +645,15 @@ watch(playbackRate, (r) => {
               class="w-full"
             />
           </div>
-          <button
-            class="text-xs text-gray-400 hover:text-gray-200 underline"
+          <Button
+            variant="ghost"
+            size="sm"
+            class="px-0 text-xs text-gray-400 hover:bg-transparent hover:text-gray-200"
             @click="subtitleStyle = { ...DEFAULT_STYLE }"
-          >Reset to defaults</button>
+          >Reset to defaults</Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   </main>
 </template>
 

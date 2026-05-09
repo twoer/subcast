@@ -1,6 +1,10 @@
 export default defineNuxtConfig({
   compatibilityDate: '2026-05-01',
-  modules: ['@nuxtjs/tailwindcss', '@nuxtjs/i18n'],
+  modules: ['@nuxtjs/tailwindcss', '@nuxtjs/i18n', 'shadcn-nuxt'],
+  shadcn: {
+    prefix: '',
+    componentDir: './app/components/ui',
+  },
   css: ['~/assets/css/tailwind.css'],
   typescript: { strict: true, typeCheck: false },
   nitro: { preset: 'node-server' },
