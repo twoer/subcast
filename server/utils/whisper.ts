@@ -4,7 +4,7 @@ import { readFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseVtt, type Cue } from './vtt';
 
-export interface TranscribeOnceOptions {
+export interface TranscribeOptions {
   model?: 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
 }
 
@@ -18,51 +18,48 @@ const NW_ROOT = join(
 const CLI_PATH = join(NW_ROOT, 'build', 'bin', 'whisper-cli');
 const MODELS_DIR = join(NW_ROOT, 'models');
 
-function spawnAndWait(
-  cmd: string,
-  args: readonly string[],
-): Promise<{ code: number; stderr: string }> {
+interface SpawnResult {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+function spawnAndWait(cmd: string, args: readonly string[]): Promise<SpawnResult> {
   return new Promise((resolve, reject) => {
     const proc = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
     let stderr = '';
-    proc.stdout.on('data', () => {});
+    proc.stdout.on('data', (d) => {
+      stdout += d.toString();
+    });
     proc.stderr.on('data', (d) => {
       stderr += d.toString();
     });
     proc.on('error', reject);
-    proc.on('close', (code) => resolve({ code: code ?? 1, stderr }));
+    proc.on('close', (code) => resolve({ code: code ?? 1, stdout, stderr }));
   });
 }
 
-/**
- * Slice 1: full-blocking transcribe via direct whisper-cli + ffmpeg.
- *
- * We deliberately bypass the `nodejs-whisper` JS wrapper because its shelljs
- * cd → relative-path approach breaks under pnpm in Nitro dev. We still depend
- * on the package for the prebuilt whisper.cpp tree (binary + models). Slice 3
- * will switch to chunk-level streaming via a long-running subprocess + stdin.
- */
-export async function* transcribeOnce(
-  absPath: string,
-  opts: TranscribeOnceOptions = {},
-): AsyncIterable<Cue> {
-  if (!existsSync(CLI_PATH)) {
-    throw new Error(
-      `whisper-cli not built at ${CLI_PATH}. Run: cd node_modules/nodejs-whisper/cpp/whisper.cpp/build && cmake --build . --target whisper-cli`,
-    );
+export async function probeDurationS(absPath: string): Promise<number> {
+  const r = await spawnAndWait('ffprobe', [
+    '-v',
+    'error',
+    '-show_entries',
+    'format=duration',
+    '-of',
+    'default=noprint_wrappers=1:nokey=1',
+    absPath,
+  ]);
+  if (r.code !== 0) throw new Error(`ffprobe failed: ${r.stderr}`);
+  const v = parseFloat(r.stdout.trim());
+  if (!Number.isFinite(v) || v <= 0) {
+    throw new Error(`ffprobe returned invalid duration: ${r.stdout}`);
   }
-  const model = opts.model ?? 'base';
-  const modelPath = join(MODELS_DIR, `ggml-${model}.bin`);
-  if (!existsSync(modelPath)) {
-    throw new Error(
-      `Model not downloaded: ${modelPath}. Run: npx nodejs-whisper download ${model}`,
-    );
-  }
+  return v;
+}
 
-  const wavPath = absPath.replace(/\.[^.]+$/, '.wav');
-  const ofPrefix = absPath.replace(/\.[^.]+$/, '');
-
-  const ff = await spawnAndWait('ffmpeg', [
+export async function extractWav(absPath: string, wavPath: string): Promise<void> {
+  const r = await spawnAndWait('ffmpeg', [
     '-i',
     absPath,
     '-ar',
@@ -74,16 +71,69 @@ export async function* transcribeOnce(
     wavPath,
     '-y',
   ]);
+  if (r.code !== 0) throw new Error(`ffmpeg extract failed: ${r.stderr}`);
+}
+
+function assertWhisperReady(model: string): string {
+  if (!existsSync(CLI_PATH)) {
+    throw new Error(
+      `whisper-cli not built at ${CLI_PATH}. Run: cd node_modules/nodejs-whisper/cpp/whisper.cpp/build && cmake --build . --target whisper-cli`,
+    );
+  }
+  const modelPath = join(MODELS_DIR, `ggml-${model}.bin`);
+  if (!existsSync(modelPath)) {
+    throw new Error(
+      `Model not downloaded: ${modelPath}. Run: npx nodejs-whisper download ${model}`,
+    );
+  }
+  return modelPath;
+}
+
+/**
+ * Slice the wav at [startSec, endSec) and transcribe just that segment via
+ * whisper-cli. Returns cues with timestamps **adjusted to absolute time** in
+ * the source video (i.e., already offset by startSec*1000).
+ *
+ * Caller is responsible for the parent wav's lifecycle. This function cleans
+ * up its own per-chunk wav slice and VTT artifact.
+ */
+export async function transcribeChunk(
+  wavPath: string,
+  chunkIdx: number,
+  chunkSizeSec: number,
+  totalDurationSec: number,
+  opts: TranscribeOptions = {},
+): Promise<Cue[]> {
+  const model = opts.model ?? 'base';
+  const modelPath = assertWhisperReady(model);
+
+  const startSec = chunkIdx * chunkSizeSec;
+  const endSec = Math.min(startSec + chunkSizeSec, totalDurationSec);
+  const sliceWavPath = wavPath.replace(/\.wav$/, `-chunk${chunkIdx}.wav`);
+
+  const ff = await spawnAndWait('ffmpeg', [
+    '-i',
+    wavPath,
+    '-ss',
+    String(startSec),
+    '-to',
+    String(endSec),
+    '-c:a',
+    'pcm_s16le',
+    sliceWavPath,
+    '-y',
+  ]);
   if (ff.code !== 0) {
-    throw new Error(`ffmpeg audio extract failed: ${ff.stderr}`);
+    throw new Error(`ffmpeg slice chunk ${chunkIdx} failed: ${ff.stderr}`);
   }
 
+  const ofPrefix = sliceWavPath.replace(/\.wav$/, '');
   try {
     const wc = await spawnAndWait(CLI_PATH, [
       '-m',
       modelPath,
       '-f',
-      wavPath,
+      sliceWavPath,
       '--output-vtt',
       '-of',
       ofPrefix,
@@ -93,18 +143,21 @@ export async function* transcribeOnce(
       '20',
     ]);
     if (wc.code !== 0) {
-      throw new Error(`whisper-cli failed: ${wc.stderr}`);
+      throw new Error(`whisper-cli chunk ${chunkIdx} failed: ${wc.stderr}`);
     }
 
     const vttPath = `${ofPrefix}.vtt`;
     const vtt = await readFile(vttPath, 'utf8');
-    const cues = parseVtt(vtt);
-    for (const cue of cues) {
-      yield cue;
-      await new Promise((r) => setTimeout(r, 20));
-    }
+    const rawCues = parseVtt(vtt);
     await unlink(vttPath).catch(() => {});
+
+    const offsetMs = Math.round(startSec * 1000);
+    return rawCues.map((cue) => ({
+      startMs: cue.startMs + offsetMs,
+      endMs: cue.endMs + offsetMs,
+      text: cue.text,
+    }));
   } finally {
-    await unlink(wavPath).catch(() => {});
+    await unlink(sliceWavPath).catch(() => {});
   }
 }

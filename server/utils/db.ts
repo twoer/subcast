@@ -47,6 +47,35 @@ function migrate(db: Database.Database): void {
     `);
     db.pragma('user_version = 2');
   }
+  if (version < 3) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS transcribe_tasks (
+        id              TEXT PRIMARY KEY,
+        video_sha       TEXT NOT NULL REFERENCES videos(sha256),
+        status          TEXT NOT NULL,
+        model           TEXT NOT NULL,
+        language        TEXT,
+        total_chunks    INTEGER,
+        done_chunks     INTEGER NOT NULL DEFAULT 0,
+        error_msg       TEXT,
+        created_at      INTEGER NOT NULL,
+        completed_at    INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_transcribe_status ON transcribe_tasks(status);
+
+      CREATE TABLE IF NOT EXISTS chunks (
+        task_id         TEXT NOT NULL REFERENCES transcribe_tasks(id),
+        chunk_idx       INTEGER NOT NULL,
+        start_ms        INTEGER NOT NULL,
+        end_ms          INTEGER NOT NULL,
+        cues_json       TEXT NOT NULL,
+        quality         TEXT NOT NULL DEFAULT 'ok',
+        retry_count     INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (task_id, chunk_idx)
+      );
+    `);
+    db.pragma('user_version = 3');
+  }
 }
 
 export const SUBCAST_PATHS = {
