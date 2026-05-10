@@ -24,7 +24,7 @@ const switchHint = computed(() => t('app.switchTo', { lang: nextLocaleLabel.valu
   <header
     class="sticky top-0 z-30 -mx-8 mb-6 border-b border-border/60 bg-background/85 px-8 py-3 backdrop-blur-md"
   >
-    <div class="mx-auto flex max-w-screen-2xl items-center justify-between gap-4">
+    <div class="mx-auto flex w-full items-center justify-between gap-4">
       <NuxtLink
         to="/"
         class="group flex items-center gap-2.5 transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-md"

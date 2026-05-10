@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 
 import { getDb, SUBCAST_PATHS } from './db';
 import { logEvent } from './log';
-import { DEFAULT_TRANSLATE_MODEL, translateAll } from './ollama';
+import { DEFAULT_TRANSLATE_MODEL, translateAll, unloadOllamaModel } from './ollama';
 import { detectHallucination, type HallucinationReason } from './quality';
 import { loadSettings } from './settings';
 import { extractWav, probeDurationS, transcribeChunk } from './whisper';
@@ -740,6 +740,7 @@ class TranslateQueue {
     } finally {
       active.emitter.emit('end');
       this.active = null;
+      unloadOllamaModel(model).catch(() => {});
       this.tryStartNext().catch((err) => {
         console.error('[translateQueue] tryStartNext failed:', err);
       });

@@ -23,7 +23,14 @@ const NW_ROOT = join(
   'cpp',
   'whisper.cpp',
 );
-const CLI_PATH = join(NW_ROOT, 'build', 'bin', 'whisper-cli');
+const IS_WIN = process.platform === 'win32';
+const CLI_PATH = join(
+  NW_ROOT,
+  'build',
+  'bin',
+  ...(IS_WIN ? ['Release'] : []),
+  'whisper-cli' + (IS_WIN ? '.exe' : ''),
+);
 const MODELS_DIR = join(NW_ROOT, 'models');
 
 interface SpawnResult {

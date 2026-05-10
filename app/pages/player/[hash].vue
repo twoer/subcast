@@ -666,7 +666,7 @@ watch(playbackRate, (r) => {
   <main class="flex min-h-dvh flex-col bg-background px-8 pb-12 xl:h-dvh xl:overflow-hidden xl:pb-6">
     <AppHeader />
 
-    <div class="mx-auto flex w-full max-w-screen-2xl flex-1 flex-col xl:min-h-0">
+    <div class="mx-auto flex w-full max-w-screen-2xl flex-1 flex-col px-4 xl:min-h-0">
       <div class="mb-4 flex flex-wrap items-center justify-between gap-3 xl:shrink-0">
         <NuxtLink
           to="/"
@@ -761,7 +761,7 @@ watch(playbackRate, (r) => {
 
       <div class="grid gap-6 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_minmax(360px,28rem)]">
         <div
-          class="group relative overflow-hidden rounded-xl bg-black ring-1 ring-border/60 xl:min-h-0"
+          class="group relative flex items-center justify-center overflow-hidden rounded-xl bg-black ring-1 ring-border/60 xl:min-h-0"
           @mousemove="showControls"
           @mouseleave="onContainerLeave"
         >

@@ -175,7 +175,7 @@ onMounted(async () => {
   <main class="min-h-dvh bg-background px-8 pb-12">
     <AppHeader :show-settings-link="false" />
 
-    <div class="mx-auto max-w-3xl">
+    <div class="mx-auto w-full max-w-screen-2xl px-4">
       <header class="mb-8">
         <h1 class="text-2xl font-semibold tracking-tight">{{ t('settings.title') }}</h1>
         <p class="mt-1 text-sm text-muted-foreground">{{ t('settings.subtitle') }}</p>

@@ -2,6 +2,28 @@ import { logEvent } from './log';
 import type { Cue } from './vtt';
 
 const OLLAMA_URL = process.env.SUBCAST_OLLAMA_URL ?? 'http://localhost:11434';
+
+/**
+ * Unload a model from Ollama's memory/GPU by sending keep_alive: 0.
+ * Safe to call — errors are logged but not thrown.
+ */
+export async function unloadOllamaModel(model: string): Promise<void> {
+  try {
+    await fetch(`${OLLAMA_URL}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, keep_alive: 0 }),
+    });
+    logEvent({ level: 'info', event: 'ollama_model_unloaded', model });
+  } catch (err) {
+    logEvent({
+      level: 'warn',
+      event: 'ollama_unload_failed',
+      model,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
 export const DEFAULT_TRANSLATE_MODEL =
   process.env.SUBCAST_OLLAMA_MODEL ?? 'qwen2.5:7b';
 

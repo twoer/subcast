@@ -58,7 +58,66 @@
 
 **硬件加速**：whisper.cpp 在 Apple Silicon 上自动用 Metal、在 NVIDIA 上自动用 CUDA；Ollama 同理。无需额外配置。
 
-macOS 一键安装：
+## 安装依赖
+
+### Windows
+
+#### 1. 安装基础工具
+
+推荐使用 **winget**（Windows 11 自带）或 **Chocolatey**：
+
+```powershell
+# winget 方式
+winget install OpenJS.NodeJS.LTS
+winget install Gyan.FFmpeg
+winget install Kitware.CMake
+winget install Ollama.Ollama
+
+# 安装 pnpm
+npm install -g pnpm
+```
+
+如果用 **Chocolatey**（需管理员权限的 PowerShell）：
+
+```powershell
+choco install nodejs-lts ffmpeg cmake ollama -y
+npm install -g pnpm
+```
+
+> **ffmpeg PATH 配置**：winget 安装的 ffmpeg 通常会自动加入 PATH。如果 `ffmpeg -version` 无法运行，需手动将 ffmpeg 的 `bin` 目录添加到系统 PATH 环境变量。
+
+#### 2. 安装 C++ 构建工具
+
+whisper.cpp 和 better-sqlite3 的编译需要 C++ 工具链，有两种方式：
+
+**方式 A：Visual Studio Build Tools（推荐）**
+
+1. 下载 [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+2. 安装时勾选 **"使用 C++ 的桌面开发"** 工作负载
+3. 确认已包含 MSVC、Windows SDK、CMake 模块
+
+**方式 B：命令行安装**
+
+```powershell
+# 需要先安装 npm（上面 Node.js 装完后即可用）
+npm install -g windows-build-tools
+```
+
+> 安装完成后**重启终端**，确保 `cmake` 和 `cl`（MSVC 编译器）在 PATH 中。
+
+#### 3. 启动 Ollama 并拉取模型
+
+```powershell
+# 从开始菜单或命令行启动 Ollama（会常驻后台）
+ollama serve
+
+# 另开一个终端，拉取翻译模型
+ollama pull qwen2.5:7b
+```
+
+> Windows 版 Ollama 也可以从 [ollama.com](https://ollama.com) 下载安装包，安装后会自动注册为系统服务开机自启。
+
+### macOS
 
 ```bash
 brew install node pnpm ffmpeg cmake ollama
@@ -66,13 +125,15 @@ ollama serve         # 单独开一个终端常驻
 ollama pull qwen2.5:7b
 ```
 
-Linux：
+### Linux
 
 ```bash
 sudo apt install ffmpeg cmake build-essential
 curl -fsSL https://ollama.com/install.sh | sh && ollama serve &
 ollama pull qwen2.5:7b
 ```
+
+### 确认 Ollama 运行
 
 启动 Subcast 之前确认 Ollama 在跑：
 
@@ -89,16 +150,49 @@ cd subcast
 
 # 编译 better-sqlite3 等原生模块，首次大概 1–2 分钟（看起来"卡住"是正常的）
 pnpm install
+```
 
-# 编译 nodejs-whisper 需要的 whisper-cli 二进制（一次即可）
+### 编译 whisper-cli
+
+> **这一步是必须的**，项目不会自动编译 whisper.cpp 的二进制。
+
+#### macOS / Linux
+
+```bash
 cd node_modules/nodejs-whisper/cpp/whisper.cpp
 cmake -B build                                       # 首次必须先配置
 cmake --build build --target whisper-cli -j
 cd -
+```
 
-# 下载一份 Whisper 模型（交互式选择，建议先用 base 起步）
+#### Windows
+
+```powershell
+cd node_modules\nodejs-whisper\cpp\whisper.cpp
+
+# 使用 Visual Studio 17 2022 生成器（推荐）
+cmake -B build -G "Visual Studio 17 2022" -A x64
+
+# 编译 Release 版本的 whisper-cli
+cmake --build build --target whisper-cli --config Release
+
+cd ..\..\..\..\..
+```
+
+> **Windows 注意事项**：
+> - 必须使用 Visual Studio 生成器（`-G "Visual Studio 17 2022"`），不要用默认的 MinGW/MSVC Makefile 生成器
+> - 必须指定 `--config Release`，因为 VS 生成器是多配置的，项目代码会在 `build/bin/Release/` 目录查找 `whisper-cli.exe`
+> - 如果你的 Visual Studio 版本不是 2022，改为对应的生成器名称（如 `"Visual Studio 16 2019"`）
+> - 如果你有 NVIDIA GPU 且安装了 CUDA Toolkit，可以加 `-DGGML_CUDA=ON` 开启 GPU 加速
+
+#### 下载 Whisper 模型
+
+```bash
+# 交互式选择，建议先用 base 起步
 npx --no-install nodejs-whisper download
 ```
+
+> Windows 上如果 `npx` 报错找不到命令，改用：`node node_modules/nodejs-whisper/dist/cli.js download`
 
 如果哪一步遗漏了，首页顶部会出现一个琥珀色横幅，里面会给出针对你当前平台的精确命令 —— 直接照着横幅做也行。
 
@@ -113,7 +207,14 @@ pnpm dev
 需要从命令行强制指定 Ollama 模型（覆盖首次启动的推荐）：
 
 ```bash
+# macOS / Linux
 SUBCAST_OLLAMA_MODEL=qwen2.5:7b pnpm dev
+
+# Windows PowerShell
+$env:SUBCAST_OLLAMA_MODEL="qwen2.5:7b"; pnpm dev
+
+# Windows CMD
+set SUBCAST_OLLAMA_MODEL=qwen2.5:7b && pnpm dev
 ```
 
 ## 数据存放位置
@@ -143,7 +244,7 @@ curl -X DELETE http://localhost:3000/api/cache/clear
 
 `/settings` 提供以下选项：
 
-- **Whisper 模型** —— `tiny / base / small / medium / large-v3`。首次启动会按硬件等级（入门 / 标准 / 推荐 / 高配）自动选择。
+- **Whisper 模型** —— `tiny / base / small / medium / large-v3 / large-v3-turbo`。首次启动会按硬件等级（入门 / 标准 / 推荐 / 高配）自动选择。
 - **Ollama 模型** —— 完整 tag（如 `qwen2.5:7b`），推荐项同样按硬件等级给出。
 - **缓存大小上限** —— 使用率 ≥ 90% 时 UI 会出现告警。
 - **静音阈值** —— 字幕间隔超过该时长时，列表中插入「── 无语音 ──」分隔符（仅 UI 层显示，不会写入 VTT）。
@@ -207,6 +308,9 @@ pnpm build          # 生产构建（.output/）
 | 现象 | 可能原因 / 解决办法 |
 |---|---|
 | `whisper-cli executable not found` | 在 `node_modules/nodejs-whisper/cpp/whisper.cpp/build` 下重新跑一次 cmake 构建 |
+| Windows 上编译 whisper-cli 找不到编译器 | 确认已安装 Visual Studio Build Tools，并在 cmake 命令中指定 `-G "Visual Studio 17 2022"` |
+| Windows 上 `pnpm install` 报 `node-gyp` 错误 | 确认已安装 Visual Studio Build Tools 的 C++ 工作负载；或运行 `npm install -g windows-build-tools` |
+| Windows 上 `ffmpeg` / `ffprobe` 命令找不到 | 确认 ffmpeg 已安装并将其 `bin` 目录加入了系统 PATH |
 | `OLLAMA_UNREACHABLE` | `ollama serve` 没启动，或自定义了 `SUBCAST_OLLAMA_URL` 环境变量 |
 | `MODEL_NOT_PULLED` | 执行 `ollama pull <model>`，或在 Settings 里改成已存在的模型 |
 | 翻译质量飘忽、出现幻觉 | 改用 `qwen2.5:7b`（或更大的模型），不要用未经指令调优的通用模型（如 Llama） |

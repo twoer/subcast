@@ -307,7 +307,7 @@ function statusBadgeClass(s: QueueItem['status']) {
   <main class="min-h-dvh bg-background px-8 pb-12">
     <AppHeader :lan-url="healthData?.lanUrl" />
 
-    <div class="mx-auto max-w-3xl">
+    <div class="mx-auto w-full max-w-screen-2xl px-4">
 
       <div
         v-if="healthData && !healthData.health.ready"
