@@ -15,7 +15,8 @@
     }
   ],
   "action": {
-    "default_title": "Subcast Live"
+    "default_title": "Subcast Live",
+    "default_popup": "src/popup/index.html"
   },
   "icons": {}
 }
