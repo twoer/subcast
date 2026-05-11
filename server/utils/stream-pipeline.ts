@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { unlink, writeFile } from 'node:fs/promises';
+import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { SUBCAST_PATHS } from './db';
 import { logEvent } from './log';
@@ -52,7 +52,6 @@ export class StreamPipeline {
   private pcmByteLength = 0;
   private config: StreamConfig;
   private send: SendFn;
-  private processing = false;
   private chunkIdx = 0;
   private tmpId = randomUUID();
   private aborted = false;
@@ -114,6 +113,7 @@ export class StreamPipeline {
     const wav = pcmToWavBuffer(pcm);
     const wavPath = join(SUBCAST_PATHS.tmp, `stream-${this.tmpId}-${idx}.wav`);
     try {
+      await mkdir(SUBCAST_PATHS.tmp, { recursive: true });
       await writeFile(wavPath, wav);
       const durationSec = pcm.length / BYTES_PER_SEC;
       const cues = await transcribeChunk(
