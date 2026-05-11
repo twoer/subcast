@@ -15,7 +15,7 @@ export default defineNuxtConfig({
     },
   },
   typescript: { strict: true, typeCheck: false },
-  nitro: { preset: 'node-server' },
+  nitro: { preset: 'node-server', experimental: { websocket: true } },
   devServer: { host: '0.0.0.0', port: 3000 },
   i18n: {
     locales: [
