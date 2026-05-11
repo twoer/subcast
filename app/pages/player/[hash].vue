@@ -212,7 +212,16 @@ const cueBg = computed(() => {
   return `rgba(0, 0, 0, ${a})`;
 });
 
-const esByLang: Record<string, EventSource | null> = {};
+type StreamHandle = { es: EventSource; ac: AbortController };
+const esByLang: Record<string, StreamHandle | null> = {};
+
+function closeStream(lang: string) {
+  const handle = esByLang[lang];
+  if (!handle) return;
+  handle.ac.abort();
+  handle.es.close();
+  esByLang[lang] = null;
+}
 
 function fmtTime(ms: number): string {
   const total = Math.floor(ms / 1000);
@@ -262,7 +271,22 @@ function rebuildTrackFor(lang: string) {
 
 const activeIdx = computed(() => {
   const t = currentTime.value * 1000;
-  return cues.value.findIndex((c) => c.startMs <= t && t < c.endMs);
+  const arr = cues.value;
+  if (arr.length === 0) return -1;
+  let lo = 0;
+  let hi = arr.length - 1;
+  let found = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (arr[mid]!.startMs <= t) {
+      found = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  if (found < 0) return -1;
+  return t < arr[found]!.endMs ? found : -1;
 });
 
 const listItems = computed<ListItem[]>(() => {
@@ -473,31 +497,32 @@ function saveStyleToStorage() {
 watch(subtitleStyle, saveStyleToStorage, { deep: true });
 
 function openOriginalStream() {
+  if (esByLang.original) return;
   langStatus.value.original = 'running';
   status.value = 'running';
+  const ac = new AbortController();
   const es = new EventSource(`/api/transcribe?hash=${hash.value}`);
-  esByLang.original = es;
+  esByLang.original = { es, ac };
+  const opts = { signal: ac.signal };
   es.addEventListener('status', (e) => {
     const data = JSON.parse((e as MessageEvent).data);
     if (data.fromCache) fromCache.value = true;
     if (currentLang.value === 'original') status.value = 'running';
-  });
+  }, opts);
   es.addEventListener('cue', (e) => {
     const data = JSON.parse((e as MessageEvent).data) as CueData;
     cuesByLang.value.original?.push(data);
     if (currentLang.value === 'original') addCueToTrack(data);
-  });
+  }, opts);
   es.addEventListener('done', () => {
     langStatus.value.original = 'done';
     if (currentLang.value === 'original') status.value = 'done';
-    es.close();
-    esByLang.original = null;
-  });
+    closeStream('original');
+  }, opts);
   es.addEventListener('error', (e) => {
     handleSseError(e, 'original');
-    es.close();
-    esByLang.original = null;
-  });
+    closeStream('original');
+  }, opts);
 }
 
 function openTranslateStream(lang: string) {
@@ -507,17 +532,19 @@ function openTranslateStream(lang: string) {
   cuesByLang.value[lang] = cuesByLang.value[lang] ?? [];
   translateProgress.value = 0;
 
+  const ac = new AbortController();
   const es = new EventSource(`/api/translate?hash=${hash.value}&lang=${lang}`);
-  esByLang[lang] = es;
+  esByLang[lang] = { es, ac };
+  const opts = { signal: ac.signal };
 
   es.addEventListener('status', (e) => {
     const data = JSON.parse((e as MessageEvent).data);
     if (data.fromCache && currentLang.value === lang) fromCache.value = true;
-  });
+  }, opts);
   es.addEventListener('batch-progress', (e) => {
     const data = JSON.parse((e as MessageEvent).data);
     if (currentLang.value === lang) translateProgress.value = data.progressPct;
-  });
+  }, opts);
   es.addEventListener('cue-translated', (e) => {
     const data = JSON.parse((e as MessageEvent).data);
     const arr = cuesByLang.value[lang]!;
@@ -525,24 +552,22 @@ function openTranslateStream(lang: string) {
     if (currentLang.value === lang) {
       for (const c of data.cues as CueData[]) addCueToTrack(c);
     }
-  });
+  }, opts);
   es.addEventListener('batch-retry', (e) => {
     const data = JSON.parse((e as MessageEvent).data);
-    // eslint-disable-next-line no-console
+     
     console.warn('translate batch-retry', data);
-  });
+  }, opts);
   es.addEventListener('done', () => {
     langStatus.value[lang] = 'done';
     translateProgress.value = null;
     if (currentLang.value === lang) status.value = 'done';
-    es.close();
-    esByLang[lang] = null;
-  });
+    closeStream(lang);
+  }, opts);
   es.addEventListener('error', (e) => {
     handleSseError(e, lang);
-    es.close();
-    esByLang[lang] = null;
-  });
+    closeStream(lang);
+  }, opts);
 }
 
 function friendlyError(code: string): string {
@@ -594,8 +619,7 @@ async function cancelTranslation() {
   } catch {
     /* server-side cancel may fail; still tear down client state */
   }
-  esByLang[lang]?.close();
-  esByLang[lang] = null;
+  closeStream(lang);
   translateProgress.value = null;
   langStatus.value[lang] = 'idle';
   if (currentLang.value === lang) status.value = 'idle';
@@ -642,7 +666,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  for (const k of Object.keys(esByLang)) esByLang[k]?.close();
+  for (const k of Object.keys(esByLang)) closeStream(k);
   window.removeEventListener('keydown', onKeyDown);
   document.removeEventListener('fullscreenchange', onFullscreenChange);
   if (hideHandle) clearTimeout(hideHandle);
@@ -777,7 +801,7 @@ watch(playbackRate, (r) => {
             @volumechange="onVolumeEvent"
             @click="togglePlay"
           >
-            <track default kind="subtitles" srclang="auto" :label="currentLang" />
+            <track default kind="subtitles" srclang="auto" :label="currentLang" >
           </video>
 
           <div
@@ -793,7 +817,7 @@ watch(playbackRate, (r) => {
               :aria-label="t('player.shortcutDescriptions.seek5')"
               class="pointer-events-auto h-1 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-primary"
               @input="onSeek"
-            />
+            >
 
             <div class="pointer-events-auto mt-1.5 flex items-center gap-1 text-white">
               <Button
@@ -833,7 +857,7 @@ watch(playbackRate, (r) => {
                     :aria-label="t('player.shortcutDescriptions.volume')"
                     class="ml-1 hidden h-1 w-20 cursor-pointer appearance-none rounded-full bg-white/20 accent-primary group-hover/vol:block"
                     @input="setVolume"
-                  />
+                  >
                 </div>
 
                 <Button
@@ -1008,7 +1032,7 @@ watch(playbackRate, (r) => {
               max="2.0"
               step="0.05"
               class="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
-            />
+            >
           </div>
           <div class="space-y-2.5">
             <Label class="text-sm font-medium">{{ t('player.color') }}</Label>
@@ -1054,7 +1078,7 @@ watch(playbackRate, (r) => {
                 class="sr-only"
                 tabindex="-1"
                 aria-hidden="true"
-              />
+              >
               <span class="ml-1 font-mono text-xs uppercase text-muted-foreground">{{ subtitleStyle.color }}</span>
             </div>
           </div>
@@ -1070,7 +1094,7 @@ watch(playbackRate, (r) => {
               max="1"
               step="0.05"
               class="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
-            />
+            >
           </div>
           <div class="flex justify-end border-t border-border/50 pt-4">
             <Button

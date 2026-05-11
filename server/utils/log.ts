@@ -45,7 +45,7 @@ export function logEvent(entry: LogEntry): void {
   ensureLogDir()
     .then(() => appendFile(todayPath(), line))
     .catch((err) => {
-      // eslint-disable-next-line no-console
+       
       console.error('[log] write failed:', err);
     });
 }

@@ -14,7 +14,7 @@ export default defineNitroPlugin(() => {
       ? ollamaOverride
       : hw.recommended.ollamaModel,
   });
-  // eslint-disable-next-line no-console
+   
   console.log(
     `[subcast] first-boot defaults: tier=${hw.tier}, whisper=${hw.recommended.whisperModel}, ollama=${ollamaOverride ?? hw.recommended.ollamaModel}`,
   );

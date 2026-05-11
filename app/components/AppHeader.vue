@@ -6,7 +6,7 @@ withDefaults(
     lanUrl?: string | null;
     showSettingsLink?: boolean;
   }>(),
-  { showSettingsLink: true },
+  { lanUrl: null, showSettingsLink: true },
 );
 
 const { locale, setLocale, t } = useI18n();

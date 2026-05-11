@@ -9,6 +9,7 @@ import { logEvent } from './log';
 import { DEFAULT_TRANSLATE_MODEL, translateAll, unloadOllamaModel } from './ollama';
 import { detectHallucination, type HallucinationReason } from './quality';
 import { loadSettings } from './settings';
+import type { TranscribeOptions } from './whisper';
 import { extractWav, probeDurationS, transcribeChunk } from './whisper';
 import { parseVtt, serializeVtt, type Cue } from './vtt';
 
@@ -196,7 +197,7 @@ class TranscribeQueue {
           if (aborted()) break;
           const params = RETRY_PARAMS[attempt]!;
           const cues = await transcribeChunk(wavPath, chunkIdx, CHUNK_SEC, durationS, {
-            model: model as Parameters<typeof transcribeChunk>[4]['model'],
+            model: model as TranscribeOptions['model'],
             temperature: params.temperature,
             noContext: params.noContext,
           });

@@ -1,6 +1,6 @@
 export default defineNuxtConfig({
   compatibilityDate: '2026-05-01',
-  modules: ['@nuxtjs/tailwindcss', '@nuxtjs/i18n', 'shadcn-nuxt'],
+  modules: ['@nuxtjs/tailwindcss', '@nuxtjs/i18n', 'shadcn-nuxt', '@nuxt/eslint'],
   shadcn: {
     prefix: '',
     componentDir: './app/components/ui',
@@ -29,6 +29,5 @@ export default defineNuxtConfig({
       cookieKey: 'subcast_lang',
       redirectOn: 'root',
     },
-    bundle: { optimizeTranslationDirective: false },
   },
 });

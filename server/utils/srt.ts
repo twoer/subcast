@@ -67,7 +67,7 @@ export function parseSrt(content: string): Cue[] {
  * Convert any subtitle-ish content (.srt / .vtt / .ass) to a Cue[]. Caller
  * picks the parser based on extension.
  */
-export function parseSubtitleByExt(content: string, ext: string): Cue[] {
+export function parseSubtitleByExt(content: string, _ext: string): Cue[] {
   // Both VTT and SRT use the same timestamp shape (vtt uses '.', srt uses ',')
   // and parseSrt above handles both. ASS lines are matched via the `Dialogue:`
   // pattern.

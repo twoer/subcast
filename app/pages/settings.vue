@@ -77,7 +77,7 @@ const { px: cueFontPx, load: loadCueFontSize, save: saveCueFontSize, MIN_PX: CUE
 async function refreshCache() {
   try {
     cache.value = await $fetch<CacheResp>('/api/cache/list');
-  } catch (e) {
+  } catch {
     /* surfaced via banner indirectly */
   }
 }
@@ -252,7 +252,7 @@ onMounted(async () => {
             type="text"
             class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm ring-offset-background transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             placeholder="qwen2.5:7b"
-          />
+          >
           <p class="text-xs text-muted-foreground">
             {{ t('settings.ollamaHint', { model: hardware?.recommended.ollamaModel ?? '' }) }}
           </p>
@@ -270,7 +270,7 @@ onMounted(async () => {
             max="100"
             step="1"
             class="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
-          />
+          >
         </div>
 
         <div class="space-y-2">
@@ -285,7 +285,7 @@ onMounted(async () => {
             max="60000"
             step="1000"
             class="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
-          />
+          >
           <p class="text-xs text-muted-foreground">{{ t('settings.silenceHint') }}</p>
         </div>
 
@@ -302,7 +302,7 @@ onMounted(async () => {
             step="1"
             class="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
             @input="(e) => saveCueFontSize(Number((e.target as HTMLInputElement).value))"
-          />
+          >
           <p class="text-xs text-muted-foreground">{{ t('settings.cueFontSizeHint') }}</p>
         </div>
 
@@ -315,7 +315,7 @@ onMounted(async () => {
             v-model="draft.debugMode"
             type="checkbox"
             class="mt-0.5 h-4 w-4 cursor-pointer rounded border-input accent-primary"
-          />
+          >
           <div class="text-sm">
             <div class="font-medium leading-none">{{ t('settings.debugTitle') }}</div>
             <p class="mt-1 text-xs text-muted-foreground">{{ t('settings.debugDescription') }}</p>
@@ -341,7 +341,7 @@ onMounted(async () => {
         </div>
       </section>
 
-      <section id="cache" v-if="cache" class="surface-1 mt-6 rounded-xl border border-border/50 p-6">
+      <section v-if="cache" id="cache" class="surface-1 mt-6 rounded-xl border border-border/50 p-6">
         <div class="mb-4 flex items-center justify-between">
           <h2 class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             <Database class="h-3.5 w-3.5" />
