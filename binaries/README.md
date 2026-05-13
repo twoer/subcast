@@ -15,6 +15,8 @@ Fetch helpers (run before `pnpm build:desktop:*`):
 - `scripts/fetch-whisper-cli.mjs` — whisper-cli per platform
 - `scripts/fetch-ggml-base.mjs`   — ggml-base.bin (mirror via
   `SUBCAST_HF_MIRROR=hf-mirror`)
+- `scripts/fetch-llama-server.mjs` — llama-server binary (mirror:
+  Subcast-binaries Releases)
 
 Sources of truth:
 - whisper-cli: `.github/workflows/build-whisper.yml` — bump
