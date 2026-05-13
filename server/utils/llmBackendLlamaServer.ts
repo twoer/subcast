@@ -85,6 +85,10 @@ export class LlamaServerBackend implements LLMBackend {
       throw new Error(`llama-server returned ${res.status}: ${text}`);
     }
     const body = (await res.json()) as ChatResponseBody;
+    // Natural completion — clear the consecutive-failure counter so a
+    // single recovered crash earlier in the session doesn't latch us into
+    // MODEL_UNUSABLE on the next spawn cycle.
+    getLlmServer().noteSuccess();
     return body.choices?.[0]?.message?.content ?? '';
   }
 
@@ -136,6 +140,10 @@ export class LlamaServerBackend implements LLMBackend {
           if (!trimmed.startsWith('data:')) continue;
           const payload = trimmed.slice(5).trim();
           if (payload === '[DONE]') {
+            // Treat [DONE] as natural stop and reset the failure counter —
+            // a server that streams to completion is healthy regardless of
+            // whether an explicit `finish_reason: stop` event preceded it.
+            getLlmServer().noteSuccess();
             yield { delta: '', finishReason: 'stop' };
             return;
           }
@@ -153,6 +161,13 @@ export class LlamaServerBackend implements LLMBackend {
           const finishReason: LLMChunk['finishReason'] =
             finish === 'length' ? 'length' : finish === 'stop' ? 'stop' : undefined;
           if (delta || finishReason) {
+            // Only `'stop'` (natural completion) counts as success — a
+            // `'length'` finish means we hit max_tokens, which still
+            // indicates a healthy server but the spec calls for resetting
+            // the counter only on natural stop per Task 1.5.
+            if (finishReason === 'stop') {
+              getLlmServer().noteSuccess();
+            }
             yield finishReason ? { delta, finishReason } : { delta };
           }
         }

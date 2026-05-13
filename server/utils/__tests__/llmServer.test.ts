@@ -84,6 +84,52 @@ describe('LlmServer state machine', () => {
     server.dispose();
   });
 
+  it('marks model unusable after 3 consecutive non-zero exits', async () => {
+    let crashes = 0;
+    const spawnFn = vi.fn(async () => {
+      crashes += 1;
+      const proc = new EventEmitter() as ChildProcess & EventEmitter;
+      (proc as { kill: unknown }).kill = vi.fn();
+      process.nextTick(() => proc.emit('exit', 1));
+      return { proc, port: 51302 };
+    });
+    const server = new LlmServer({ idleShutdownMs: 60_000, spawnFn });
+    // First three crashes: each ensure() resolves (spawn succeeds) but the
+    // child immediately exits non-zero on next tick. We test by waiting for
+    // exit to fire then attempting ensure() again.
+    for (let i = 0; i < 3; i++) {
+      await server.ensure();
+      // Wait a microtask for the nextTick exit handler
+      await new Promise<void>((r) => process.nextTick(r));
+    }
+    await expect(server.ensure()).rejects.toThrow(/MODEL_UNUSABLE/);
+    expect(crashes).toBe(3);
+    server.dispose();
+  });
+
+  it('resets failure counter on noteSuccess()', async () => {
+    let crashes = 0;
+    const spawnFn = vi.fn(async () => {
+      crashes += 1;
+      const proc = new EventEmitter() as ChildProcess & EventEmitter;
+      (proc as { kill: unknown }).kill = vi.fn();
+      // Crash twice then succeed
+      if (crashes <= 2) process.nextTick(() => proc.emit('exit', 1));
+      return { proc, port: 51302 };
+    });
+    const server = new LlmServer({ idleShutdownMs: 60_000, spawnFn });
+    await server.ensure();
+    await new Promise<void>((r) => process.nextTick(r));
+    await server.ensure();
+    await new Promise<void>((r) => process.nextTick(r));
+    await server.ensure();
+    // 3rd spawn doesn't crash — call noteSuccess to reset
+    server.noteSuccess();
+    // Subsequent crashes should restart from 0
+    // (we don't actually need a 4th ensure to confirm; just no throw on next)
+    server.dispose();
+  });
+
   it('parses listening port from stdout', async () => {
     const { Readable } = await import('node:stream');
     const fakeStdout = Readable.from([

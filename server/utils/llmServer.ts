@@ -45,6 +45,15 @@ export class LlmServer {
   private opts: LlmServerOptions;
   private readyPromise: Promise<void> | null = null;
   private stopPromise: Promise<void> | null = null;
+  /**
+   * Consecutive non-zero spawn-exit count. Reset to 0 by `noteSuccess()`
+   * (called after every successful chat completion). Signal-killed exits
+   * (`code === null`) are *not* counted — those are our own SIGTERM/SIGKILL
+   * during graceful idle shutdown.
+   */
+  private failureCount = 0;
+  /** Latched once `failureCount` hits 3; surfaced via `MODEL_UNUSABLE`. */
+  private unusable = false;
 
   constructor(opts: LlmServerOptions = {}) {
     this.opts = { idleShutdownMs: 5 * 60_000, ...opts };
@@ -61,8 +70,17 @@ export class LlmServer {
   /**
    * Ensure a server is running and reset the idle timer. Safe to call
    * concurrently — overlapping calls share a single spawn.
+   *
+   * Throws `MODEL_UNUSABLE` if three consecutive spawns have ended in a
+   * non-zero exit code without an intervening `noteSuccess()` — the model
+   * is presumed broken (corrupt weights, OOM on every load, etc.) and the
+   * caller should fall back / surface a user-facing error instead of
+   * burning more time on spawn churn.
    */
   async ensure(): Promise<void> {
+    if (this.unusable) {
+      throw new Error('MODEL_UNUSABLE');
+    }
     if (this._state === 'running') {
       this.armIdleTimer();
       return;
@@ -93,13 +111,33 @@ export class LlmServer {
     const result = await (this.opts.spawnFn ?? this.realSpawn.bind(this))();
     this.proc = result.proc;
     this.port = result.port;
-    this.proc.on('exit', (code) => {
+    // `.once` (not `.on`) — the proc is never reused across spawns, and a
+    // long-running test harness that recycles a fake EventEmitter would
+    // otherwise accumulate listeners on each ensure() / exit cycle.
+    this.proc.once('exit', (code) => {
       this._state = 'idle';
       this.proc = null;
       this.port = null;
-      // Failure-counter wiring lands in Task 1.5; for now just log the exit.
-      void code;
+      // Signal-killed exits arrive with `code === null` (signal name is in
+      // the second handler arg). Those are us — graceful idle shutdown via
+      // SIGTERM/SIGKILL — and must not bump the failure counter. Anything
+      // non-zero and non-null is the process dying on its own.
+      if (code !== 0 && code !== null) {
+        this.failureCount += 1;
+        if (this.failureCount >= 3) {
+          this.unusable = true;
+        }
+      }
     });
+  }
+
+  /**
+   * Called by the backend after every successful chat completion. Resets
+   * the consecutive-failure counter so a model that crashes once but then
+   * recovers doesn't get latched as `MODEL_UNUSABLE` later in the session.
+   */
+  noteSuccess(): void {
+    this.failureCount = 0;
   }
 
   private realSpawn = async (): Promise<SpawnResult> => {
