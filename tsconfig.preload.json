@@ -1,0 +1,25 @@
+{
+  // Electron preload runs with `sandbox: true`, which restricts it to
+  // CommonJS modules — ESM `import` syntax fails at load time with
+  // "Cannot use import statement outside a module" and the entire
+  // preload silently never runs (window.subcast becomes undefined).
+  //
+  // This tsconfig emits `preload.cjs` separately from the rest of the
+  // main-process bundle (which stays ESM via tsconfig.desktop.json).
+  // main.ts loads `preload.cjs` by extension.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "outDir": "desktop-dist",
+    "rootDir": "desktop",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "sourceMap": true,
+    "declaration": false
+  },
+  "include": ["desktop/preload.ts"],
+  "exclude": ["node_modules", ".nuxt", ".output"]
+}

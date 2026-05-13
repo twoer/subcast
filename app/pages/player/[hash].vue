@@ -1,9 +1,10 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <!-- app/pages/player/[hash].vue -->
 <script setup lang="ts">
 import {
-  Type, Keyboard, ArrowLeft, Check, X as XIcon, AlertCircle, AlertTriangle, Loader2,
+  Type, Keyboard, ChevronLeft, Check, X as XIcon, AlertCircle, AlertTriangle, Loader2,
   Play, Pause, Volume2, Volume1, VolumeX, Captions, CaptionsOff,
-  Maximize, Minimize, RotateCcw, Palette,
+  Maximize, Minimize, RotateCcw, Palette, Download, Sparkles,
 } from 'lucide-vue-next';
 import {
   Select,
@@ -12,20 +13,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import ExportDialog from '@/components/ExportDialog.vue';
+import SearchBar from '@/components/SearchBar.vue';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import InsightsPanel from '@/components/InsightsPanel.vue';
+import { useSubtitleStreams, type CueData } from '@/composables/useSubtitleStreams';
+import { useSubtitleTrack } from '@/composables/useSubtitleTrack';
+import { useCueSearch } from '@/composables/useCueSearch';
+import { useLangSwitcher } from '@/composables/useLangSwitcher';
+import { usePlayerKeybindings } from '@/composables/usePlayerKeybindings';
+import { useSubtitleStyle, COLOR_PRESETS } from '@/composables/useSubtitleStyle';
+import { useVideoControls, SPEEDS } from '@/composables/useVideoControls';
 
-const { t, te } = useI18n();
-
-interface CueData {
-  startMs: number;
-  endMs: number;
-  text: string;
-  chunkIdx?: number;
-  quality?: 'ok' | 'suspect';
-}
+const { t } = useI18n();
 
 type ListItem =
-  | { kind: 'cue'; cue: CueData; idx: number }
-  | { kind: 'silence'; afterIdx: number; durationS: number };
+  | { kind: 'cue'; key: string; cue: CueData; idx: number }
+  | { kind: 'silence'; key: string; afterIdx: number; durationS: number };
 
 const SILENCE_THRESHOLD_MS = 10_000;
 
@@ -45,27 +50,6 @@ function langLabel(code: string, fallbackLabel: string): string {
   return code === 'original' ? t('player.original') : fallbackLabel;
 }
 
-const SPEEDS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
-
-interface SubtitleStyle {
-  fontSize: number; // em
-  color: string;
-  bgOpacity: number; // 0..1
-}
-const DEFAULT_STYLE: SubtitleStyle = { fontSize: 1.0, color: '#ffffff', bgOpacity: 0.6 };
-const STYLE_KEY = 'subcast.subtitleStyle';
-const RATE_KEY = 'subcast.playbackRate';
-
-const COLOR_PRESETS: ReadonlyArray<{ value: string; label: string }> = [
-  { value: '#ffffff', label: 'White' },
-  { value: '#facc15', label: 'Yellow' },
-  { value: '#fb923c', label: 'Amber' },
-  { value: '#22d3ee', label: 'Cyan' },
-  { value: '#4ade80', label: 'Green' },
-  { value: '#f472b6', label: 'Pink' },
-  { value: '#000000', label: 'Black' },
-];
-
 const SHORTCUTS: Array<{ keys: string; descKey: string }> = [
   { keys: 'Space / K', descKey: 'playPause' },
   { keys: '← / →', descKey: 'seek5' },
@@ -81,22 +65,23 @@ const SHORTCUTS: Array<{ keys: string; descKey: string }> = [
 ];
 
 function statusBadgeClass(s: string) {
+  // Borderless: avoid the chip-with-border "button" look. Status pills
+  // are pure tags — bg + text color only.
   switch (s) {
     case 'running':
-      return 'bg-primary/10 text-primary border-transparent hover:bg-primary/15';
-    case 'done':
-      return 'border-success/40 bg-success/10 text-success';
-    case 'error':
-      return 'border-destructive/40 bg-destructive/10 text-destructive';
-    case 'cache':
-      return 'border-primary/30 bg-primary/10 text-primary';
     case 'translating':
-      return 'border-primary/30 bg-primary/10 text-primary';
+      return 'border-transparent bg-primary/10 text-primary';
+    case 'done':
+      return 'border-transparent bg-success/10 text-success';
+    case 'error':
+      return 'border-transparent bg-destructive/10 text-destructive';
+    case 'cache':
+      return 'border-transparent bg-muted text-muted-foreground';
     case 'suspect':
-      return 'border-warning/40 bg-warning/10 text-warning-foreground dark:text-warning';
+      return 'border-transparent bg-warning/10 text-warning-foreground dark:text-warning';
     case 'idle':
     default:
-      return 'border-border bg-muted text-muted-foreground';
+      return 'border-transparent bg-muted text-muted-foreground';
   }
 }
 
@@ -105,123 +90,116 @@ const hash = computed(() => String(route.params.hash));
 
 const videoRef = ref<HTMLVideoElement | null>(null);
 const currentLang = ref<string>('original');
-const cuesByLang = ref<Record<string, CueData[]>>({ original: [] });
-const cues = computed(() => cuesByLang.value[currentLang.value] ?? []);
+const ollamaModel = ref<string>('qwen2.5:7b');
 
-const status = ref<'idle' | 'running' | 'done' | 'error'>('idle');
-const langStatus = ref<Record<string, 'idle' | 'running' | 'done' | 'error'>>({});
-const errMsg = ref<string | null>(null);
-const fromCache = ref(false);
-const currentTime = ref(0);
-const translateProgress = ref<number | null>(null);
+const {
+  isPlaying,
+  duration,
+  currentTime,
+  volume,
+  muted,
+  isFullscreen,
+  controlsVisible,
+  playbackRate,
+  onLoadedMetadata,
+  onPlayState,
+  onVolumeEvent,
+  onTimeUpdate,
+  onSeek,
+  setVolume,
+  showControls,
+  onContainerLeave,
+  togglePlay,
+  seekBy,
+  jumpTo,
+  jumpPercent,
+  bumpVolume,
+  toggleMute,
+  toggleFullscreen,
+  setPlaybackRate,
+  bumpSpeed,
+  fmtClock,
+  loadPlaybackRate,
+} = useVideoControls({ videoRef });
 
-// Slice 7 player UX
-const playbackRate = ref(1.0);
-const showHelp = ref(false);
-const showSettings = ref(false);
-const subsVisible = ref(true);
-const subtitleStyle = ref<SubtitleStyle>({ ...DEFAULT_STYLE });
-const customColorInput = ref<HTMLInputElement | null>(null);
+const {
+  subsVisible,
+  addCueToTrack,
+  rebuildTrack,
+  toggleSubs,
+} = useSubtitleTrack({ videoRef });
 
-const isCustomColor = computed(
-  () => !COLOR_PRESETS.some((p) => p.value.toLowerCase() === subtitleStyle.value.color.toLowerCase()),
-);
+const showExport = ref(false);
+const searchBarRef = ref<InstanceType<typeof SearchBar> | null>(null);
 
-const { px: cueFontPx, load: loadCueFontSize } = useCueListFontSize();
-
-async function loadCachedLangs() {
-  try {
-    const res = await $fetch<{ items: Array<{ sha256: string; langs: string[] }> }>('/api/cache/list');
-    const entry = res.items.find((i) => i.sha256 === hash.value);
-    if (!entry) return;
-    for (const lang of entry.langs) {
-      if (lang === 'original') continue;
-      if (langStatus.value[lang]) continue; // don't clobber active session state
-      langStatus.value[lang] = 'done';
-    }
-  } catch {
-    /* network blip — dropdown just won't show pre-marks */
-  }
-}
-
-// Custom video controls state
-const isPlaying = ref(false);
-const duration = ref(0);
-const volume = ref(1);
-const muted = ref(false);
-const isFullscreen = ref(false);
-const controlsVisible = ref(true);
-let hideHandle: ReturnType<typeof setTimeout> | null = null;
-
-function onLoadedMetadata() {
-  const v = videoRef.value;
-  if (!v) return;
-  duration.value = v.duration;
-  v.playbackRate = playbackRate.value;
-}
-function onPlayState() {
-  const v = videoRef.value;
-  if (!v) return;
-  isPlaying.value = !v.paused;
-  scheduleHide();
-}
-function onVolumeEvent() {
-  const v = videoRef.value;
-  if (!v) return;
-  volume.value = v.volume;
-  muted.value = v.muted;
-}
-function onSeek(e: Event) {
-  const v = videoRef.value;
-  if (!v) return;
-  v.currentTime = parseFloat((e.target as HTMLInputElement).value);
-}
-function setVolume(e: Event) {
-  const v = videoRef.value;
-  if (!v) return;
-  v.volume = parseFloat((e.target as HTMLInputElement).value);
-  v.muted = false;
-}
-function fmtClock(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60).toString().padStart(2, '0');
-  return `${m}:${s}`;
-}
-function onFullscreenChange() {
-  isFullscreen.value = !!document.fullscreenElement;
-}
-function scheduleHide() {
-  if (hideHandle) clearTimeout(hideHandle);
-  if (isPlaying.value) {
-    hideHandle = setTimeout(() => { controlsVisible.value = false; }, 1800);
-  }
-}
-function showControls() {
-  controlsVisible.value = true;
-  scheduleHide();
-}
-function onContainerLeave() {
-  if (isPlaying.value) controlsVisible.value = false;
-}
-
-const cueFontSize = computed(() => `${subtitleStyle.value.fontSize}em`);
-const cueColor = computed(() => subtitleStyle.value.color);
-const cueBg = computed(() => {
-  const a = subtitleStyle.value.bgOpacity;
-  return `rgba(0, 0, 0, ${a})`;
+const {
+  cuesByLang,
+  cues,
+  langStatus,
+  status,
+  errMsg,
+  fromCache,
+  translateProgress,
+  cachedLangs,
+  isStreaming,
+  openOriginalStream,
+  openTranslateStream,
+  closeStream,
+  loadCachedLangs,
+} = useSubtitleStreams({
+  hash,
+  currentLang,
+  onCueForCurrentLang: addCueToTrack,
 });
 
-type StreamHandle = { es: EventSource; ac: AbortController };
-const esByLang: Record<string, StreamHandle | null> = {};
+const {
+  query: searchQuery,
+  matchIdx: searchMatchIdx,
+  matchSet: searchMatchSet,
+  highlightSegments,
+} = useCueSearch({ cues });
 
-function closeStream(lang: string) {
-  const handle = esByLang[lang];
-  if (!handle) return;
-  handle.ac.abort();
-  handle.es.close();
-  esByLang[lang] = null;
+// Slice 7 player UX
+const showHelp = ref(false);
+const showSettings = ref(false);
+const customColorInput = ref<HTMLInputElement | null>(null);
+
+const showRetranscribeDialog = ref(false);
+const retranscribing = ref(false);
+const retranscribedLangCount = computed<number>(() => {
+  // All language tracks beyond the original subtitle = translations the
+  // retry would wipe. The dialog shows this count so users see the cost.
+  return Object.keys(cuesByLang.value).filter((k) => k !== 'original').length;
+});
+async function confirmRetranscribe(): Promise<void> {
+  retranscribing.value = true;
+  try {
+    await $fetch('/api/transcribe/retry', {
+      method: 'POST',
+      body: { hash: hash.value },
+    });
+    // Hard reload — the simplest way to flush every cached cue / stream
+    // / insight state on the player page after a full reset.
+    if (typeof window !== 'undefined') window.location.reload();
+  } catch (e) {
+    retranscribing.value = false;
+    errMsg.value = e instanceof Error ? e.message : 'retranscribe failed';
+  } finally {
+    showRetranscribeDialog.value = false;
+  }
 }
+
+const {
+  style: subtitleStyle,
+  isCustomColor,
+  cueFontSize,
+  cueColor,
+  cueBg,
+  load: loadSubtitleStyle,
+  reset: resetSubtitleStyle,
+} = useSubtitleStyle();
+
+const { px: cueFontPx, load: loadCueFontSize } = useCueListFontSize();
 
 function fmtTime(ms: number): string {
   const total = Math.floor(ms / 1000);
@@ -230,43 +208,11 @@ function fmtTime(ms: number): string {
   return `${m}:${s}`;
 }
 
-function getOrCreateTrack(): TextTrack | null {
+function seekToMs(ms: number) {
   const v = videoRef.value;
-  if (!v) return null;
-  let track = v.textTracks[0];
-  if (!track) {
-    const el = v.querySelector('track');
-    if (el) track = (el as HTMLTrackElement).track;
-  }
-  return track ?? null;
-}
-
-function applyTrackVisibility() {
-  const t = getOrCreateTrack();
-  if (!t) return;
-  t.mode = subsVisible.value ? 'showing' : 'hidden';
-}
-
-function clearTrack() {
-  const t = getOrCreateTrack();
-  if (!t?.cues) return;
-  for (let i = t.cues.length - 1; i >= 0; i--) t.removeCue(t.cues[i]!);
-}
-
-function addCueToTrack(cue: CueData) {
-  const t = getOrCreateTrack();
-  if (!t) return;
-  try {
-    t.addCue(new VTTCue(cue.startMs / 1000, cue.endMs / 1000, cue.text));
-  } catch {
-    /* unsupported in some browsers */
-  }
-}
-
-function rebuildTrackFor(lang: string) {
-  clearTrack();
-  for (const c of cuesByLang.value[lang] ?? []) addCueToTrack(c);
-  applyTrackVisibility();
+  if (!v) return;
+  v.currentTime = ms / 1000;
+  v.play().catch(() => {});
 }
 
 const activeIdx = computed(() => {
@@ -296,10 +242,10 @@ const listItems = computed<ListItem[]>(() => {
       const prev = cues.value[idx - 1]!;
       const gap = c.startMs - prev.endMs;
       if (gap >= SILENCE_THRESHOLD_MS) {
-        out.push({ kind: 'silence', afterIdx: idx - 1, durationS: gap / 1000 });
+        out.push({ kind: 'silence', key: `s:${idx - 1}`, afterIdx: idx - 1, durationS: gap / 1000 });
       }
     }
-    out.push({ kind: 'cue', cue: c, idx });
+    out.push({ kind: 'cue', key: `c:${idx}`, cue: c, idx });
   });
   return out;
 });
@@ -308,368 +254,62 @@ const suspectCount = computed(
   () => cues.value.filter((c) => c.quality === 'suspect').length,
 );
 
-function jumpTo(ms: number) {
-  if (videoRef.value) videoRef.value.currentTime = ms / 1000;
-}
+usePlayerKeybindings({
+  focusSearch: () => searchBarRef.value?.focus(),
+  showHelp,
+  showSettings,
+  togglePlay,
+  seekBy,
+  bumpVolume,
+  bumpSpeed,
+  toggleMute,
+  toggleFullscreen,
+  toggleSubs,
+  jumpPercent,
+});
 
-function setPlaybackRate(rate: number) {
-  playbackRate.value = rate;
-  if (videoRef.value) videoRef.value.playbackRate = rate;
-}
+const {
+  showCancelDialog,
+  cancelTranslation,
+  retryCurrentLang,
+  onLangChange,
+} = useLangSwitcher({
+  hash,
+  currentLang,
+  cuesByLang,
+  langStatus,
+  status,
+  errMsg,
+  fromCache,
+  translateProgress,
+  isStreaming,
+  openOriginalStream,
+  openTranslateStream,
+  closeStream,
+  rebuildTrack,
+});
 
-function bumpSpeed(delta: number) {
-  const i = SPEEDS.indexOf(playbackRate.value);
-  const next = SPEEDS[Math.max(0, Math.min(SPEEDS.length - 1, (i < 0 ? 2 : i) + delta))]!;
-  setPlaybackRate(next);
-}
+const videoName = ref<string>('');
 
-function togglePlay() {
-  const v = videoRef.value;
-  if (!v) return;
-  if (v.paused) void v.play();
-  else v.pause();
-}
-
-function seekBy(deltaS: number) {
-  const v = videoRef.value;
-  if (!v) return;
-  v.currentTime = Math.max(0, Math.min(v.duration || Infinity, v.currentTime + deltaS));
-}
-
-function bumpVolume(delta: number) {
-  const v = videoRef.value;
-  if (!v) return;
-  v.volume = Math.max(0, Math.min(1, v.volume + delta));
-  v.muted = false;
-}
-
-function toggleMute() {
-  const v = videoRef.value;
-  if (!v) return;
-  v.muted = !v.muted;
-}
-
-function toggleFullscreen() {
-  const v = videoRef.value;
-  if (!v) return;
-  if (document.fullscreenElement) void document.exitFullscreen();
-  else void v.requestFullscreen();
-}
-
-function toggleSubs() {
-  subsVisible.value = !subsVisible.value;
-  applyTrackVisibility();
-}
-
-function jumpPercent(pct: number) {
-  const v = videoRef.value;
-  if (!v || !Number.isFinite(v.duration)) return;
-  v.currentTime = (v.duration * pct) / 100;
-}
-
-function shouldIgnore(e: KeyboardEvent): boolean {
-  const t = e.target as HTMLElement | null;
-  if (!t) return false;
-  if (t.isContentEditable) return true;
-  const tag = t.tagName;
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
-  if (t.getAttribute('role') === 'button' || tag === 'BUTTON' || tag === 'A') return true;
-  return false;
-}
-
-function onKeyDown(e: KeyboardEvent) {
-  if (e.metaKey || e.ctrlKey || e.altKey) return;
-  if (shouldIgnore(e)) return;
-
-  if (showHelp.value || showSettings.value) {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      showHelp.value = false;
-      showSettings.value = false;
-    }
-    return;
-  }
-
-  switch (e.key) {
-    case ' ':
-    case 'k':
-    case 'K':
-      e.preventDefault();
-      togglePlay();
-      break;
-    case 'ArrowLeft':
-      e.preventDefault();
-      seekBy(-5);
-      break;
-    case 'ArrowRight':
-      e.preventDefault();
-      seekBy(5);
-      break;
-    case 'j':
-    case 'J':
-      e.preventDefault();
-      seekBy(-10);
-      break;
-    case 'l':
-    case 'L':
-      e.preventDefault();
-      seekBy(10);
-      break;
-    case 'ArrowUp':
-      e.preventDefault();
-      bumpVolume(0.1);
-      break;
-    case 'ArrowDown':
-      e.preventDefault();
-      bumpVolume(-0.1);
-      break;
-    case '<':
-    case ',':
-      e.preventDefault();
-      bumpSpeed(-1);
-      break;
-    case '>':
-    case '.':
-      e.preventDefault();
-      bumpSpeed(1);
-      break;
-    case 'm':
-    case 'M':
-      e.preventDefault();
-      toggleMute();
-      break;
-    case 'f':
-    case 'F':
-      e.preventDefault();
-      toggleFullscreen();
-      break;
-    case 'c':
-    case 'C':
-      e.preventDefault();
-      toggleSubs();
-      break;
-    case '?':
-      e.preventDefault();
-      showHelp.value = true;
-      break;
-    default:
-      if (/^[1-9]$/.test(e.key)) {
-        e.preventDefault();
-        jumpPercent(parseInt(e.key, 10) * 10);
-      }
-  }
-}
-
-function loadStyleFromStorage() {
-  if (!import.meta.client) return;
-  try {
-    const raw = localStorage.getItem(STYLE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<SubtitleStyle>;
-      subtitleStyle.value = { ...DEFAULT_STYLE, ...parsed };
-    }
-  } catch {
-    /* ignore */
-  }
-}
-
-function loadPlaybackRate() {
-  if (!import.meta.client) return;
-  try {
-    const raw = localStorage.getItem(RATE_KEY);
-    if (!raw) return;
-    const n = parseFloat(raw);
-    if (Number.isFinite(n) && SPEEDS.includes(n)) playbackRate.value = n;
-  } catch {
-    /* ignore */
-  }
-}
-
-function saveStyleToStorage() {
-  if (!import.meta.client) return;
-  try {
-    localStorage.setItem(STYLE_KEY, JSON.stringify(subtitleStyle.value));
-  } catch {
-    /* ignore quota */
-  }
-}
-
-watch(subtitleStyle, saveStyleToStorage, { deep: true });
-
-function openOriginalStream() {
-  if (esByLang.original) return;
-  langStatus.value.original = 'running';
-  status.value = 'running';
-  const ac = new AbortController();
-  const es = new EventSource(`/api/transcribe?hash=${hash.value}`);
-  esByLang.original = { es, ac };
-  const opts = { signal: ac.signal };
-  es.addEventListener('status', (e) => {
-    const data = JSON.parse((e as MessageEvent).data);
-    if (data.fromCache) fromCache.value = true;
-    if (currentLang.value === 'original') status.value = 'running';
-  }, opts);
-  es.addEventListener('cue', (e) => {
-    const data = JSON.parse((e as MessageEvent).data) as CueData;
-    cuesByLang.value.original?.push(data);
-    if (currentLang.value === 'original') addCueToTrack(data);
-  }, opts);
-  es.addEventListener('done', () => {
-    langStatus.value.original = 'done';
-    if (currentLang.value === 'original') status.value = 'done';
-    closeStream('original');
-  }, opts);
-  es.addEventListener('error', (e) => {
-    handleSseError(e, 'original');
-    closeStream('original');
-  }, opts);
-}
-
-function openTranslateStream(lang: string) {
-  if (esByLang[lang]) return;
-  langStatus.value[lang] = 'running';
-  if (currentLang.value === lang) status.value = 'running';
-  cuesByLang.value[lang] = cuesByLang.value[lang] ?? [];
-  translateProgress.value = 0;
-
-  const ac = new AbortController();
-  const es = new EventSource(`/api/translate?hash=${hash.value}&lang=${lang}`);
-  esByLang[lang] = { es, ac };
-  const opts = { signal: ac.signal };
-
-  es.addEventListener('status', (e) => {
-    const data = JSON.parse((e as MessageEvent).data);
-    if (data.fromCache && currentLang.value === lang) fromCache.value = true;
-  }, opts);
-  es.addEventListener('batch-progress', (e) => {
-    const data = JSON.parse((e as MessageEvent).data);
-    if (currentLang.value === lang) translateProgress.value = data.progressPct;
-  }, opts);
-  es.addEventListener('cue-translated', (e) => {
-    const data = JSON.parse((e as MessageEvent).data);
-    const arr = cuesByLang.value[lang]!;
-    for (const c of data.cues as CueData[]) arr.push(c);
-    if (currentLang.value === lang) {
-      for (const c of data.cues as CueData[]) addCueToTrack(c);
-    }
-  }, opts);
-  es.addEventListener('batch-retry', (e) => {
-    const data = JSON.parse((e as MessageEvent).data);
-     
-    console.warn('translate batch-retry', data);
-  }, opts);
-  es.addEventListener('done', () => {
-    langStatus.value[lang] = 'done';
-    translateProgress.value = null;
-    if (currentLang.value === lang) status.value = 'done';
-    closeStream(lang);
-  }, opts);
-  es.addEventListener('error', (e) => {
-    handleSseError(e, lang);
-    closeStream(lang);
-  }, opts);
-}
-
-function friendlyError(code: string): string {
-  const key = `player.errors.${code}`;
-  return te(key) ? t(key) : t('player.errors.fallback');
-}
-
-function handleSseError(e: Event, lang: string) {
-  const raw = (e as MessageEvent).data;
-  let detail = t('player.errors.disconnected');
-  if (raw) {
-    try {
-      const data = JSON.parse(raw);
-      if (data.code) detail = friendlyError(data.code);
-    } catch { /* ignore */ }
-  }
-  langStatus.value[lang] = 'error';
-  if (currentLang.value === lang) {
-    errMsg.value = detail;
-    status.value = 'error';
-  }
-}
-
-const showCancelDialog = ref(false);
-
-async function cancelTranslation() {
-  showCancelDialog.value = false;
-  const lang = currentLang.value;
-  if (!lang || lang === 'original') return;
-  try {
-    const res = await $fetch<{
-      items: Array<{
-        kind: 'transcribe' | 'translate';
-        id: string;
-        videoSha: string;
-        targetLang?: string;
-        status: 'queued' | 'running' | 'completed' | 'failed' | 'canceled';
-      }>;
-    }>('/api/queue/list');
-    const task = res.items.find((i) =>
-      i.kind === 'translate'
-      && i.videoSha === hash.value
-      && i.targetLang === lang
-      && (i.status === 'running' || i.status === 'queued'),
-    );
-    if (task) {
-      await $fetch(`/api/queue/translate/${task.id}`, { method: 'DELETE' });
-    }
-  } catch {
-    /* server-side cancel may fail; still tear down client state */
-  }
-  closeStream(lang);
-  translateProgress.value = null;
-  langStatus.value[lang] = 'idle';
-  if (currentLang.value === lang) status.value = 'idle';
-}
-
-function retryCurrentLang() {
-  const lang = currentLang.value;
-  if (!lang) return;
-  errMsg.value = null;
-  status.value = 'idle';
-  langStatus.value[lang] = 'idle';
-  if (lang === 'original') openOriginalStream();
-  else openTranslateStream(lang);
-}
-
-function onLangChange(newLang: string) {
-  if (newLang === currentLang.value) return;
-  errMsg.value = null;
-  fromCache.value = false;
-  currentLang.value = newLang;
-  rebuildTrackFor(newLang);
-  status.value = langStatus.value[newLang] ?? 'idle';
-  if (newLang === 'original') {
-    if ((cuesByLang.value.original?.length ?? 0) === 0 && !esByLang.original) {
-      openOriginalStream();
-    }
-    return;
-  }
-  if (!cuesByLang.value[newLang] || cuesByLang.value[newLang]!.length === 0) {
-    openTranslateStream(newLang);
-  } else if (langStatus.value[newLang] !== 'done' && !esByLang[newLang]) {
-    openTranslateStream(newLang);
-  }
-}
-
-onMounted(() => {
-  loadStyleFromStorage();
+onMounted(async () => {
+  loadSubtitleStyle();
   loadCueFontSize();
   loadPlaybackRate();
   void loadCachedLangs();
   openOriginalStream();
-  window.addEventListener('keydown', onKeyDown);
-  document.addEventListener('fullscreenchange', onFullscreenChange);
-});
-
-onBeforeUnmount(() => {
-  for (const k of Object.keys(esByLang)) closeStream(k);
-  window.removeEventListener('keydown', onKeyDown);
-  document.removeEventListener('fullscreenchange', onFullscreenChange);
-  if (hideHandle) clearTimeout(hideHandle);
+  try {
+    const s = await $fetch<{ ollamaModel?: string }>('/api/settings');
+    if (s.ollamaModel) ollamaModel.value = s.ollamaModel;
+  } catch { /* ignore */ }
+  // Resolve display name → originalName → hash-fallback for the header.
+  // Reuses /api/cache/list (already cached by other panels) — cheap.
+  try {
+    const res = await $fetch<{
+      items: Array<{ sha256: string; originalName: string; displayName: string | null }>;
+    }>('/api/cache/list');
+    const entry = res.items.find((i) => i.sha256 === hash.value);
+    if (entry) videoName.value = entry.displayName ?? entry.originalName;
+  } catch { /* keep empty — UI falls back to hash slice */ }
 });
 
 watch(activeIdx, (idx) => {
@@ -677,28 +317,42 @@ watch(activeIdx, (idx) => {
   const el = document.querySelector(`[data-cue-idx="${idx}"]`);
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 });
-
-watch(playbackRate, (r) => {
-  if (videoRef.value) videoRef.value.playbackRate = r;
-  if (import.meta.client) {
-    try { localStorage.setItem(RATE_KEY, String(r)); } catch { /* quota */ }
-  }
-});
 </script>
 
 <template>
-  <main class="flex min-h-dvh flex-col bg-background px-8 pb-12 xl:h-dvh xl:overflow-hidden xl:pb-6">
+  <!-- Player keeps its own flex shell (inner cue list owns its own
+       scroll region) — can't share AppShell, which forces a top-level
+       overflow-y-auto. AppHeader's `-mx-8` trick is gone, so the
+       header sits directly under `<main>` (no parent padding) and the
+       horizontal padding moves to the content wrapper below. -->
+  <main class="flex h-dvh flex-col overflow-hidden bg-background">
     <AppHeader />
 
-    <div class="mx-auto flex w-full max-w-screen-2xl flex-1 flex-col px-4 xl:min-h-0">
-      <div class="mb-4 flex flex-wrap items-center justify-between gap-3 xl:shrink-0">
-        <NuxtLink
-          to="/"
-          class="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft class="h-4 w-4" />
-          {{ t('app.back') }}
-        </NuxtLink>
+    <div class="flex min-h-0 flex-1 flex-col px-8 pt-4 pb-6">
+      <div class="mx-auto flex min-h-0 w-full max-w-screen-2xl flex-1 flex-col px-4">
+      <div class="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3">
+        <div class="flex min-w-0 flex-1 items-center gap-2">
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <NuxtLink
+                to="/"
+                :aria-label="t('app.back')"
+                class="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                <ChevronLeft class="h-6 w-6" />
+              </NuxtLink>
+            </TooltipTrigger>
+            <TooltipContent>{{ t('app.back') }}</TooltipContent>
+          </Tooltip>
+          <!-- Visual divider so the back button and the video name read
+               as two distinct things rather than one merged label. -->
+          <span aria-hidden="true" class="h-5 w-px shrink-0 bg-border/60" />
+          <span
+            v-if="videoName"
+            class="min-w-0 flex-1 truncate text-sm font-medium text-foreground"
+            :title="videoName"
+          >{{ videoName }}</span>
+        </div>
 
         <div class="flex flex-wrap items-center gap-2">
           <Select
@@ -726,6 +380,21 @@ watch(playbackRate, (r) => {
             </SelectContent>
           </Select>
 
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                class="size-8 [&_svg]:size-3.5"
+                :aria-label="t('player.export.title')"
+                @click="showExport = true"
+              >
+                <Download />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{{ t('player.export.title') }}</TooltipContent>
+          </Tooltip>
+
           <Select
             :model-value="String(playbackRate)"
             @update:model-value="(v: any) => setPlaybackRate(parseFloat(v as string))"
@@ -738,63 +407,110 @@ watch(playbackRate, (r) => {
             </SelectContent>
           </Select>
 
-          <Button
-            variant="outline"
-            size="icon-sm"
-            class="size-8 [&_svg]:size-3.5"
-            :title="t('player.subtitleStyle')"
-            :aria-label="t('player.subtitleStyle')"
-            @click="showSettings = true"
-          >
-            <Type />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon-sm"
-            class="size-8 [&_svg]:size-3.5"
-            :title="`${t('player.shortcuts')} (?)`"
-            :aria-label="t('player.shortcuts')"
-            @click="showHelp = true"
-          >
-            <Keyboard />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                class="size-8 [&_svg]:size-3.5"
+                :aria-label="t('player.subtitleStyle')"
+                @click="showSettings = true"
+              >
+                <Type />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{{ t('player.subtitleStyle') }}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                class="size-8 [&_svg]:size-3.5"
+                :aria-label="t('player.shortcuts')"
+                @click="showHelp = true"
+              >
+                <Keyboard />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{{ t('player.shortcuts') }} (?)</TooltipContent>
+          </Tooltip>
 
-          <span class="hidden h-7 items-center font-mono text-xs text-muted-foreground sm:inline-flex">{{ hash.slice(0, 12) }}…</span>
-
-          <Badge v-if="fromCache" variant="outline" class="h-7 px-3" :class="statusBadgeClass('cache')">{{ t('player.cache') }}</Badge>
-          <Badge variant="outline" class="h-7 px-3" :class="statusBadgeClass(status)">{{ t(`player.status.${status}`) }}</Badge>
+          <Badge
+            v-if="fromCache"
+            variant="outline"
+            size="sm"
+            class="uppercase tracking-wider"
+            :class="statusBadgeClass('cache')"
+          >{{ t('player.cache') }}</Badge>
+          <Badge
+            variant="outline"
+            size="sm"
+            class="uppercase tracking-wider"
+            :class="statusBadgeClass(status)"
+          >{{ t(`player.status.${status}`) }}</Badge>
           <Badge
             v-if="translateProgress !== null && currentLang !== 'original'"
             variant="outline"
-            class="h-7 px-3"
+            size="sm"
+            class="uppercase tracking-wider"
             :class="statusBadgeClass('translating')"
           >{{ t('player.translateProgress', { pct: translateProgress }) }}</Badge>
+          <Tooltip v-if="translateProgress !== null && currentLang !== 'original'">
+            <TooltipTrigger as-child>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                class="size-7 text-muted-foreground hover:bg-destructive/10 hover:text-destructive [&_svg]:size-3.5"
+                :aria-label="t('player.cancelTranslation')"
+                @click="showCancelDialog = true"
+              >
+                <XIcon />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{{ t('player.cancelTranslation') }}</TooltipContent>
+          </Tooltip>
+
+          <!-- Re-transcribe lives at the far right of the action bar,
+               separated by a divider, because it is destructive (clears
+               original + all translations + insights). Three layers of
+               protection against accidental clicks:
+                 1. Spatial separation from innocuous controls (divider).
+                 2. Icon + visible text label — the surrounding controls
+                    are icon-only, so this button intentionally reads
+                    heavier. Apple HIG / Material both recommend text
+                    labels for destructive toolbar actions.
+                 3. Confirmation dialog on click. -->
+          <span
+            v-if="cues.length > 0"
+            aria-hidden="true"
+            class="mx-1 h-5 w-px bg-border/60"
+          />
           <Button
-            v-if="translateProgress !== null && currentLang !== 'original'"
+            v-if="cues.length > 0"
             variant="ghost"
-            size="icon-sm"
-            class="size-7 text-muted-foreground hover:bg-destructive/10 hover:text-destructive [&_svg]:size-3.5"
-            :title="t('player.cancelTranslation')"
-            :aria-label="t('player.cancelTranslation')"
-            @click="showCancelDialog = true"
+            size="utility"
+            class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            @click="showRetranscribeDialog = true"
           >
-            <XIcon />
+            <RotateCcw />
+            {{ t('player.retranscribe.button') }}
           </Button>
         </div>
       </div>
 
-      <div class="grid gap-6 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_minmax(360px,28rem)]">
+      <div class="flex flex-col gap-6 min-h-0 flex-1 lg:flex-row">
         <div
-          class="group relative flex items-center justify-center overflow-hidden rounded-xl bg-black ring-1 ring-border/60 xl:min-h-0"
+          class="group relative flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black ring-1 ring-border/60 lg:min-h-0 lg:flex-1 lg:shrink"
           @mousemove="showControls"
           @mouseleave="onContainerLeave"
         >
           <video
             ref="videoRef"
             :src="`/api/video?hash=${hash}`"
-            class="block w-full max-h-[60vh] cursor-pointer xl:max-h-full"
+            class="block w-full max-h-[60vh] cursor-pointer lg:max-h-full"
             crossorigin="anonymous"
-            @timeupdate="currentTime = ($event.target as HTMLVideoElement).currentTime"
+            @timeupdate="onTimeUpdate"
             @loadedmetadata="onLoadedMetadata"
             @play="onPlayState"
             @pause="onPlayState"
@@ -820,17 +536,21 @@ watch(playbackRate, (r) => {
             >
 
             <div class="pointer-events-auto mt-1.5 flex items-center gap-1 text-white">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                class="size-9 text-white hover:bg-white/15 hover:text-white [&_svg]:size-[18px]"
-                :title="t('player.shortcutDescriptions.playPause')"
-                :aria-label="t('player.shortcutDescriptions.playPause')"
-                @click="togglePlay"
-              >
-                <Pause v-if="isPlaying" />
-                <Play v-else />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    class="size-9 text-white hover:bg-white/15 hover:text-white [&_svg]:size-[18px]"
+                    :aria-label="t('player.shortcutDescriptions.playPause')"
+                    @click="togglePlay"
+                  >
+                    <Pause v-if="isPlaying" />
+                    <Play v-else />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{{ t('player.shortcutDescriptions.playPause') }}</TooltipContent>
+              </Tooltip>
 
               <span class="ml-1 font-mono text-xs tabular-nums text-white/85">
                 {{ fmtClock(currentTime) }} <span class="text-white/45">/</span> {{ fmtClock(duration) }}
@@ -838,18 +558,22 @@ watch(playbackRate, (r) => {
 
               <div class="ml-auto flex items-center gap-1">
                 <div class="group/vol flex items-center">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    class="size-9 text-white hover:bg-white/15 hover:text-white [&_svg]:size-[18px]"
-                    :title="t('player.shortcutDescriptions.mute')"
-                    :aria-label="t('player.shortcutDescriptions.mute')"
-                    @click="toggleMute"
-                  >
-                    <VolumeX v-if="muted || volume === 0" />
-                    <Volume1 v-else-if="volume < 0.5" />
-                    <Volume2 v-else />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        class="size-9 text-white hover:bg-white/15 hover:text-white [&_svg]:size-[18px]"
+                        :aria-label="t('player.shortcutDescriptions.mute')"
+                        @click="toggleMute"
+                      >
+                        <VolumeX v-if="muted || volume === 0" />
+                        <Volume1 v-else-if="volume < 0.5" />
+                        <Volume2 v-else />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{{ t('player.shortcutDescriptions.mute') }}</TooltipContent>
+                  </Tooltip>
                   <input
                     type="range"
                     min="0" max="1" step="0.05"
@@ -860,37 +584,45 @@ watch(playbackRate, (r) => {
                   >
                 </div>
 
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  class="size-9 text-white hover:bg-white/15 hover:text-white [&_svg]:size-[18px]"
-                  :class="!subsVisible && 'opacity-50'"
-                  :title="t('player.shortcutDescriptions.subs')"
-                  :aria-label="t('player.shortcutDescriptions.subs')"
-                  :aria-pressed="subsVisible"
-                  @click="toggleSubs"
-                >
-                  <Captions v-if="subsVisible" />
-                  <CaptionsOff v-else />
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger as-child>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      class="size-9 text-white hover:bg-white/15 hover:text-white [&_svg]:size-[18px]"
+                      :class="!subsVisible && 'opacity-50'"
+                      :aria-label="t('player.shortcutDescriptions.subs')"
+                      :aria-pressed="subsVisible"
+                      @click="toggleSubs"
+                    >
+                      <Captions v-if="subsVisible" />
+                      <CaptionsOff v-else />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{{ t('player.shortcutDescriptions.subs') }}</TooltipContent>
+                </Tooltip>
 
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  class="size-9 text-white hover:bg-white/15 hover:text-white [&_svg]:size-[18px]"
-                  :title="t('player.shortcutDescriptions.fullscreen')"
-                  :aria-label="t('player.shortcutDescriptions.fullscreen')"
-                  @click="toggleFullscreen"
-                >
-                  <Minimize v-if="isFullscreen" />
-                  <Maximize v-else />
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger as-child>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      class="size-9 text-white hover:bg-white/15 hover:text-white [&_svg]:size-[18px]"
+                      :aria-label="t('player.shortcutDescriptions.fullscreen')"
+                      @click="toggleFullscreen"
+                    >
+                      <Minimize v-if="isFullscreen" />
+                      <Maximize v-else />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{{ t('player.shortcutDescriptions.fullscreen') }}</TooltipContent>
+                </Tooltip>
               </div>
             </div>
           </div>
         </div>
 
-        <section class="flex min-w-0 flex-col xl:min-h-0">
+        <section class="flex min-h-0 min-w-0 flex-1 flex-col lg:max-w-[28rem]">
           <div class="mb-3 flex items-center justify-between">
             <h2 class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               {{ t('player.subtitles') }} · <span class="normal-case tracking-normal text-foreground">{{ langLabel(currentLang, SUPPORTED_LANGS.find((l) => l.code === currentLang)?.label ?? currentLang) }}</span>
@@ -900,6 +632,7 @@ watch(playbackRate, (r) => {
               <Badge
                 v-if="suspectCount > 0"
                 variant="outline"
+                size="sm"
                 :class="statusBadgeClass('suspect')"
                 :title="t('player.suspectTitle')"
               >{{ t('player.suspect', { n: suspectCount }) }}</Badge>
@@ -918,50 +651,89 @@ watch(playbackRate, (r) => {
               @click="retryCurrentLang"
             >{{ t('player.errors.retry') }}</Button>
           </div>
-          <ul
-            class="surface-1 max-h-[40vh] flex-1 space-y-0.5 overflow-y-auto rounded-xl border border-border/50 bg-muted/30 p-2 font-mono leading-relaxed xl:max-h-none xl:min-h-0"
-            :style="{ fontSize: `${cueFontPx}px` }"
-          >
-          <template v-for="(item, i) in listItems" :key="i">
-            <li
-              v-if="item.kind === 'silence'"
-              class="select-none py-1.5 text-center text-xs text-muted-foreground/70"
-            >{{ t('player.noAudio', { n: Math.round(item.durationS) }) }}</li>
-            <li
-              v-else
-              :data-cue-idx="item.idx"
-              role="button"
-              tabindex="0"
-              class="relative flex cursor-pointer items-baseline gap-3 rounded-md border border-transparent px-3 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
-              :class="[
-                item.idx === activeIdx
-                  ? 'bg-primary/10 font-medium text-foreground'
-                  : 'text-foreground/80 hover:bg-accent/60 hover:text-foreground',
-                item.cue.quality === 'suspect' && item.idx !== activeIdx ? 'border-warning/40' : '',
-              ]"
-              :title="item.cue.quality === 'suspect' ? t('player.suspectCueTitle') : ''"
-              @click="jumpTo(item.cue.startMs)"
-              @keydown="(e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); jumpTo(item.cue.startMs); } }"
-            >
-              <span
-                class="shrink-0 text-xs tabular-nums"
-                :class="item.idx === activeIdx ? 'font-semibold text-primary' : 'text-muted-foreground'"
-              >{{ fmtTime(item.cue.startMs) }}</span>
-              <span class="flex-1">{{ item.cue.text }}</span>
-              <AlertCircle
-                v-if="item.cue.quality === 'suspect'"
-                class="h-3.5 w-3.5 shrink-0 text-warning"
+          <Tabs default-value="subtitles" class="flex flex-1 flex-col min-h-0">
+            <TabsList class="grid w-full grid-cols-2">
+              <TabsTrigger value="subtitles">{{ t('player.subtitles') }}</TabsTrigger>
+              <TabsTrigger value="insights">
+                <Sparkles class="mr-1 h-3.5 w-3.5" />
+                {{ t('player.insights.tabLabel') }}
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="subtitles" class="flex flex-1 flex-col gap-2 min-h-0">
+              <SearchBar
+                ref="searchBarRef"
+                :cues="cues"
+                @update:query="searchQuery = $event"
+                @update:match-idx="searchMatchIdx = $event"
               />
-            </li>
-          </template>
-          <li v-if="cues.length === 0 && status === 'running'" class="py-6 text-center text-muted-foreground">
-            <template v-if="currentLang === 'original'">{{ t('player.firstCueDelay') }}</template>
-            <template v-else>{{ t('player.translatingShort') }}</template>
-          </li>
-        </ul>
+              <ul
+                class="surface-1 flex-1 min-h-0 space-y-0.5 overflow-y-auto rounded-xl border border-border/50 bg-muted/30 p-2 font-mono leading-relaxed"
+                :style="{ fontSize: `${cueFontPx}px` }"
+              >
+                <template v-for="item in listItems" :key="item.key">
+                  <li
+                    v-if="item.kind === 'silence'"
+                    class="select-none py-1.5 text-center text-xs text-muted-foreground/70"
+                  >{{ t('player.noAudio', { n: Math.round(item.durationS) }) }}</li>
+                  <li
+                    v-else
+                    :data-cue-idx="item.idx"
+                    role="button"
+                    tabindex="0"
+                    class="relative flex cursor-pointer items-baseline gap-3 rounded-md border border-transparent px-3 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+                    :class="[
+                      item.idx === activeIdx
+                        ? 'bg-primary/10 font-medium text-foreground'
+                        : 'text-foreground/80 hover:bg-accent/60 hover:text-foreground',
+                      item.cue.quality === 'suspect' && item.idx !== activeIdx ? 'border-warning/40' : '',
+                      searchMatchSet.has(item.idx) ? 'bg-yellow-200/30 dark:bg-yellow-500/15' : '',
+                      searchMatchIdx === item.idx ? 'ring-2 ring-yellow-500/60' : '',
+                    ]"
+                    :title="item.cue.quality === 'suspect' ? t('player.suspectCueTitle') : ''"
+                    @click="jumpTo(item.cue.startMs)"
+                    @keydown="(e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); jumpTo(item.cue.startMs); } }"
+                  >
+                    <span
+                      class="shrink-0 text-xs tabular-nums"
+                      :class="item.idx === activeIdx ? 'font-semibold text-primary' : 'text-muted-foreground'"
+                    >{{ fmtTime(item.cue.startMs) }}</span>
+                    <span class="flex-1">
+                      <template v-for="(seg, si) in highlightSegments(item.cue.text, searchQuery)" :key="si">
+                        <mark v-if="seg.m" class="rounded-sm bg-yellow-300/70 px-0.5 text-inherit">{{ seg.t }}</mark>
+                        <template v-else>{{ seg.t }}</template>
+                      </template>
+                    </span>
+                    <AlertCircle
+                      v-if="item.cue.quality === 'suspect'"
+                      class="h-3.5 w-3.5 shrink-0 text-warning"
+                    />
+                  </li>
+                </template>
+                <li v-if="cues.length === 0 && status === 'running'" class="py-6 text-center text-muted-foreground">
+                  <template v-if="currentLang === 'original'">{{ t('player.firstCueDelay') }}</template>
+                  <template v-else>{{ t('player.translatingShort') }}</template>
+                </li>
+              </ul>
+            </TabsContent>
+            <TabsContent value="insights" class="flex flex-1 flex-col min-h-0">
+              <InsightsPanel
+                :hash="hash"
+                :cue-count="cuesByLang['original']?.length ?? 0"
+                :current-ollama-model="ollamaModel"
+                @seek="seekToMs"
+              />
+            </TabsContent>
+          </Tabs>
         </section>
       </div>
     </div>
+
+    <ExportDialog
+      v-model="showExport"
+      :hash="hash"
+      :cached-langs="cachedLangs"
+      :lang-label="(code: string) => langLabel(code, SUPPORTED_LANGS.find(l => l.code === code)?.label ?? code)"
+    />
 
     <Dialog v-model:open="showHelp">
       <DialogContent class="max-w-md">
@@ -1011,6 +783,29 @@ watch(playbackRate, (r) => {
       </DialogContent>
     </Dialog>
 
+    <Dialog v-model:open="showRetranscribeDialog">
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle class="flex items-center gap-2">
+            <RotateCcw class="h-4 w-4 text-muted-foreground" />
+            {{ t('player.retranscribe.title') }}
+          </DialogTitle>
+          <DialogDescription class="pt-1">
+            {{ t('player.retranscribe.desc', { n: retranscribedLangCount }) }}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="secondary" :disabled="retranscribing" @click="showRetranscribeDialog = false">
+            {{ t('player.cancel') }}
+          </Button>
+          <Button variant="destructive" :disabled="retranscribing" @click="confirmRetranscribe">
+            <RotateCcw class="h-4 w-4" />
+            {{ t('player.retranscribe.confirm') }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
     <Dialog v-model:open="showSettings">
       <DialogContent class="max-w-sm">
         <DialogHeader>
@@ -1037,40 +832,46 @@ watch(playbackRate, (r) => {
           <div class="space-y-2.5">
             <Label class="text-sm font-medium">{{ t('player.color') }}</Label>
             <div class="flex flex-wrap items-center gap-2">
-              <button
-                v-for="p in COLOR_PRESETS"
-                :key="p.value"
-                type="button"
-                :title="p.label"
-                :aria-label="p.label"
-                :aria-pressed="subtitleStyle.color.toLowerCase() === p.value.toLowerCase()"
-                class="relative grid size-7 place-items-center rounded-full border border-border/60 transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                :style="{ backgroundColor: p.value }"
-                @click="subtitleStyle.color = p.value"
-              >
-                <Check
-                  v-if="subtitleStyle.color.toLowerCase() === p.value.toLowerCase()"
-                  class="h-3.5 w-3.5"
-                  :style="{ color: p.value === '#ffffff' || p.value === '#facc15' ? '#000' : '#fff' }"
-                />
-              </button>
-              <button
-                type="button"
-                :title="t('player.customColor')"
-                :aria-label="t('player.customColor')"
-                :aria-pressed="isCustomColor"
-                class="relative grid size-7 place-items-center rounded-full border border-border/60 transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                :style="isCustomColor
-                  ? { backgroundColor: subtitleStyle.color }
-                  : { background: 'conic-gradient(from 90deg, #ef4444, #facc15, #4ade80, #22d3ee, #818cf8, #f472b6, #ef4444)' }"
-                @click="customColorInput?.click()"
-              >
-                <Palette
-                  v-if="!isCustomColor"
-                  class="h-3.5 w-3.5 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]"
-                />
-                <Check v-else class="h-3.5 w-3.5 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]" />
-              </button>
+              <Tooltip v-for="p in COLOR_PRESETS" :key="p.value">
+                <TooltipTrigger as-child>
+                  <button
+                    type="button"
+                    :aria-label="p.label"
+                    :aria-pressed="subtitleStyle.color.toLowerCase() === p.value.toLowerCase()"
+                    class="relative grid size-7 place-items-center rounded-full border border-border/60 transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    :style="{ backgroundColor: p.value }"
+                    @click="subtitleStyle.color = p.value"
+                  >
+                    <Check
+                      v-if="subtitleStyle.color.toLowerCase() === p.value.toLowerCase()"
+                      class="h-3.5 w-3.5"
+                      :style="{ color: p.value === '#ffffff' || p.value === '#facc15' ? '#000' : '#fff' }"
+                    />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>{{ p.label }}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <button
+                    type="button"
+                    :aria-label="t('player.customColor')"
+                    :aria-pressed="isCustomColor"
+                    class="relative grid size-7 place-items-center rounded-full border border-border/60 transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    :style="isCustomColor
+                      ? { backgroundColor: subtitleStyle.color }
+                      : { background: 'conic-gradient(from 90deg, #ef4444, #facc15, #4ade80, #22d3ee, #818cf8, #f472b6, #ef4444)' }"
+                    @click="customColorInput?.click()"
+                  >
+                    <Palette
+                      v-if="!isCustomColor"
+                      class="h-3.5 w-3.5 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]"
+                    />
+                    <Check v-else class="h-3.5 w-3.5 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>{{ t('player.customColor') }}</TooltipContent>
+              </Tooltip>
               <input
                 ref="customColorInput"
                 v-model="subtitleStyle.color"
@@ -1101,7 +902,7 @@ watch(playbackRate, (r) => {
               variant="ghost"
               size="sm"
               class="text-xs text-muted-foreground hover:text-foreground"
-              @click="subtitleStyle = { ...DEFAULT_STYLE }"
+              @click="resetSubtitleStyle"
             >
               <RotateCcw class="h-3.5 w-3.5" />
               {{ t('player.reset') }}
@@ -1110,6 +911,7 @@ watch(playbackRate, (r) => {
         </div>
       </DialogContent>
     </Dialog>
+    </div>
   </main>
 </template>
 

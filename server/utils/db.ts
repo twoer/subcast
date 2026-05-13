@@ -1,17 +1,23 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-const SUBCAST_HOME = join(homedir(), '.subcast');
-const DB_PATH = join(SUBCAST_HOME, 'data.sqlite');
+function resolveHome(): string {
+  return process.env.SUBCAST_HOME ?? join(homedir(), '.subcast');
+}
+
+const SUBCAST_HOME = resolveHome();
 
 let _db: Database.Database | null = null;
 
 export function getDb(): Database.Database {
   if (_db) return _db;
-  mkdirSync(SUBCAST_HOME, { recursive: true });
-  _db = new Database(DB_PATH);
+  const home = resolveHome();
+  const dbPath = join(home, 'data.sqlite');
+  mkdirSync(home, { recursive: true });
+  _db = new Database(dbPath);
   _db.pragma('journal_mode = WAL');
   _db.pragma('foreign_keys = ON');
   migrate(_db);
@@ -107,6 +113,23 @@ function migrate(db: Database.Database): void {
   if (version < 6) {
     db.exec(`ALTER TABLE videos ADD COLUMN display_name TEXT`);
     db.pragma('user_version = 6');
+  }
+  if (version < 7) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS insight_tasks (
+        id              TEXT PRIMARY KEY,
+        video_sha       TEXT NOT NULL REFERENCES videos(sha256),
+        status          TEXT NOT NULL,
+        model           TEXT NOT NULL,
+        ui_language     TEXT NOT NULL,
+        error_msg       TEXT,
+        created_at      INTEGER NOT NULL,
+        completed_at    INTEGER,
+        UNIQUE (video_sha, ui_language)
+      );
+      CREATE INDEX IF NOT EXISTS idx_insight_status ON insight_tasks(status);
+    `);
+    db.pragma('user_version = 7');
   }
 }
 

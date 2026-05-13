@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 import { EventEmitter } from 'node:events';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
@@ -7,26 +8,29 @@ import { randomUUID } from 'node:crypto';
 import { getDb, SUBCAST_PATHS } from './db';
 import { logEvent } from './log';
 import { DEFAULT_TRANSLATE_MODEL, translateAll, unloadOllamaModel } from './ollama';
+import { ProcessAbortedError } from './process';
 import { detectHallucination, type HallucinationReason } from './quality';
 import { loadSettings } from './settings';
 import type { TranscribeOptions } from './whisper';
 import { extractWav, probeDurationS, transcribeChunk } from './whisper';
+import type { SseFrame } from './sse';
 import { parseVtt, serializeVtt, type Cue } from './vtt';
+import type {
+  ChunkRow,
+  TranscribeTaskRow,
+  TranslateTaskRow,
+  VideoRow,
+} from '../types/db';
 
-export interface SseFrame {
-  event: string;
-  data: Record<string, unknown>;
-}
-
-export interface TranscribeTaskRow {
-  id: string;
-  video_sha: string;
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'canceled';
-  model: string;
-  total_chunks: number | null;
-  done_chunks: number;
-  error_msg: string | null;
-}
+/**
+ * Narrow view of TranscribeTaskRow returned by ensureTask / restart flows —
+ * the SELECT lists drop `created_at` / `completed_at` / `language` which the
+ * consumer doesn't need.
+ */
+export type TranscribeTaskSummary = Pick<
+  TranscribeTaskRow,
+  'id' | 'video_sha' | 'status' | 'model' | 'total_chunks' | 'done_chunks' | 'error_msg'
+>;
 
 const CHUNK_SEC = 30;
 
@@ -45,6 +49,12 @@ interface ActiveTask {
   taskId: string;
   emitter: EventEmitter;
   abort: AbortController;
+  /**
+   * Resolves when `runWorker` exits (either normally, by abort, or by
+   * crash). `cancelActive()` awaits this so the shutdown path can be sure
+   * spawned children have been reaped before the process exits.
+   */
+  donePromise: Promise<void>;
 }
 
 class TranscribeQueue {
@@ -54,7 +64,7 @@ class TranscribeQueue {
     const db = getDb();
     const row = db
       .prepare(`SELECT status FROM transcribe_tasks WHERE id = ?`)
-      .get(taskId) as { status: string } | undefined;
+      .get(taskId) as Pick<TranscribeTaskRow, 'status'> | undefined;
     if (!row) return false;
     if (row.status === 'completed' || row.status === 'failed' || row.status === 'canceled') {
       return false;
@@ -67,7 +77,27 @@ class TranscribeQueue {
     return true;
   }
 
-  ensureTask(videoSha: string, model?: string): TranscribeTaskRow {
+  /**
+   * Returns the canonical task row for `videoSha`, creating one if none
+   * exists. Idempotent for non-terminal states.
+   *
+   * Resurrection contract (symmetric with `TranslateQueue.ensureTask`):
+   *
+   *   - `completed`  → returned as-is. Caller (attach) replays history.
+   *   - `running`    → returned as-is. Recovery plugin handles stale
+   *                     rows at boot, so anything still `running` here
+   *                     is genuinely in flight.
+   *   - `queued`     → returned as-is. Already in the work queue.
+   *   - `failed` / `canceled` → flipped back to `queued` so reconnecting
+   *                     EventSources auto-resume. Transcription
+   *                     persists chunks incrementally, so `runWorker`
+   *                     resumes from the next un-done chunk rather than
+   *                     redoing finished work. The dedicated retry
+   *                     endpoint (`POST /api/transcribe/retry`) wipes
+   *                     everything and starts fresh — use that when the
+   *                     intent is "redo from scratch".
+   */
+  ensureTask(videoSha: string, model?: string): TranscribeTaskSummary {
     const effectiveModel = model ?? loadSettings().whisperModel;
     const db = getDb();
     const existing = db
@@ -78,8 +108,23 @@ class TranscribeQueue {
          ORDER BY created_at DESC
          LIMIT 1`,
       )
-      .get(videoSha) as TranscribeTaskRow | undefined;
-    if (existing) return existing;
+      .get(videoSha) as TranscribeTaskSummary | undefined;
+    if (existing) {
+      if (existing.status === 'failed' || existing.status === 'canceled') {
+        db.prepare(
+          `UPDATE transcribe_tasks SET status='queued', error_msg=NULL WHERE id=?`,
+        ).run(existing.id);
+        logEvent({
+          level: 'info',
+          event: 'transcribe_resurrected',
+          taskId: existing.id,
+          fromStatus: existing.status,
+        });
+        existing.status = 'queued';
+        existing.error_msg = null;
+      }
+      return existing;
+    }
     const id = randomUUID();
     db.prepare(
       `INSERT INTO transcribe_tasks (id, video_sha, status, model, created_at)
@@ -107,18 +152,31 @@ class TranscribeQueue {
          ORDER BY created_at ASC
          LIMIT 1`,
       )
-      .get() as { id: string; video_sha: string; model: string } | undefined;
+      .get() as Pick<TranscribeTaskRow, 'id' | 'video_sha' | 'model'> | undefined;
     if (!next) return;
     db.prepare(`UPDATE transcribe_tasks SET status='running' WHERE id = ?`).run(
       next.id,
     );
+    // Assign `this.active` BEFORE kicking the worker: `runWorker` reads it
+    // synchronously at its top. `donePromise` is overwritten with the real
+    // worker promise immediately after, and `cancelActive` only reads it
+    // after at least one tick.
     this.active = {
       taskId: next.id,
       emitter: new EventEmitter(),
       abort: new AbortController(),
+      donePromise: Promise.resolve(),
     };
-    this.runWorker(next.id, next.video_sha, next.model).catch((err) => {
-      console.error('[queue] worker crashed:', err);
+    const workerPromise = this.runWorker(next.id, next.video_sha, next.model);
+    this.active.donePromise = workerPromise.catch(() => {});
+    workerPromise.catch((err) => {
+      logEvent({
+        level: 'error',
+        event: 'transcribe_worker_crashed',
+        taskId: next.id,
+        msg: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
     });
   }
 
@@ -132,17 +190,17 @@ class TranscribeQueue {
     try {
       const videoRow = db
         .prepare(`SELECT ext FROM videos WHERE sha256 = ?`)
-        .get(videoSha) as { ext: string } | undefined;
+        .get(videoSha) as Pick<VideoRow, 'ext'> | undefined;
       if (!videoRow) throw new Error(`video row missing for ${videoSha}`);
 
       const videoPath = join(SUBCAST_PATHS.videos, `${videoSha}${videoRow.ext}`);
       await mkdir(SUBCAST_PATHS.tmp, { recursive: true });
       const wavPath = join(SUBCAST_PATHS.tmp, `${videoSha}.wav`);
       if (!existsSync(wavPath)) {
-        await extractWav(videoPath, wavPath);
+        await extractWav(videoPath, wavPath, active.abort.signal);
       }
 
-      const durationS = await probeDurationS(wavPath);
+      const durationS = await probeDurationS(wavPath, active.abort.signal);
       const totalChunks = Math.max(1, Math.ceil(durationS / CHUNK_SEC));
       db.prepare(`UPDATE transcribe_tasks SET total_chunks = ? WHERE id = ?`).run(
         totalChunks,
@@ -153,7 +211,7 @@ class TranscribeQueue {
         .prepare(
           `SELECT chunk_idx FROM chunks WHERE task_id = ? ORDER BY chunk_idx ASC`,
         )
-        .all(taskId) as { chunk_idx: number }[];
+        .all(taskId) as Pick<ChunkRow, 'chunk_idx'>[];
       const startIdx = persistedChunks.length === 0
         ? 0
         : Math.max(...persistedChunks.map((c) => c.chunk_idx)) + 1;
@@ -200,6 +258,7 @@ class TranscribeQueue {
             model: model as TranscribeOptions['model'],
             temperature: params.temperature,
             noContext: params.noContext,
+            signal: active.abort.signal,
           });
           if (firstCues === null) firstCues = cues;
           const reason = detectHallucination(cues, chunkDurationMs);
@@ -282,7 +341,7 @@ class TranscribeQueue {
         .prepare(
           `SELECT cues_json FROM chunks WHERE task_id = ? ORDER BY chunk_idx ASC`,
         )
-        .all(taskId) as { cues_json: string }[];
+        .all(taskId) as Pick<ChunkRow, 'cues_json'>[];
       const allCues: Cue[] = allChunkRows.flatMap(
         (r) => JSON.parse(r.cues_json) as Cue[],
       );
@@ -315,26 +374,46 @@ class TranscribeQueue {
       db.prepare(
         `UPDATE transcribe_tasks SET status='completed', completed_at = ? WHERE id = ?`,
       ).run(Date.now(), taskId);
-      await unlink(wavPath).catch(() => {});
+      await unlink(wavPath).catch((err) => {
+        logEvent({
+          level: 'debug',
+          event: 'wav_cleanup_failed',
+          path: wavPath,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
 
       emit({
         event: 'done',
         data: { taskId, totalCues: allCues.length },
       });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      db.prepare(
-        `UPDATE transcribe_tasks SET status='failed', error_msg = ? WHERE id = ?`,
-      ).run(msg, taskId);
-      emit({
-        event: 'error',
-        data: { taskId, code: 'FATAL_UNKNOWN', msg },
-      });
+      // If a child process was killed because the worker was canceled,
+      // the rejection surfaces as ProcessAbortedError mid-await. Map it
+      // back onto the canceled path so the row doesn't end up 'failed'.
+      if (err instanceof ProcessAbortedError || active.abort.signal.aborted) {
+        db.prepare(`UPDATE transcribe_tasks SET status='canceled' WHERE id=?`).run(taskId);
+        emit({ event: 'status', data: { taskId, status: 'canceled' } });
+      } else {
+        const msg = err instanceof Error ? err.message : String(err);
+        db.prepare(
+          `UPDATE transcribe_tasks SET status='failed', error_msg = ? WHERE id = ?`,
+        ).run(msg, taskId);
+        emit({
+          event: 'error',
+          data: { taskId, code: 'FATAL_UNKNOWN', msg },
+        });
+      }
     } finally {
       active.emitter.emit('end');
       this.active = null;
       this.tryStartNext().catch((err) => {
-        console.error('[queue] tryStartNext failed:', err);
+        logEvent({
+          level: 'error',
+          event: 'transcribe_trystartnext_failed',
+          msg: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+        });
       });
     }
   }
@@ -350,7 +429,7 @@ class TranscribeQueue {
         `SELECT id, video_sha, status, model, total_chunks, done_chunks, error_msg
          FROM transcribe_tasks WHERE id = ?`,
       )
-      .get(taskId) as TranscribeTaskRow | undefined;
+      .get(taskId) as TranscribeTaskSummary | undefined;
     if (!task) {
       yield {
         event: 'error',
@@ -363,7 +442,7 @@ class TranscribeQueue {
       .prepare(
         `SELECT chunk_idx, cues_json, quality FROM chunks WHERE task_id = ? ORDER BY chunk_idx ASC`,
       )
-      .all(taskId) as { chunk_idx: number; cues_json: string; quality: string }[];
+      .all(taskId) as Pick<ChunkRow, 'chunk_idx' | 'cues_json' | 'quality'>[];
     const lastHistoryIdx = historyRows.length === 0
       ? -1
       : Math.max(...historyRows.map((r) => r.chunk_idx));
@@ -490,6 +569,22 @@ class TranscribeQueue {
       emitter.off('end', onEnd);
     }
   }
+
+  /**
+   * Cancel the currently-running task, if any, and wait for the worker
+   * (and its spawned children) to exit. Used by the Electron `before-quit`
+   * hook so the worker stops cleanly, child processes are reaped, and its
+   * DB row lands as 'canceled' rather than zombie 'running'.
+   */
+  async cancelActive(): Promise<void> {
+    const active = this.active;
+    if (!active) return;
+    const id = active.taskId;
+    getDb().prepare(`UPDATE transcribe_tasks SET status='canceled' WHERE id=?`).run(id);
+    active.abort.abort();
+    logEvent({ level: 'info', event: 'transcribe_canceled', taskId: id, reason: 'shutdown' });
+    await active.donePromise;
+  }
 }
 
 export const transcribeQueue = new TranscribeQueue();
@@ -498,16 +593,14 @@ export const transcribeQueue = new TranscribeQueue();
 // TranslateQueue — single-concurrent worker, priority-ordered queue.
 // ─────────────────────────────────────────────────────────────────────
 
-export interface TranslateTaskRow {
-  id: string;
-  video_sha: string;
-  target_lang: string;
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'canceled';
-  model: string;
-  progress_pct: number;
-  priority: number;
-  error_msg: string | null;
-}
+/**
+ * Narrow view of TranslateTaskRow returned by ensureTask / restart flows.
+ * SELECT lists omit `created_at` / `completed_at`.
+ */
+export type TranslateTaskSummary = Pick<
+  TranslateTaskRow,
+  'id' | 'video_sha' | 'target_lang' | 'status' | 'model' | 'progress_pct' | 'priority' | 'error_msg'
+>;
 
 interface ActiveTranslateTask {
   taskId: string;
@@ -517,12 +610,23 @@ interface ActiveTranslateTask {
   emitter: EventEmitter;
   abort: AbortController;
   doneCues: Cue[]; // cues already emitted/persisted; for late-subscriber replay
+  /** Resolves when `runWorker` exits. See ActiveTask.donePromise. */
+  donePromise: Promise<void>;
 }
 
 class TranslateQueue {
   private active: ActiveTranslateTask | null = null;
 
-  ensureTask(videoSha: string, lang: string, model?: string): TranslateTaskRow {
+  /**
+   * Returns the canonical task row for `(videoSha, lang)`, creating one
+   * if none exists. Idempotent for non-terminal states. See
+   * `TranscribeQueue.ensureTask` for the full resurrection contract —
+   * the rules here are identical, with one practical note: translation
+   * does NOT persist per-batch progress, so a resurrected task restarts
+   * from batch 0. Cheap when Ollama is healthy, but the user pays the
+   * inference cost again.
+   */
+  ensureTask(videoSha: string, lang: string, model?: string): TranslateTaskSummary {
     const effectiveModel = model ?? loadSettings().ollamaModel ?? DEFAULT_TRANSLATE_MODEL;
     const db = getDb();
     const existing = db
@@ -530,15 +634,22 @@ class TranslateQueue {
         `SELECT id, video_sha, target_lang, status, model, progress_pct, priority, error_msg
          FROM translate_tasks WHERE video_sha = ? AND target_lang = ?`,
       )
-      .get(videoSha, lang) as TranslateTaskRow | undefined;
+      .get(videoSha, lang) as TranslateTaskSummary | undefined;
     if (existing) {
       if (existing.status === 'failed' || existing.status === 'canceled') {
-        // Allow resurrection
         db.prepare(
-          `UPDATE translate_tasks SET status='queued', error_msg=NULL WHERE id=?`,
+          `UPDATE translate_tasks SET status='queued', error_msg=NULL, progress_pct=0 WHERE id=?`,
         ).run(existing.id);
+        logEvent({
+          level: 'info',
+          event: 'translate_resurrected',
+          taskId: existing.id,
+          lang,
+          fromStatus: existing.status,
+        });
         existing.status = 'queued';
         existing.error_msg = null;
+        existing.progress_pct = 0;
       }
       return existing;
     }
@@ -578,7 +689,7 @@ class TranslateQueue {
     const db = getDb();
     const row = db
       .prepare(`SELECT status FROM translate_tasks WHERE id = ?`)
-      .get(taskId) as { status: string } | undefined;
+      .get(taskId) as Pick<TranslateTaskRow, 'status'> | undefined;
     if (!row) return false;
     if (row.status === 'completed' || row.status === 'failed' || row.status === 'canceled') {
       return false;
@@ -615,9 +726,18 @@ class TranslateQueue {
       emitter: new EventEmitter(),
       abort: new AbortController(),
       doneCues: [],
+      donePromise: Promise.resolve(),
     };
-    this.runWorker(this.active).catch((err) => {
-      console.error('[translateQueue] worker crashed:', err);
+    const workerPromise = this.runWorker(this.active);
+    this.active.donePromise = workerPromise.catch(() => {});
+    workerPromise.catch((err) => {
+      logEvent({
+        level: 'error',
+        event: 'translate_worker_crashed',
+        taskId: next.id,
+        msg: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
     });
   }
 
@@ -743,7 +863,12 @@ class TranslateQueue {
       this.active = null;
       unloadOllamaModel(model).catch(() => {});
       this.tryStartNext().catch((err) => {
-        console.error('[translateQueue] tryStartNext failed:', err);
+        logEvent({
+          level: 'error',
+          event: 'translate_trystartnext_failed',
+          msg: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+        });
       });
     }
   }
@@ -755,7 +880,7 @@ class TranslateQueue {
         `SELECT id, video_sha, target_lang, status, model, progress_pct, priority, error_msg
          FROM translate_tasks WHERE id = ?`,
       )
-      .get(taskId) as TranslateTaskRow | undefined;
+      .get(taskId) as TranslateTaskSummary | undefined;
     if (!task) {
       yield {
         event: 'error',
@@ -882,6 +1007,22 @@ class TranslateQueue {
       live.emitter.off('frame', onFrame);
       live.emitter.off('end', onEnd);
     }
+  }
+
+  /**
+   * Cancel the currently-running translation, if any, and wait for the
+   * worker to exit. Mirrors `TranscribeQueue.cancelActive` — used by the
+   * Electron `before-quit` hook so the DB doesn't carry a 'running' row
+   * across launches.
+   */
+  async cancelActive(): Promise<void> {
+    const active = this.active;
+    if (!active) return;
+    const id = active.taskId;
+    getDb().prepare(`UPDATE translate_tasks SET status='canceled' WHERE id=?`).run(id);
+    active.abort.abort();
+    logEvent({ level: 'info', event: 'translate_canceled', taskId: id, reason: 'shutdown' });
+    await active.donePromise;
   }
 }
 

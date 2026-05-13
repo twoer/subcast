@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 import type { Cue } from './vtt';
 
 const SRT_TS = /^(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})[,.](\d{3})/;
@@ -72,4 +73,47 @@ export function parseSubtitleByExt(content: string, _ext: string): Cue[] {
   // and parseSrt above handles both. ASS lines are matched via the `Dialogue:`
   // pattern.
   return parseSrt(content);
+}
+
+function msToSrtTs(ms: number): string {
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  const s = Math.floor((ms % 60_000) / 1_000);
+  const k = ms % 1_000;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(k).padStart(3, '0')}`;
+}
+
+export function serializeSrt(cues: readonly Cue[]): string {
+  const parts: string[] = [];
+  cues.forEach((cue, i) => {
+    parts.push(String(i + 1));
+    parts.push(`${msToSrtTs(cue.startMs)} --> ${msToSrtTs(cue.endMs)}`);
+    parts.push(cue.text);
+    parts.push('');
+  });
+  return cues.length === 0 ? '' : parts.join('\n') + '\n';
+}
+
+export function serializeBilingualSrt(
+  original: readonly Cue[],
+  translated: readonly Cue[],
+): string {
+  if (original.length !== translated.length) {
+    throw new Error(`bilingual cue count mismatch: ${original.length} vs ${translated.length}`);
+  }
+  const parts: string[] = [];
+  original.forEach((cue, i) => {
+    const t = translated[i]!;
+    if (cue.startMs !== t.startMs || cue.endMs !== t.endMs) {
+      throw new Error(
+        `bilingual timestamp mismatch at cue ${i}: ` +
+        `original ${cue.startMs}-${cue.endMs} vs translated ${t.startMs}-${t.endMs}`,
+      );
+    }
+    parts.push(String(i + 1));
+    parts.push(`${msToSrtTs(cue.startMs)} --> ${msToSrtTs(cue.endMs)}`);
+    parts.push(`${cue.text}\n${t.text}`);
+    parts.push('');
+  });
+  return original.length === 0 ? '' : parts.join('\n') + '\n';
 }

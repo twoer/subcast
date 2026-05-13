@@ -1,6 +1,9 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <!-- app/pages/index.vue -->
 <script setup lang="ts">
-import { AlertCircle, Check, Upload, ListVideo, X, Film, FileText, History, Pencil } from 'lucide-vue-next';
+import { AlertCircle, Check, Upload, ListVideo, X, Film, FileText, History, ArrowRight } from 'lucide-vue-next';
+import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip';
+import { getFileStatus } from '~/utils/fileStatus';
 
 interface QueueItem {
   kind: 'transcribe' | 'translate';
@@ -52,36 +55,41 @@ interface CacheEntry {
 
 const cachedVideos = ref<CacheEntry[]>([]);
 
-const renameItem = ref<CacheEntry | null>(null);
-const renameValue = ref('');
-const renameSaving = ref(false);
-
-function openRename(item: CacheEntry) {
-  renameItem.value = item;
-  renameValue.value = item.displayName ?? item.originalName;
-  renameSaving.value = false;
-}
-
-async function confirmRename() {
-  const item = renameItem.value;
-  if (!item) return;
-  renameSaving.value = true;
-  const name = renameValue.value.trim();
-  const displayName = name || null;
-  try {
-    await $fetch(`/api/cache/${item.sha256}`, {
-      method: 'PATCH',
-      body: { displayName },
-    });
-    item.displayName = displayName;
-  } catch { /* refresh will reconcile */ }
-  renameItem.value = null;
-}
-
 const queueItems = ref<QueueItem[]>([]);
 const healthData = ref<HealthResp | null>(null);
 let pollHandle: ReturnType<typeof setInterval> | null = null;
 let healthHandle: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Desktop-only: in-wizard pieces that are still missing. `null` in web
+ * mode (the endpoint 404s and we fall back to undefined). Surfaces a
+ * "Return to Setup" banner above the upload zone so users who skipped a
+ * step have a single click back into the wizard.
+ */
+interface DesktopSetupStatus {
+  hasWhisperModel: boolean;
+  ollamaRunning: boolean;
+  hasQwen: boolean;
+}
+const desktopSetup = ref<DesktopSetupStatus | null>(null);
+
+async function refreshDesktopSetup(): Promise<void> {
+  try {
+    desktopSetup.value = await $fetch<DesktopSetupStatus>('/api/desktop/setup-status');
+  } catch {
+    desktopSetup.value = null;
+  }
+}
+
+const desktopSetupGaps = computed<string[]>(() => {
+  const s = desktopSetup.value;
+  if (!s) return [];
+  const gaps: string[] = [];
+  if (!s.hasWhisperModel) gaps.push(t('desktop.home.gapWhisper'));
+  if (!s.ollamaRunning) gaps.push(t('desktop.home.gapOllama'));
+  if (!s.hasQwen) gaps.push(t('desktop.home.gapQwen'));
+  return gaps;
+});
 
 async function refreshHealth() {
   try {
@@ -119,10 +127,13 @@ async function refreshQueue() {
   }
 }
 
+const { count: libraryCount } = useLibraryCount();
+
 async function refreshLibrary() {
   try {
-    const res = await $fetch<{ items: CacheEntry[] }>('/api/cache/list');
+    const res = await $fetch<{ items: CacheEntry[]; totals: { count: number } }>('/api/cache/list');
     cachedVideos.value = res.items.slice(0, 15);
+    libraryCount.value = res.totals.count;
   } catch {
     /* non-critical */
   }
@@ -253,16 +264,50 @@ const activeCount = computed(
     queueItems.value.filter((i) => i.status === 'queued' || i.status === 'running').length,
 );
 
+/**
+ * Desktop-only: handle paths the OS shell hands us. The Electron main
+ * process delivers them as a `subcast:open-file` CustomEvent on `window`
+ * (see `app/plugins/desktop-open-file.client.ts`). We import the file
+ * via the desktop-mode-only `/api/desktop/upload-from-path` and navigate
+ * to the player — the same UX as a successful drag-drop in the browser.
+ */
+async function handleOsOpenFile(path: string): Promise<void> {
+  error.value = null;
+  isUploading.value = true;
+  try {
+    const res = await $fetch<{ hash: string }>('/api/desktop/upload-from-path', {
+      method: 'POST',
+      body: { path },
+    });
+    await navigateTo(`/player/${res.hash}`);
+  } catch (e) {
+    const err = e as { statusMessage?: string; message?: string };
+    error.value = err.statusMessage ?? err.message ?? t('desktop.home.openFileFailed');
+  } finally {
+    isUploading.value = false;
+  }
+}
+
+function onOsOpenFileEvent(e: Event): void {
+  const detail = (e as CustomEvent<string>).detail;
+  if (typeof detail === 'string' && detail.length > 0) {
+    void handleOsOpenFile(detail);
+  }
+}
+
 onMounted(() => {
   void refreshQueue();
   void refreshHealth();
   void refreshLibrary();
+  void refreshDesktopSetup();
   pollHandle = setInterval(refreshQueue, 2_000);
   healthHandle = setInterval(refreshHealth, 10_000);
+  window.addEventListener('subcast:open-file', onOsOpenFileEvent);
 });
 onBeforeUnmount(() => {
   if (pollHandle) clearInterval(pollHandle);
   if (healthHandle) clearInterval(healthHandle);
+  window.removeEventListener('subcast:open-file', onOsOpenFileEvent);
 });
 
 function fmtKindLabel(item: QueueItem): string {
@@ -293,13 +338,31 @@ function statusBadgeClass(s: QueueItem['status']) {
 </script>
 
 <template>
-  <main class="min-h-dvh bg-background px-8 pb-12">
-    <AppHeader :lan-url="healthData?.lanUrl" />
+  <AppShell>
+    <template #header>
+      <AppHeader :lan-url="healthData?.lanUrl" />
+    </template>
 
     <div class="mx-auto w-full max-w-screen-2xl px-4">
 
+      <NuxtLink
+        v-if="desktopSetupGaps.length > 0"
+        to="/setup-wizard"
+        class="surface-1 mb-6 flex items-center gap-3 rounded-xl border border-warning/30 bg-warning/[0.06] px-4 py-3 text-sm transition-colors hover:bg-warning/[0.10]"
+      >
+        <AlertCircle class="h-4 w-4 shrink-0 text-warning" />
+        <span class="flex-1">
+          <span class="font-medium text-foreground">{{ t('desktop.home.setupIncomplete') }}</span>
+          <span class="text-muted-foreground"> {{ desktopSetupGaps.join(' · ') }}</span>
+        </span>
+        <span class="inline-flex items-center gap-1 text-xs text-warning">
+          {{ t('desktop.home.openSetupWizard') }}
+          <ArrowRight class="h-3.5 w-3.5" />
+        </span>
+      </NuxtLink>
+
       <div
-        v-if="healthData && !healthData.health.ready"
+        v-if="healthData && !healthData.health.ready && !desktopSetup"
         class="surface-1 mb-6 overflow-hidden rounded-xl border border-warning/20"
       >
         <div class="flex items-center gap-2.5 border-b border-warning/10 bg-warning/[0.04] px-4 py-3 dark:bg-warning/[0.06]">
@@ -307,8 +370,8 @@ function statusBadgeClass(s: QueueItem['status']) {
           <span class="flex-1 text-sm font-medium text-foreground">{{ t('health.missing') }}</span>
           <Button
             variant="ghost"
-            size="sm"
-            class="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+            size="xs"
+            class="text-muted-foreground hover:text-foreground"
             @click="refreshHealth"
           >{{ t('health.recheck') }}</Button>
         </div>
@@ -378,45 +441,42 @@ function statusBadgeClass(s: QueueItem['status']) {
             {{ t('index.library.title') }}
           </h2>
           <NuxtLink
-            to="/settings#cache"
+            to="/library"
             class="text-xs text-muted-foreground transition-colors hover:text-foreground hover:underline"
           >{{ t('index.library.more') }}</NuxtLink>
         </div>
-        <ul class="space-y-1.5">
-          <li
-            v-for="item in cachedVideos"
-            :key="item.sha256"
-            class="surface-1 group/row flex items-center gap-3 rounded-lg border px-3.5 py-3 transition-colors hover:bg-accent/40"
-          >
-            <div class="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
-              <Film class="h-4 w-4" />
-            </div>
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-1">
-                <NuxtLink
-                  :to="`/player/${item.sha256}`"
-                  class="truncate text-sm font-medium text-foreground hover:underline"
-                  :title="item.originalName"
-                >{{ item.displayName || item.originalName }}</NuxtLink>
-                <button
-                  class="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover/row:opacity-100"
-                  :title="t('index.library.rename')"
-                  @click.prevent="openRename(item)"
-                >
-                  <Pencil class="h-3 w-3" />
-                </button>
+        <div class="card-list">
+          <ul class="space-y-1">
+            <li
+              v-for="item in cachedVideos"
+              :key="item.sha256"
+              class="group/row flex items-center gap-3 rounded-md px-3 py-2.5 transition-colors hover:bg-accent/50"
+            >
+              <div class="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+                <Film class="h-4 w-4" />
               </div>
-              <div class="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                <span>{{ item.langs.length > 0 ? item.langs.join(' · ') : t('index.library.noSubs') }}</span>
-                <span class="text-border">·</span>
-                <span class="font-mono">{{ fmtBytes(item.videoBytes + item.cacheBytes) }}</span>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1">
+                  <NuxtLink
+                    :to="`/player/${item.sha256}`"
+                    class="truncate text-sm font-medium text-foreground hover:underline"
+                    :title="item.originalName"
+                  >{{ item.displayName || item.originalName }}</NuxtLink>
+                </div>
+                <div class="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                  <FileStatusBadges :status="getFileStatus(item, queueItems)" />
+                  <span v-if="item.langs.length === 0 && getFileStatus(item, queueItems).transcribe === 'none'">
+                    {{ t('index.library.noSubs') }}
+                  </span>
+                  <span class="font-mono">{{ fmtBytes(item.videoBytes + item.cacheBytes) }}</span>
+                </div>
               </div>
-            </div>
-            <span class="shrink-0 font-mono text-[11px] text-muted-foreground">
-              {{ fmtTimeAgo(item.lastOpenedAt) }}
-            </span>
-          </li>
-        </ul>
+              <span class="shrink-0 text-2xs text-muted-foreground">
+                {{ fmtTimeAgo(item.lastOpenedAt) }}
+              </span>
+            </li>
+          </ul>
+        </div>
       </section>
 
       <section v-if="queueItems.length > 0" class="mt-10">
@@ -425,24 +485,25 @@ function statusBadgeClass(s: QueueItem['status']) {
             <ListVideo class="h-3.5 w-3.5" />
             {{ t('index.queue') }}
           </h2>
-          <span class="font-mono text-xs text-muted-foreground">
+          <span class="text-xs text-muted-foreground">
             {{ t('index.queueMeta', { active: activeCount, total: queueItems.length }) }}
           </span>
         </div>
-        <ul class="space-y-2">
-          <li
-            v-for="item in queueItems"
-            :key="`${item.kind}:${item.id}`"
-            class="surface-1 flex items-center justify-between gap-3 rounded-lg border p-3.5 transition-colors hover:bg-accent/40"
-          >
-            <div class="min-w-0 flex-1">
+        <div class="card-list">
+          <ul class="space-y-1">
+            <li
+              v-for="item in queueItems"
+              :key="`${item.kind}:${item.id}`"
+              class="flex items-center justify-between gap-3 rounded-md px-3 py-2.5 transition-colors hover:bg-accent/50"
+            >
+              <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2 text-sm">
                 <NuxtLink
                   :to="`/player/${item.videoSha}`"
                   class="max-w-xs truncate font-medium text-foreground hover:underline"
                   :title="item.videoName"
                 >{{ item.videoName }}</NuxtLink>
-                <Badge variant="outline" :class="statusBadgeClass(item.status)">
+                <Badge variant="outline" size="sm" :class="statusBadgeClass(item.status)">
                   {{ t(`index.status.${item.status}`) }}
                 </Badge>
               </div>
@@ -466,19 +527,23 @@ function statusBadgeClass(s: QueueItem['status']) {
                 {{ item.progressPct }}%
               </template>
             </div>
-            <Button
-              v-if="item.status === 'queued' || item.status === 'running'"
-              variant="ghost"
-              size="icon-sm"
-              class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-              :title="t('index.cancel')"
-              :aria-label="t('index.cancel')"
-              @click="cancelTask(item)"
-            >
-              <X class="h-4 w-4" />
-            </Button>
-          </li>
-        </ul>
+              <Tooltip v-if="item.status === 'queued' || item.status === 'running'">
+                <TooltipTrigger as-child>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    :aria-label="t('index.cancel')"
+                    @click="cancelTask(item)"
+                  >
+                    <X />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{{ t('index.cancel') }}</TooltipContent>
+              </Tooltip>
+            </li>
+          </ul>
+        </div>
       </section>
     </div>
 
@@ -512,31 +577,5 @@ function statusBadgeClass(s: QueueItem['status']) {
       </DialogContent>
     </Dialog>
 
-    <Dialog
-      :open="renameItem !== null"
-      @update:open="(v: boolean) => { if (!v) renameItem = null }"
-    >
-      <DialogContent class="max-w-md">
-        <DialogHeader>
-          <DialogTitle>{{ t('index.library.rename') }}</DialogTitle>
-          <DialogDescription>{{ t('index.library.renameDesc') }}</DialogDescription>
-        </DialogHeader>
-        <input
-          v-model="renameValue"
-          type="text"
-          class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          :placeholder="renameItem?.originalName"
-          @keydown.enter="confirmRename"
-        >
-        <DialogFooter>
-          <Button variant="secondary" @click="renameItem = null">
-            {{ t('index.library.cancel') }}
-          </Button>
-          <Button :disabled="renameSaving" @click="confirmRename">
-            {{ t('index.library.renameConfirm') }}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  </main>
+  </AppShell>
 </template>

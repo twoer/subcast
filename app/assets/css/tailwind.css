@@ -124,6 +124,30 @@
   }
 }
 
+@layer components {
+  /* Canonical card primitives. Page-level audit found 20+ ad-hoc
+   * variants of `surface-1 rounded-xl border border-border/50 p-X` —
+   * these three utilities collapse them to a single source of truth
+   * so border opacity / radius / padding can't silently drift again.
+   *
+   *   .card          — default section card (settings, library, log viewer)
+   *   .card-compact  — denser selection / progress card (wizard list items)
+   *   .card-list     — list container (queue, library rows, history)
+   *
+   * For semantic banners (warning / destructive / amber custom), keep
+   * inline classes — those carry meaning the card primitives don't.
+   */
+  .card {
+    @apply surface-1 rounded-xl border border-border/50 p-6;
+  }
+  .card-compact {
+    @apply surface-1 rounded-xl border border-border/50 p-4;
+  }
+  .card-list {
+    @apply surface-1 rounded-xl border border-border/50 p-3;
+  }
+}
+
 @layer utilities {
   /* Surface elevation system — soft shadows that work in light & dark.
    * shadcn cards use bare `border` by default; these classes upgrade

@@ -1,13 +1,13 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+import { isWhisperModelName } from '#shared/whisperModels';
 import { saveSettings, type SubcastSettings } from '../utils/settings';
-
-const WHISPER_MODELS = ['tiny', 'base', 'small', 'medium', 'large-v3', 'large-v3-turbo'] as const;
 
 export default defineEventHandler(async (event) => {
   const body = (await readBody(event)) as Partial<SubcastSettings>;
   const patch: Partial<SubcastSettings> = {};
 
   if (body.whisperModel !== undefined) {
-    if (!WHISPER_MODELS.includes(body.whisperModel as typeof WHISPER_MODELS[number])) {
+    if (!isWhisperModelName(body.whisperModel)) {
       throw createError({ statusCode: 400, statusMessage: 'BAD_WHISPER_MODEL' });
     }
     patch.whisperModel = body.whisperModel;

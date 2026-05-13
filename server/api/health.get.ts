@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 import { detectHardware } from '../utils/hardware';
 import { detectHealth } from '../utils/health';
 import { loadSettings } from '../utils/settings';
@@ -70,11 +71,15 @@ export default defineEventHandler(async () => {
       });
     }
   }
+  // Suppress the LAN URL in desktop mode — the Electron shell loads
+  // 127.0.0.1, so the LAN address is meaningless there and just clutters
+  // the header. Web/dev mode still surfaces it for LAN-demo flows.
+  const isDesktop = process.env.SUBCAST_DESKTOP === 'true';
   return {
     settings,
     hardware,
     health,
     fixes,
-    lanUrl: hardware.lanIp ? `http://${hardware.lanIp}:3000` : null,
+    lanUrl: !isDesktop && hardware.lanIp ? `http://${hardware.lanIp}:3000` : null,
   };
 });

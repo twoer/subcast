@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 import type { Cue } from './vtt';
 
 export type HallucinationReason = 'repeat' | 'reverse-ts' | 'density';

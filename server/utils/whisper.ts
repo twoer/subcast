@@ -1,11 +1,14 @@
-import { spawn } from 'node:child_process';
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 import { existsSync } from 'node:fs';
 import { readFile, unlink } from 'node:fs/promises';
-import { join } from 'node:path';
+import type { WhisperModelName } from '#shared/whisperModels';
 import { parseVtt, type Cue } from './vtt';
+import { WHISPER_CLI_PATH, whisperModelPath } from './whisperPaths';
+import { FFMPEG_PATH, FFPROBE_PATH } from './ffmpegPaths';
+import { runProcess } from './process';
 
 export interface TranscribeOptions {
-  model?: 'tiny' | 'base' | 'small' | 'medium' | 'large-v3' | 'large-v3-turbo';
+  model?: WhisperModelName;
   /** Whisper sampling temperature. Default 0 (greedy). Higher = more diverse. */
   temperature?: number;
   /**
@@ -14,57 +17,36 @@ export interface TranscribeOptions {
    * default greedy pass produces repetitive output.
    */
   noContext?: boolean;
+  /**
+   * Cancellation hook. Plumbed through to every child process; when fired
+   * the worker's ffmpeg / whisper-cli children are killed within
+   * `killGraceMs` (default 2s) instead of running to completion.
+   */
+  signal?: AbortSignal;
 }
 
-const NW_ROOT = join(
-  process.cwd(),
-  'node_modules',
-  'nodejs-whisper',
-  'cpp',
-  'whisper.cpp',
-);
-const IS_WIN = process.platform === 'win32';
-const CLI_PATH = join(
-  NW_ROOT,
-  'build',
-  'bin',
-  ...(IS_WIN ? ['Release'] : []),
-  'whisper-cli' + (IS_WIN ? '.exe' : ''),
-);
-const MODELS_DIR = join(NW_ROOT, 'models');
+// Hard upper bounds. These are SAFETY ceilings, not SLAs — a healthy run
+// finishes well under. Hitting them means something is wedged.
+const FFPROBE_TIMEOUT_MS = 10_000;
+const FFMPEG_EXTRACT_TIMEOUT_MS = 60 * 60 * 1000; // 1h: full-video wav extract
 
-interface SpawnResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
-
-function spawnAndWait(cmd: string, args: readonly string[]): Promise<SpawnResult> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderr = '';
-    proc.stdout.on('data', (d) => {
-      stdout += d.toString();
-    });
-    proc.stderr.on('data', (d) => {
-      stderr += d.toString();
-    });
-    proc.on('error', reject);
-    proc.on('close', (code) => resolve({ code: code ?? 1, stdout, stderr }));
-  });
-}
-
-export async function probeDurationS(absPath: string): Promise<number> {
-  const r = await spawnAndWait('ffprobe', [
-    '-v',
-    'error',
-    '-show_entries',
-    'format=duration',
-    '-of',
-    'default=noprint_wrappers=1:nokey=1',
-    absPath,
-  ]);
+export async function probeDurationS(
+  absPath: string,
+  signal?: AbortSignal,
+): Promise<number> {
+  const r = await runProcess(
+    FFPROBE_PATH,
+    [
+      '-v',
+      'error',
+      '-show_entries',
+      'format=duration',
+      '-of',
+      'default=noprint_wrappers=1:nokey=1',
+      absPath,
+    ],
+    { label: 'ffprobe', timeoutMs: FFPROBE_TIMEOUT_MS, signal },
+  );
   if (r.code !== 0) throw new Error(`ffprobe failed: ${r.stderr}`);
   const v = parseFloat(r.stdout.trim());
   if (!Number.isFinite(v) || v <= 0) {
@@ -73,29 +55,37 @@ export async function probeDurationS(absPath: string): Promise<number> {
   return v;
 }
 
-export async function extractWav(absPath: string, wavPath: string): Promise<void> {
-  const r = await spawnAndWait('ffmpeg', [
-    '-i',
-    absPath,
-    '-ar',
-    '16000',
-    '-ac',
-    '1',
-    '-c:a',
-    'pcm_s16le',
-    wavPath,
-    '-y',
-  ]);
+export async function extractWav(
+  absPath: string,
+  wavPath: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const r = await runProcess(
+    FFMPEG_PATH,
+    [
+      '-i',
+      absPath,
+      '-ar',
+      '16000',
+      '-ac',
+      '1',
+      '-c:a',
+      'pcm_s16le',
+      wavPath,
+      '-y',
+    ],
+    { label: 'ffmpeg-extract', timeoutMs: FFMPEG_EXTRACT_TIMEOUT_MS, signal },
+  );
   if (r.code !== 0) throw new Error(`ffmpeg extract failed: ${r.stderr}`);
 }
 
 function assertWhisperReady(model: string): string {
-  if (!existsSync(CLI_PATH)) {
+  if (!existsSync(WHISPER_CLI_PATH)) {
     throw new Error(
-      `whisper-cli not built at ${CLI_PATH}. Run: cd node_modules/nodejs-whisper/cpp/whisper.cpp/build && cmake --build . --target whisper-cli`,
+      `whisper-cli not built at ${WHISPER_CLI_PATH}. Run: cd node_modules/nodejs-whisper/cpp/whisper.cpp/build && cmake --build . --target whisper-cli`,
     );
   }
-  const modelPath = join(MODELS_DIR, `ggml-${model}.bin`);
+  const modelPath = whisperModelPath(model);
   if (!existsSync(modelPath)) {
     throw new Error(
       `Model not downloaded: ${modelPath}. Run: npx nodejs-whisper download ${model}`,
@@ -121,23 +111,31 @@ export async function transcribeChunk(
 ): Promise<Cue[]> {
   const model = opts.model ?? 'base';
   const modelPath = assertWhisperReady(model);
+  const signal = opts.signal;
 
   const startSec = chunkIdx * chunkSizeSec;
   const endSec = Math.min(startSec + chunkSizeSec, totalDurationSec);
   const sliceWavPath = wavPath.replace(/\.wav$/, `-chunk${chunkIdx}.wav`);
 
-  const ff = await spawnAndWait('ffmpeg', [
-    '-i',
-    wavPath,
-    '-ss',
-    String(startSec),
-    '-to',
-    String(endSec),
-    '-c:a',
-    'pcm_s16le',
-    sliceWavPath,
-    '-y',
-  ]);
+  // ffmpeg slice is bounded by chunk duration; allow 30× real-time as a
+  // wedged-process ceiling (i.e. 30s chunk → 15 min cap).
+  const ffSliceTimeoutMs = Math.max(60_000, chunkSizeSec * 30 * 1000);
+  const ff = await runProcess(
+    FFMPEG_PATH,
+    [
+      '-i',
+      wavPath,
+      '-ss',
+      String(startSec),
+      '-to',
+      String(endSec),
+      '-c:a',
+      'pcm_s16le',
+      sliceWavPath,
+      '-y',
+    ],
+    { label: 'ffmpeg-slice', timeoutMs: ffSliceTimeoutMs, signal },
+  );
   if (ff.code !== 0) {
     throw new Error(`ffmpeg slice chunk ${chunkIdx} failed: ${ff.stderr}`);
   }
@@ -164,7 +162,14 @@ export async function transcribeChunk(
       // which disables condition_on_previous_text equivalently.
       args.push('-mc', '0');
     }
-    const wc = await spawnAndWait(CLI_PATH, args);
+    // 60× real-time ceiling on whisper-cli — enough headroom for slow CPUs
+    // running large models; tighter than wallclock-infinity.
+    const whisperTimeoutMs = Math.max(60_000, chunkSizeSec * 60 * 1000);
+    const wc = await runProcess(WHISPER_CLI_PATH, args, {
+      label: 'whisper-cli',
+      timeoutMs: whisperTimeoutMs,
+      signal,
+    });
     if (wc.code !== 0) {
       throw new Error(`whisper-cli chunk ${chunkIdx} failed: ${wc.stderr}`);
     }

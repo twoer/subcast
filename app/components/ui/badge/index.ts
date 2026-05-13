@@ -4,7 +4,7 @@ import { cva } from "class-variance-authority"
 export { default as Badge } from "./Badge.vue"
 
 export const badgeVariants = cva(
-  "inline-flex gap-1 items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+  "inline-flex gap-1 items-center border font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
   {
     variants: {
       variant: {
@@ -16,9 +16,18 @@ export const badgeVariants = cva(
           "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
         outline: "text-foreground",
       },
+      // Status/state badges across the app standardised on the `sm` size
+      // (10px text, square-ish corners) for visual density. `default`
+      // remains the bigger pill-shaped Badge for callouts like the
+      // "recommended" highlight in the setup wizard.
+      size: {
+        default: "rounded-full px-2.5 py-0.5 text-xs",
+        sm: "rounded-sm px-1.5 py-0.5 text-3xs",
+      },
     },
     defaultVariants: {
       variant: "default",
+      size: "default",
     },
   },
 )

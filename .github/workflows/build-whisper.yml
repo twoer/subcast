@@ -1,0 +1,85 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Pre-compile whisper-cli for the two platforms Subcast desktop ships on
+# (decision 5: macOS arm64 + Windows x64). whisper.cpp is pinned to a
+# specific tag (decision 25); upgrading is a deliberate PR — bump
+# WHISPER_CPP_VERSION here and re-trigger the workflow.
+#
+# Artifacts:
+#   whisper-cli-macos-arm64  →  Mach-O arm64 binary (Metal acceleration on)
+#   whisper-cli-windows-x64  →  whisper-cli.exe (CPU-only, no CUDA yet)
+#
+# Trigger:
+#   - Push that touches this workflow file
+#   - Manual `workflow_dispatch`
+#
+# Phase 1.13 / Phase 1 milestone pipeline will fetch these artifacts into
+# `binaries/<platform>/` for electron-builder's extraResources.
+
+name: Build whisper-cli
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build-whisper.yml'
+  workflow_dispatch:
+
+env:
+  WHISPER_CPP_VERSION: v1.8.4   # decision 25 — confirmed 2026-05-12
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            arch: arm64
+            ext: ''
+            cmake_flags: '-DGGML_METAL=ON -DCMAKE_BUILD_TYPE=Release'
+            build_config: 'Release'
+            artifact_path: 'whisper.cpp/build/bin/whisper-cli'
+          - os: windows-latest
+            arch: x64
+            ext: '.exe'
+            cmake_flags: '-DCMAKE_BUILD_TYPE=Release -G "Visual Studio 17 2022" -A x64'
+            build_config: 'Release'
+            artifact_path: 'whisper.cpp/build/bin/Release/whisper-cli.exe'
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repo (for traceability only)
+        uses: actions/checkout@v4
+
+      - name: Clone whisper.cpp at pinned tag
+        shell: bash
+        run: |
+          git clone --depth 1 --branch ${{ env.WHISPER_CPP_VERSION }} https://github.com/ggerganov/whisper.cpp
+
+      - name: Configure cmake
+        working-directory: whisper.cpp
+        shell: bash
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. ${{ matrix.cmake_flags }}
+
+      - name: Build whisper-cli
+        working-directory: whisper.cpp/build
+        shell: bash
+        run: cmake --build . --target whisper-cli --config ${{ matrix.build_config }}
+
+      - name: Sanity check binary
+        shell: bash
+        run: |
+          ls -lh ${{ matrix.artifact_path }}
+          # Don't try to run it — Windows runners don't have a working stdin
+          # and macOS unsigned binary may be quarantined.
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: whisper-cli-${{ matrix.os }}-${{ matrix.arch }}
+          path: ${{ matrix.artifact_path }}
+          retention-days: 30

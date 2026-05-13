@@ -1,8 +1,10 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 import { getDb } from '../../utils/db';
+import { isValidHash } from '../../utils/validate';
 
 export default defineEventHandler(async (event) => {
   const hash = getRouterParam(event, 'hash');
-  if (!hash || !/^[0-9a-f]{64}$/.test(hash)) {
+  if (!isValidHash(hash)) {
     throw createError({ statusCode: 400, statusMessage: 'BAD_HASH' });
   }
 

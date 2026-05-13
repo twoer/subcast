@@ -1,6 +1,23 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 // Aggregated queue snapshot for the index page panel. Returns active +
 // recent (last 24h) tasks across both transcribe and translate queues.
 import { getDb } from '../../utils/db';
+import type { TranscribeTaskRow, TranslateTaskRow } from '../../types/db';
+
+// LEFT JOIN on videos: the video may have been deleted, so the joined
+// columns are nullable even though the underlying VideoRow types aren't.
+type VideoJoinFields = {
+  original_name: string | null;
+  display_name: string | null;
+};
+
+type TranscribeJoinRow =
+  & Pick<TranscribeTaskRow, 'id' | 'video_sha' | 'status' | 'model' | 'total_chunks' | 'done_chunks' | 'created_at' | 'error_msg'>
+  & VideoJoinFields;
+
+type TranslateJoinRow =
+  & Pick<TranslateTaskRow, 'id' | 'video_sha' | 'target_lang' | 'status' | 'model' | 'progress_pct' | 'priority' | 'created_at' | 'error_msg'>
+  & VideoJoinFields;
 
 interface QueueItem {
   kind: 'transcribe' | 'translate';
@@ -29,11 +46,7 @@ export default defineEventHandler(() => {
        WHERE t.status IN ('queued','running') OR t.created_at > ?
        ORDER BY t.created_at DESC`,
     )
-    .all(cutoff) as Array<{
-      id: string; video_sha: string; status: string; model: string;
-      total_chunks: number | null; done_chunks: number; created_at: number;
-      error_msg: string | null; original_name: string | null; display_name: string | null;
-    }>;
+    .all(cutoff) as TranscribeJoinRow[];
   const translates = db
     .prepare(
       `SELECT t.id, t.video_sha, t.target_lang, t.status, t.model, t.progress_pct,
@@ -43,11 +56,7 @@ export default defineEventHandler(() => {
        WHERE t.status IN ('queued','running') OR t.created_at > ?
        ORDER BY t.priority DESC, t.created_at DESC`,
     )
-    .all(cutoff) as Array<{
-      id: string; video_sha: string; target_lang: string; status: string;
-      model: string; progress_pct: number; priority: number; created_at: number;
-      error_msg: string | null; original_name: string | null; display_name: string | null;
-    }>;
+    .all(cutoff) as TranslateJoinRow[];
 
   const items: QueueItem[] = [];
   for (const t of transcribes) {

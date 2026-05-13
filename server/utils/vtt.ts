@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 export interface Cue {
   startMs: number;
   endMs: number;
@@ -31,6 +32,29 @@ export function serializeVtt(cues: readonly Cue[]): string {
     out.push(cue.text);
     out.push('');
   }
+  return out.join('\n');
+}
+
+export function serializeBilingualVtt(
+  original: readonly Cue[],
+  translated: readonly Cue[],
+): string {
+  if (original.length !== translated.length) {
+    throw new Error(`bilingual cue count mismatch: ${original.length} vs ${translated.length}`);
+  }
+  const out: string[] = ['WEBVTT', ''];
+  original.forEach((cue, i) => {
+    const t = translated[i]!;
+    if (cue.startMs !== t.startMs || cue.endMs !== t.endMs) {
+      throw new Error(
+        `bilingual timestamp mismatch at cue ${i}: ` +
+        `original ${cue.startMs}-${cue.endMs} vs translated ${t.startMs}-${t.endMs}`,
+      );
+    }
+    out.push(`${msToTs(cue.startMs)} --> ${msToTs(cue.endMs)}`);
+    out.push(`${cue.text}\n${t.text}`);
+    out.push('');
+  });
   return out.join('\n');
 }
 

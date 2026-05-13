@@ -1,55 +1,25 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createHash } from 'node:crypto';
 import JSZip from 'jszip';
 
 import { SUBCAST_PATHS } from '../utils/db';
 import { detectHardware } from '../utils/hardware';
 import { detectHealth } from '../utils/health';
+import { LOG_FILE_PATTERN, LOG_RETENTION_DAYS } from '../utils/log';
+import { sanitizeLine } from '../utils/logSanitize';
 import { loadSettings } from '../utils/settings';
-
-const LOG_RETENTION_DAYS = 7;
-
-function shaShort(s: string): string {
-  return createHash('sha256').update(s).digest('hex').slice(0, 12);
-}
-
-function sanitizeLine(line: string, debug: boolean): string {
-  if (debug) return line;
-  try {
-    const obj = JSON.parse(line) as Record<string, unknown>;
-    for (const k of Object.keys(obj)) {
-      if (
-        k === 'sha' ||
-        k === 'taskId' ||
-        k === 'requestId' ||
-        k === 'lang' ||
-        k === 'event' ||
-        k === 'level' ||
-        k === 'msg' ||
-        k === 'ts' ||
-        k === 'code'
-      ) continue;
-      const v = obj[k];
-      if (typeof v === 'string' && v.length > 0 && (k.toLowerCase().includes('path') || k.toLowerCase().includes('name'))) {
-        obj[k] = `hash:${shaShort(v)}`;
-      }
-    }
-    return JSON.stringify(obj);
-  } catch {
-    return line;
-  }
-}
 
 function recentLogs(debug: boolean): Record<string, string> {
   if (!existsSync(SUBCAST_PATHS.logs)) return {};
   const cutoff = Date.now() - LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000;
   const out: Record<string, string> = {};
   for (const fname of readdirSync(SUBCAST_PATHS.logs)) {
-    if (!fname.endsWith('.jsonl')) continue;
+    const m = LOG_FILE_PATTERN.exec(fname);
+    if (!m) continue;
     const path = join(SUBCAST_PATHS.logs, fname);
     try {
-      const stMs = Date.parse(fname.replace(/\.jsonl$/, '') + 'T23:59:59Z');
+      const stMs = Date.parse(`${m[1]}T23:59:59Z`);
       if (Number.isFinite(stMs) && stMs < cutoff) continue;
       const raw = readFileSync(path, 'utf8');
       const sanitized = raw

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 import { logEvent } from './log';
 import type { Cue } from './vtt';
 
@@ -281,4 +282,48 @@ export async function translateAll(
   }
 
   return out;
+}
+
+export async function* ollamaStreamChat(
+  model: string,
+  prompt: string,
+  signal: AbortSignal,
+  temperature = 0.3,
+): AsyncIterableIterator<string> {
+  const res = await fetch(`${OLLAMA_URL}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    signal,
+    body: JSON.stringify({
+      model,
+      stream: true,
+      options: { temperature },
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(`OLLAMA_HTTP_${res.status}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line) continue;
+      try {
+        const obj = JSON.parse(line) as { message?: { content?: string }; done?: boolean };
+        const delta = obj.message?.content;
+        if (delta) yield delta;
+        if (obj.done) return;
+      } catch {
+        // skip non-JSON heartbeat lines
+      }
+    }
+  }
 }

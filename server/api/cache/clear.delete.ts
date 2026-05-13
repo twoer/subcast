@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 import { existsSync, readdirSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -18,13 +19,16 @@ export default defineEventHandler(async () => {
     }
   }
   const db = getDb();
-  db.exec(`
-    DELETE FROM chunks;
-    DELETE FROM subtitles;
-    DELETE FROM transcribe_tasks;
-    DELETE FROM translate_tasks;
-    DELETE FROM videos;
-  `);
+  // Single transaction so a crash mid-wipe doesn't leave dangling rows
+  // referencing already-deleted videos.
+  db.transaction(() => {
+    db.prepare(`DELETE FROM chunks`).run();
+    db.prepare(`DELETE FROM subtitles`).run();
+    db.prepare(`DELETE FROM transcribe_tasks`).run();
+    db.prepare(`DELETE FROM translate_tasks`).run();
+    db.prepare(`DELETE FROM insight_tasks`).run();
+    db.prepare(`DELETE FROM videos`).run();
+  })();
   logEvent({ level: 'info', event: 'cache_clear_all' });
   return { ok: true };
 });

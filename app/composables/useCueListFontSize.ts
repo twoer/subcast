@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 const KEY = 'subcast.cueListFontSizePx';
 const DEFAULT_PX = 13;
 const MIN_PX = 11;

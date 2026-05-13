@@ -1,321 +1,223 @@
 # Subcast
 
-> Sub + Cast —— 完全本地的多语言字幕播放器。
+> Free · Offline · LLM-powered — audio/video transcription + translation
+>
+> 中文文档: [README.zh.md](./README.zh.md)
 
-把视频拖进来 → 本地 Whisper 转写 → 浏览器边播放边按需翻译。**不联网、不调用付费 API、不上报任何遥测，所有数据都留在本机。**
+> ⚠️ **First-time setup requires internet.** Once Whisper, Ollama, and Qwen
+> models are downloaded, all transcription and translation runs
+> **100% locally** — no cloud APIs, no telemetry, no recurring costs.
 
-## 预览
+Drop in a video → local Whisper transcribes → translate on demand while
+you watch. Subcast ships as a desktop app on macOS and Windows; the same
+codebase also runs as a regular Nuxt web app for developers.
 
-**首页** —— 拖入视频，下方实时显示转写 / 翻译队列。
+## Highlights
 
-![首页](demo/index.png)
+- 🔒 **Privacy-first** — all inference runs locally
+- 💸 **Zero ongoing cost** — no cloud APIs
+- 🌍 **Multilingual** — original + any target language, switchable on the fly
+- ⚡ **Streaming** — start watching while transcription is still running
+- ↩️ **Resume on crash** — interrupted transcription continues from the last completed 30-second chunk
+- 🚦 **Adaptive setup** — first-run wizard picks Whisper / Ollama models based on your hardware and reuses any models already on disk
+- 📥 **Export & search** — VTT / SRT / TXT (mono- and bilingual; bulk → ZIP); in-player search with highlighted matches
+- ✨ **AI summary + chapters** — one-click via local Ollama; chapters click to seek
 
-**播放器** —— 左边视频（自定义控件），右边按语言切换的字幕列表，已缓存语言在下拉里打 ✓ 标记，跟随播放进度高亮当前 cue。
+---
 
-![播放器](demo/player.png)
+## Install (desktop)
 
-**设置** —— 硬件信息 + 模型选择 + 缓存管理 + 字幕显示偏好。
+<!-- TODO(v0.1.0): replace the placeholder hero with a screenshot of the
+     setup-wizard's Step 1 (model picker with "Recommended" badge). -->
 
-![设置](demo/setting.png)
+### Download
 
-▶️ **完整流程演示**：[demo/demo.mp4](demo/demo.mp4) （12 MB，从拖入视频到字幕翻译完成的全过程）
+Grab the latest installer from the
+[Releases page](https://github.com/twoer/subcast/releases):
 
-## 亮点
+| Platform        | File                                  | Size (~) |
+|-----------------|---------------------------------------|----------|
+| macOS (Apple Silicon) | `Subcast-<version>-arm64.dmg`   | 260 MB |
+| Windows (x64)   | `Subcast-Setup-<version>.exe`         | 240 MB |
 
-- 🔒 **隐私优先** —— 所有数据与推理都在本地完成
-- 💸 **零成本** —— 不依赖任何云端 API
-- 🌍 **多语言** —— 原文 + 任意目标语言，可实时切换
-- ⚡ **流式体验** —— 转写过程中即可开始观看
-- ↩️ **断点续传** —— 中途强行结束进程，下次会从最后一个已完成的 30s 分片继续
-- 🚦 **自适应** —— 首次启动按硬件等级自动推荐 Whisper / Ollama 模型
-
-## 技术栈
-
-- **Nuxt 4** + Vue 3 + TypeScript（strict）+ Tailwind CSS + shadcn-vue
-- **whisper.cpp**（通过 `nodejs-whisper`）—— 转写
-- **Ollama** + `qwen2.5:7b`（默认，可在 Settings 修改）—— 翻译
-- **better-sqlite3** + 文件系统缓存（统一放在 `~/.subcast/`）
-
-## 前置依赖
-
-| 依赖 | 用途 |
-|---|---|
-| Node.js 22+ | Nuxt 4 / Nitro 2 运行时 |
-| pnpm 9+ | 包管理器（yarn / npm 也可） |
-| ffmpeg + ffprobe | 提取音轨、读取时长 |
-| cmake + C++ 工具链 | 首次构建 `whisper-cli` 二进制 |
-| 本地 Ollama 服务 | 默认监听 `http://localhost:11434` |
-
-**模型 / 磁盘空间**：
-
-| 配置档 | Whisper（转写） | Ollama（翻译） | 模型总占用 |
-|---|---|---|---|
-| **最小可跑** | `tiny` ≈ 78 MB | `qwen2.5:0.5b` ≈ 400 MB | **≈ 480 MB** |
-| **推荐** | `base` ≈ 142 MB | `qwen2.5:7b` ≈ 4.7 GB | **≈ 5 GB** |
-| 高精度 | `large-v3` ≈ 2.9 GB | `qwen2.5:14b` ≈ 9 GB | ≈ 12 GB |
-
-最小可跑能验证全流程，但转写 / 翻译质量都比较粗；要看出"成片"效果建议直接上推荐档。
-
-**硬件加速**：whisper.cpp 在 Apple Silicon 上自动用 Metal、在 NVIDIA 上自动用 CUDA；Ollama 同理。无需额外配置。
-
-## 安装依赖
-
-### Windows
-
-#### 1. 安装基础工具
-
-推荐使用 **winget**（Windows 11 自带）或 **Chocolatey**：
-
-```powershell
-# winget 方式
-winget install OpenJS.NodeJS.LTS
-winget install Gyan.FFmpeg
-winget install Kitware.CMake
-winget install Ollama.Ollama
-
-# 安装 pnpm
-npm install -g pnpm
-```
-
-如果用 **Chocolatey**（需管理员权限的 PowerShell）：
-
-```powershell
-choco install nodejs-lts ffmpeg cmake ollama -y
-npm install -g pnpm
-```
-
-> **ffmpeg PATH 配置**：winget 安装的 ffmpeg 通常会自动加入 PATH。如果 `ffmpeg -version` 无法运行，需手动将 ffmpeg 的 `bin` 目录添加到系统 PATH 环境变量。
-
-#### 2. 安装 C++ 构建工具
-
-whisper.cpp 和 better-sqlite3 的编译需要 C++ 工具链，有两种方式：
-
-**方式 A：Visual Studio Build Tools（推荐）**
-
-1. 下载 [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
-2. 安装时勾选 **"使用 C++ 的桌面开发"** 工作负载
-3. 确认已包含 MSVC、Windows SDK、CMake 模块
-
-**方式 B：命令行安装**
-
-```powershell
-# 需要先安装 npm（上面 Node.js 装完后即可用）
-npm install -g windows-build-tools
-```
-
-> 安装完成后**重启终端**，确保 `cmake` 和 `cl`（MSVC 编译器）在 PATH 中。
-
-#### 3. 启动 Ollama 并拉取模型
-
-```powershell
-# 从开始菜单或命令行启动 Ollama（会常驻后台）
-ollama serve
-
-# 另开一个终端，拉取翻译模型
-ollama pull qwen2.5:7b
-```
-
-> Windows 版 Ollama 也可以从 [ollama.com](https://ollama.com) 下载安装包，安装后会自动注册为系统服务开机自启。
+The Whisper / Ollama / Qwen models themselves are downloaded by the
+first-run wizard, not bundled. Expect another **~5 GB** (recommended
+tier: `base` + `qwen2.5:7b`).
 
 ### macOS
 
-```bash
-brew install node pnpm ffmpeg cmake ollama
-ollama serve         # 单独开一个终端常驻
-ollama pull qwen2.5:7b
-```
+1. Double-click the `.dmg` and drag **Subcast** into Applications.
+2. The first launch shows a Gatekeeper warning (Subcast is unsigned by
+   choice — see *License & cost* below). Handle it once:
 
-### Linux
+   - **macOS 14 (Sonoma) and earlier** — Right-click `Subcast.app` in
+     Applications → **Open** → confirm.
+   - **macOS 15+ (Sequoia)** — System Settings → **Privacy & Security**
+     → scroll down to *"Subcast was blocked"* → **Open Anyway**, then
+     authenticate.
 
-```bash
-sudo apt install ffmpeg cmake build-essential
-curl -fsSL https://ollama.com/install.sh | sh && ollama serve &
-ollama pull qwen2.5:7b
-```
+   <!-- TODO(v0.1.0): two screenshots, side-by-side, one per OS version. -->
 
-### 确认 Ollama 运行
+3. The setup wizard guides you through:
+   1. **Whisper transcription model** — pick a tier (default `base`).
+      If you already have a `ggml-*.bin` file on disk (e.g. from
+      [whisper.cpp](https://github.com/ggerganov/whisper.cpp) or
+      [Aiko](https://sindresorhus.com/aiko)), Subcast offers to symlink
+      or copy it instead of downloading.
+   2. **Ollama runtime** — installs to its own location and runs as a
+      menu-bar app. Subcast detects it automatically; if it isn't
+      running, click *"Open ollama.com"* and re-check once installed.
+   3. **Qwen language model** — choose `3b` / `7b` (recommended) / `14b`.
+      Already-installed variants are pre-selected with a ✓.
 
-启动 Subcast 之前确认 Ollama 在跑：
+4. Done. Drag a video into the window or use **File → Open** (right-click
+   `.mp4`/`.mkv`/`.mov`/`.webm`/`.mp3`/`.wav`/`.m4a` in Finder → "Open
+   With → Subcast" once the file association is registered).
 
-```bash
-curl http://localhost:11434
-# 正常会返回：Ollama is running
-```
+### Windows
 
-## 首次安装
+1. Run `Subcast-Setup-<version>.exe`. SmartScreen will say
+   *"Windows protected your PC"* because Subcast uses a self-signed
+   certificate (see *License & cost*).
+
+   - Click **More info** → confirm the publisher is **Subcast (twoer)**
+     → **Run anyway**.
+
+   <!-- TODO(v0.1.0): SmartScreen warning screenshot. -->
+
+2. Pick an install location (per-user, default
+   `%LOCALAPPDATA%\Programs\Subcast`).
+3. Follow the same three-step setup wizard as macOS.
+4. The installer adds **Subcast** to the Start menu and registers an
+   optional "Open With" entry for the media extensions above.
+
+User data lives at `%APPDATA%\Subcast` on Windows or
+`~/Library/Application Support/Subcast` on macOS — models, cached
+transcripts, and logs all go there. Subcast never writes outside its
+data folder.
+
+---
+
+## Day-to-day usage
+
+### Tray / menu-bar icon
+
+Closing the main window hides it; background work (transcription,
+translation, AI insights) keeps running. The tray menu re-opens the
+window, runs *Export Diagnostics…*, *Check for Updates…*, or quits.
+
+`Cmd+Q` / `Ctrl+Q` (or "Quit" from the tray) does a real shutdown — any
+in-flight tasks are cancelled cleanly and resume from the last completed
+chunk on next launch.
+
+### Keyboard shortcuts (player)
+
+| Key | Action |
+|---|---|
+| Space / K | Play / pause |
+| ← / → | Seek ±5 s |
+| J / L | Seek ±10 s (YouTube-style) |
+| ↑ / ↓ | Volume ±10 % |
+| < / > | Speed ±1 step |
+| M / F / C | Mute / fullscreen / toggle subtitles |
+| 1–9 | Jump to 10–90 % of the video |
+| ? | Show shortcut help |
+| Esc | Close any dialog |
+
+---
+
+## Troubleshooting
+
+### Export Diagnostics
+
+If something misbehaves, **Help → Export Diagnostics…** (also in the tray
+menu) zips the last 7 days of structured logs plus a `system.json`
+snapshot (OS, app version, hardware basics). No video content, transcript
+text, or filenames are included. Attach the zip when filing an issue.
+
+### Common issues
+
+| Symptom | Fix |
+|---|---|
+| Wizard says "Ollama not detected" but you installed it | Ollama runs as a separate menu-bar / system-tray app. Click its icon, confirm it's "running", then click *"I've installed it"* in the wizard. |
+| Download stuck at 0% on Whisper model | China-mainland users: tick *"Use hf-mirror.com"* in the wizard. The bytes already on disk will resume from the mirror — no restart needed. |
+| Cmd-clicking the app on macOS 15+ still does nothing | Open *System Settings → Privacy & Security*, scroll to the bottom for the explicit *"Open Anyway"* button (the Open-with-Open menu was deprecated in this OS). |
+| Transcription stopped mid-video | Just relaunch. Transcribe tasks resume from the last completed 30 s chunk. Translation tasks are marked *failed* with a retry button on the home page — we don't silently re-spend Ollama tokens. |
+
+---
+
+## Updates
+
+- **Windows** — Subcast auto-downloads differential updates from GitHub
+  Releases in the background and installs them on next launch. Updates
+  are signed with the same self-signed certificate as the installer.
+- **macOS** — Manual: **Help → Check for Updates…** (also fires
+  silently 5 seconds after launch when a new version is available). It
+  opens the release page in your browser; download and drag-replace the
+  app in Applications.
+
+---
+
+## Developers — run from source
 
 ```bash
 git clone https://github.com/twoer/subcast.git
 cd subcast
-
-# 编译 better-sqlite3 等原生模块，首次大概 1–2 分钟（看起来"卡住"是正常的）
 pnpm install
+pnpm dev          # http://localhost:3000
 ```
 
-### 编译 whisper-cli
-
-> **这一步是必须的**，项目不会自动编译 whisper.cpp 的二进制。
-
-#### macOS / Linux
+Dev mode is a normal Nuxt 4 server — no Electron, no `userData`. Hardware,
+Ollama, Whisper requirements are listed in
+[README.zh.md](./README.zh.md). Tests:
 
 ```bash
-cd node_modules/nodejs-whisper/cpp/whisper.cpp
-cmake -B build                                       # 首次必须先配置
-cmake --build build --target whisper-cli -j
-cd -
+pnpm test         # vitest --run
+pnpm typecheck
+pnpm lint
 ```
 
-#### Windows
-
-```powershell
-cd node_modules\nodejs-whisper\cpp\whisper.cpp
-
-# 使用 Visual Studio 17 2022 生成器（推荐）
-cmake -B build -G "Visual Studio 17 2022" -A x64
-
-# 编译 Release 版本的 whisper-cli
-cmake --build build --target whisper-cli --config Release
-
-cd ..\..\..\..\..
-```
-
-> **Windows 注意事项**：
-> - 必须使用 Visual Studio 生成器（`-G "Visual Studio 17 2022"`），不要用默认的 MinGW/MSVC Makefile 生成器
-> - 必须指定 `--config Release`，因为 VS 生成器是多配置的，项目代码会在 `build/bin/Release/` 目录查找 `whisper-cli.exe`
-> - 如果你的 Visual Studio 版本不是 2022，改为对应的生成器名称（如 `"Visual Studio 16 2019"`）
-> - 如果你有 NVIDIA GPU 且安装了 CUDA Toolkit，可以加 `-DGGML_CUDA=ON` 开启 GPU 加速
-
-#### 下载 Whisper 模型
+Desktop build (produces `.dmg` / `.exe` in `dist-electron/`):
 
 ```bash
-# 交互式选择，建议先用 base 起步
-npx --no-install nodejs-whisper download
+pnpm build:desktop          # current platform
+pnpm build:desktop:mac      # macOS arm64 only
+pnpm build:desktop:win      # Windows x64 only
 ```
 
-> Windows 上如果 `npx` 报错找不到命令，改用：`node node_modules/nodejs-whisper/dist/cli.js download`
+### Design docs
 
-如果哪一步遗漏了，首页顶部会出现一个琥珀色横幅，里面会给出针对你当前平台的精确命令 —— 直接照着横幅做也行。
+- [`docs/desktop-packaging.md`](./docs/desktop-packaging.md) — desktop
+  architecture and ~36 design decisions
+- [`docs/desktop-execution-plan.md`](./docs/desktop-execution-plan.md) —
+  file-by-file Phase 0 through Phase 5 task list
+- [`docs/windows-codesigning.md`](./docs/windows-codesigning.md) —
+  self-signed certificate runbook
 
-## 启动
+---
 
-```bash
-pnpm dev
-```
+## License & cost
 
-打开 http://localhost:3000 。默认监听 `0.0.0.0`，所以同局域网内的其他设备也可以访问 `http://<你的主机>:3000`（首页会显示局域网地址）。
+[AGPL-3.0-or-later](./LICENSE) © 2026 twoer
 
-需要从命令行强制指定 Ollama 模型（覆盖首次启动的推荐）：
+Subcast is licensed under AGPL v3. Forks and network-service derivatives
+must be released under AGPL v3 with source available.
 
-```bash
-# macOS / Linux
-SUBCAST_OLLAMA_MODEL=qwen2.5:7b pnpm dev
+Third-party components (whisper-cli MIT, ffmpeg LGPL build, all npm
+dependencies) and their attribution / source-availability notices are
+listed in [`NOTICES.md`](./NOTICES.md). ffmpeg source corresponding to
+the bundled LGPL build is available from <https://ffmpeg.org/download.html>.
 
-# Windows PowerShell
-$env:SUBCAST_OLLAMA_MODEL="qwen2.5:7b"; pnpm dev
+By design, **shipping Subcast costs the maintainer $0/year**:
 
-# Windows CMD
-set SUBCAST_OLLAMA_MODEL=qwen2.5:7b && pnpm dev
-```
+- macOS: not enrolled in the Apple Developer Program ($99/yr). Users
+  see a Gatekeeper warning the first time and dismiss it once.
+- Windows: self-signed code-signing certificate ($0). Users see a
+  SmartScreen warning the first time and dismiss it once via
+  *"More info → Run anyway"*.
+- Distribution: GitHub Releases (free for public repos).
+- Telemetry / crash reporting: none — diagnostics ship by user action only.
 
-## 数据存放位置
-
-所有用户数据统一放在 `~/.subcast/`：
-
-```
-~/.subcast/
-├── videos/{sha256}.{ext}         # 上传的视频副本
-├── cache/{sha256}/
-│   ├── original.vtt              # 转写结果
-│   ├── zh-CN.vtt                 # 按 BCP-47 语言代码缓存的翻译
-│   └── meta.json                 # cue 数量、时间戳等元数据
-├── logs/YYYY-MM-DD.jsonl         # 结构化日志（保留 14 天）
-├── data.sqlite                   # 任务、分片、字幕、设置
-└── tmp/                          # ffmpeg 临时文件 / 上传暂存
-```
-
-清理缓存有两种方式：在 **Settings** 页里删除单条或一键清空，或直接调 API：
-
-```bash
-curl -X DELETE http://localhost:3000/api/cache/<sha256>
-curl -X DELETE http://localhost:3000/api/cache/clear
-```
-
-## Settings 页配置
-
-`/settings` 提供以下选项：
-
-- **Whisper 模型** —— `tiny / base / small / medium / large-v3 / large-v3-turbo`。首次启动会按硬件等级（入门 / 标准 / 推荐 / 高配）自动选择。
-- **Ollama 模型** —— 完整 tag（如 `qwen2.5:7b`），推荐项同样按硬件等级给出。
-- **缓存大小上限** —— 使用率 ≥ 90% 时 UI 会出现告警。
-- **静音阈值** —— 字幕间隔超过该时长时，列表中插入「── 无语音 ──」分隔符（仅 UI 层显示，不会写入 VTT）。
-- **字幕列表字号** —— 右侧字幕列表面板的字号，11–18px，默认 13px（仅 UI 偏好，存浏览器 localStorage）。
-- **调试模式** —— 在 JSONL 日志中保留原始路径 / 文件名（默认会做哈希脱敏）。
-
-设置保存在 `~/.subcast/data.sqlite` 的 `settings` 表里，对**后续任务**生效。
-
-## API 端点
-
-| 方法 | 路径 | 用途 |
-|---|---|---|
-| POST | `/api/upload` | 上传视频（可附带 `subtitle` 伴生字幕文件） |
-| GET | `/api/transcribe?hash=` | SSE：流式输出 cue；命中缓存时直接重放 |
-| GET | `/api/translate?hash=&lang=` | SSE：翻译为指定语言（BCP-47），命中缓存直接重放 |
-| GET | `/api/video?hash=` | 支持 Range 的视频流（供 `<video>` 标签使用） |
-| GET | `/api/queue/list` | 当前 + 最近的转写 / 翻译任务 |
-| DELETE | `/api/queue/transcribe/:id` | 取消转写任务 |
-| DELETE | `/api/queue/translate/:id` | 取消翻译任务 |
-| GET | `/api/cache/list` | 列出缓存视频，含体积与已译语言 |
-| DELETE | `/api/cache/:hash` | 删除单条缓存 |
-| DELETE | `/api/cache/clear` | 清空全部缓存 |
-| GET | `/api/health` | 硬件 + Ollama + Whisper 就绪状态 |
-| GET / PUT | `/api/settings` | 读取 / 写入设置 |
-| GET | `/api/diagnostic` | 打包诊断 ZIP（脱敏日志 + 设置 + 硬件 + 模型清单） |
-
-## 播放器键盘快捷键
-
-| 按键 | 操作 |
-|---|---|
-| Space / K | 播放 / 暂停 |
-| ← / → | 后退 / 前进 5 秒 |
-| J / L | 后退 / 前进 10 秒（YouTube 风格） |
-| ↑ / ↓ | 音量 ±10% |
-| < / > | 倍速调一档（0.5 / 0.75 / 1 / 1.25 / 1.5 / 1.75 / 2） |
-| M / F / C | 静音 / 全屏 / 字幕开关 |
-| 1-9 | 跳到视频 10%–90% 进度 |
-| ? | 打开快捷键帮助 |
-| Esc | 关闭任意对话框 |
-
-## 开发
-
-```bash
-pnpm dev            # 启动开发服务器
-pnpm test           # vitest 单测
-pnpm typecheck      # nuxt typecheck（首次较慢）
-pnpm build          # 生产构建（.output/）
-```
-
-架构要点：
-
-- **流式队列模型** —— 转写和翻译都是基于 SQLite 的单并发队列。SSE 接口本质是 `queue.attach(taskId)` 的薄封装：先重放历史帧，再推送实时帧。分片在 Nitro 进程之间持久化，所以重启也能续上。
-- **幻觉重试阶梯** —— 每个 30 秒分片最多 3 次尝试（temperature 0 → 0.4 → 0.8，第 1 次失败后即丢弃 prompt context）；3 次都失败则在 UI 上标记为 `quality='suspect'`。详见 `server/utils/quality.ts`。
-- **翻译重试阶梯** —— 40 cue 的大批次失败时，回退到 15 cue 子批次；再失败则逐 cue 翻译。详见 `server/utils/ollama.ts`。
-- **导入字幕** —— 上传时附带的 `.srt/.vtt/.ass` 会直接写入 `cache/{sha}/original.vtt`，并伪造一条 `transcribe_tasks` 记录（`model='imported'`），让原有的重放逻辑直接复用。
-
-完整设计文档参见 `docs/superpowers/specs/2026-05-09-subcast-design.md`；最初的 walking-skeleton 计划参见 `docs/superpowers/plans/2026-05-09-subcast-slice-1-walking-skeleton.md`。
-
-## 常见问题排查
-
-| 现象 | 可能原因 / 解决办法 |
-|---|---|
-| `whisper-cli executable not found` | 在 `node_modules/nodejs-whisper/cpp/whisper.cpp/build` 下重新跑一次 cmake 构建 |
-| Windows 上编译 whisper-cli 找不到编译器 | 确认已安装 Visual Studio Build Tools，并在 cmake 命令中指定 `-G "Visual Studio 17 2022"` |
-| Windows 上 `pnpm install` 报 `node-gyp` 错误 | 确认已安装 Visual Studio Build Tools 的 C++ 工作负载；或运行 `npm install -g windows-build-tools` |
-| Windows 上 `ffmpeg` / `ffprobe` 命令找不到 | 确认 ffmpeg 已安装并将其 `bin` 目录加入了系统 PATH |
-| `OLLAMA_UNREACHABLE` | `ollama serve` 没启动，或自定义了 `SUBCAST_OLLAMA_URL` 环境变量 |
-| `MODEL_NOT_PULLED` | 执行 `ollama pull <model>`，或在 Settings 里改成已存在的模型 |
-| 翻译质量飘忽、出现幻觉 | 改用 `qwen2.5:7b`（或更大的模型），不要用未经指令调优的通用模型（如 Llama） |
-| `<video>` 无法拖动进度条 | 后端必须支持 HTTP Range，本项目已支持；但反向代理可能会剥离 Range 头 |
-
-## License
-
-TBD（见设计文档 §9 待决策项 —— 候选：MIT / Apache 2.0 / GPL）。
+For users who want zero install friction, the upgrade path is a paid
+OV code-signing cert (~$200/yr) and Apple Developer enrollment ($99/yr)
+— neither is on the v0.1.0 roadmap.

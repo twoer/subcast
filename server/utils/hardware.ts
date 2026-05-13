@@ -1,4 +1,6 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 import { totalmem, cpus, platform, arch, networkInterfaces } from 'node:os';
+import type { WhisperModelName } from '#shared/whisperModels';
 
 export type HardwareTier = 'entry' | 'standard' | 'recommended' | 'high';
 
@@ -11,7 +13,7 @@ export interface HardwareInfo {
   gpu: 'apple-silicon' | 'nvidia' | 'integrated' | 'none' | 'unknown';
   tier: HardwareTier;
   recommended: {
-    whisperModel: 'tiny' | 'base' | 'small' | 'medium' | 'large-v3' | 'large-v3-turbo';
+    whisperModel: WhisperModelName;
     ollamaModel: string;
   };
   lanIp?: string;

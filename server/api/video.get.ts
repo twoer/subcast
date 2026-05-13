@@ -1,6 +1,9 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 // Stream the cached video file with HTTP Range support so <video> can seek.
 import { createReadStream, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { isValidHash } from '../utils/validate';
+import type { VideoRow } from '../types/db';
 
 const MIME: Record<string, string> = {
   '.mp4': 'video/mp4',
@@ -14,14 +17,14 @@ const MIME: Record<string, string> = {
 
 export default defineEventHandler(async (event) => {
   const { hash } = getQuery(event);
-  if (typeof hash !== 'string' || !/^[0-9a-f]{64}$/.test(hash)) {
+  if (!isValidHash(hash)) {
     throw createError({ statusCode: 400, statusMessage: 'BAD_HASH' });
   }
 
   const db = getDb();
   const row = db
     .prepare('SELECT sha256, ext FROM videos WHERE sha256 = ?')
-    .get(hash) as { sha256: string; ext: string } | undefined;
+    .get(hash) as Pick<VideoRow, 'sha256' | 'ext'> | undefined;
   if (!row) throw createError({ statusCode: 404, statusMessage: 'VIDEO_NOT_FOUND' });
 
   const filePath = join(SUBCAST_PATHS.videos, `${row.sha256}${row.ext}`);

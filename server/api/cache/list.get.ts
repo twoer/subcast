@@ -1,6 +1,9 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 import { existsSync, statSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { getDb, SUBCAST_PATHS } from '../../utils/db';
+import { getTaskByHash } from '../../utils/insightTasks';
+import type { VideoRow } from '../../types/db';
 
 interface CacheEntry {
   sha256: string;
@@ -12,6 +15,8 @@ interface CacheEntry {
   langs: string[];
   createdAt: number;
   lastOpenedAt: number;
+  hasInsights: boolean;
+  hasRunningInsight: boolean;
 }
 
 function dirSize(dir: string): number {
@@ -37,16 +42,13 @@ export default defineEventHandler(() => {
       `SELECT sha256, original_name, display_name, ext, size_bytes, created_at, last_opened_at
        FROM videos ORDER BY last_opened_at DESC`,
     )
-    .all() as Array<{
-      sha256: string;
-      original_name: string;
-      display_name: string | null;
-      ext: string;
-      size_bytes: number;
-      created_at: number;
-      last_opened_at: number;
-    }>;
+    .all() as Array<Pick<
+      VideoRow,
+      'sha256' | 'original_name' | 'display_name' | 'ext' | 'size_bytes' | 'created_at' | 'last_opened_at'
+    >>;
 
+  // The GROUP_CONCAT(lang) aggregate is synthesized at query time — not a
+  // raw column on subtitles — so it doesn't fit any canonical row type.
   const subRows = db
     .prepare(
       `SELECT video_sha, GROUP_CONCAT(lang, ',') AS langs
@@ -64,6 +66,8 @@ export default defineEventHandler(() => {
     const videoBytes = existsSync(videoPath) ? statSync(videoPath).size : 0;
     const cacheBytes = dirSize(cacheDir);
     const langs = langsBySha.get(r.sha256) ?? [];
+    const hasInsights = existsSync(join(SUBCAST_PATHS.cache, r.sha256, 'insights.json'));
+    const hasRunningInsight = getTaskByHash(r.sha256)?.status === 'running';
     items.push({
       sha256: r.sha256,
       originalName: r.original_name,
@@ -74,6 +78,8 @@ export default defineEventHandler(() => {
       langs,
       createdAt: r.created_at,
       lastOpenedAt: r.last_opened_at,
+      hasInsights,
+      hasRunningInsight,
     });
     totalBytes += videoBytes + cacheBytes;
     totalVideoBytes += videoBytes;

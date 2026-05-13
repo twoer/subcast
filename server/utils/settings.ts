@@ -1,7 +1,11 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+import type { WhisperModelName } from '#shared/whisperModels';
 import { getDb } from './db';
+import { logEvent } from './log';
+import type { SettingsRow } from '../types/db';
 
 export interface SubcastSettings {
-  whisperModel: 'tiny' | 'base' | 'small' | 'medium' | 'large-v3' | 'large-v3-turbo';
+  whisperModel: WhisperModelName;
   ollamaModel: string;
   cacheLimitGB: number;
   silenceThresholdMs: number;
@@ -22,12 +26,17 @@ export function loadSettings(): SubcastSettings {
   const db = getDb();
   const row = db
     .prepare(`SELECT value FROM settings WHERE key = ?`)
-    .get(KEY) as { value: string } | undefined;
+    .get(KEY) as Pick<SettingsRow, 'value'> | undefined;
   if (!row) return { ...DEFAULT_SETTINGS };
   try {
     const parsed = JSON.parse(row.value) as Partial<SubcastSettings>;
     return { ...DEFAULT_SETTINGS, ...parsed };
-  } catch {
+  } catch (err) {
+    logEvent({
+      level: 'debug',
+      event: 'settings_parse_failed',
+      error: err instanceof Error ? err.message : String(err),
+    });
     return { ...DEFAULT_SETTINGS };
   }
 }

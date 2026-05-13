@@ -1,5 +1,7 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 import { existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { WHISPER_CLI_PATH, WHISPER_MODELS_DIR } from './whisperPaths';
+import { logEvent } from './log';
 
 export interface HealthSnapshot {
   ollama: {
@@ -17,22 +19,6 @@ export interface HealthSnapshot {
 }
 
 const OLLAMA_URL = process.env.SUBCAST_OLLAMA_URL ?? 'http://localhost:11434';
-const NW_ROOT = join(
-  process.cwd(),
-  'node_modules',
-  'nodejs-whisper',
-  'cpp',
-  'whisper.cpp',
-);
-const IS_WIN = process.platform === 'win32';
-const CLI_PATH = join(
-  NW_ROOT,
-  'build',
-  'bin',
-  ...(IS_WIN ? ['Release'] : []),
-  'whisper-cli' + (IS_WIN ? '.exe' : ''),
-);
-const MODELS_DIR = join(NW_ROOT, 'models');
 
 async function probeOllama(): Promise<HealthSnapshot['ollama']> {
   try {
@@ -54,18 +40,23 @@ async function probeOllama(): Promise<HealthSnapshot['ollama']> {
 }
 
 function probeWhisper(): HealthSnapshot['whisper'] {
-  const binaryPresent = existsSync(CLI_PATH);
+  const binaryPresent = existsSync(WHISPER_CLI_PATH);
   let models: string[] = [];
-  if (existsSync(MODELS_DIR)) {
+  if (existsSync(WHISPER_MODELS_DIR)) {
     try {
-      models = readdirSync(MODELS_DIR)
+      models = readdirSync(WHISPER_MODELS_DIR)
         .filter((f) => f.startsWith('ggml-') && f.endsWith('.bin'))
         .map((f) => f.replace(/^ggml-/, '').replace(/\.bin$/, ''));
-    } catch {
-      /* ignore */
+    } catch (err) {
+      logEvent({
+        level: 'debug',
+        event: 'whisper_models_list_failed',
+        path: WHISPER_MODELS_DIR,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
-  return { binaryPresent, binaryPath: CLI_PATH, models };
+  return { binaryPresent, binaryPath: WHISPER_CLI_PATH, models };
 }
 
 export async function detectHealth(

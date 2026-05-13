@@ -21,9 +21,15 @@ export const buttonVariants = cva(
       size: {
         "default": "h-10 px-4 py-2",
         "sm": "h-9 rounded-md px-3",
+        "xs": "h-7 rounded-md px-2.5 text-xs [&_svg]:size-3.5",
+        // Utility chips in the AppHeader (locale, settings, help, etc).
+        // Slightly taller than xs (32 vs 28 px) so the icon-only links
+        // still meet the 30-px desktop pointer-target rule of thumb.
+        "utility": "h-8 rounded-md px-2.5 text-xs [&_svg]:size-3.5",
         "lg": "h-11 rounded-md px-8",
         "icon": "h-10 w-10",
         "icon-sm": "size-9",
+        "icon-xs": "size-7 [&_svg]:size-3.5",
         "icon-lg": "size-11",
       },
     },

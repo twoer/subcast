@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 // Nitro auto-imports getDb / SUBCAST_PATHS from server/utils/db.ts.
 import { createWriteStream } from 'node:fs';
 import { mkdir, rename, writeFile as writeFileAsync } from 'node:fs/promises';

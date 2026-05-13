@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 // Slice 6: thin SSE shim over translateQueue. The queue holds the worker,
 // emitter fan-out, priority ordering, restart recovery and cancellation.
 import { existsSync } from 'node:fs';
@@ -6,12 +7,15 @@ import { join } from 'node:path';
 import { getDb, SUBCAST_PATHS } from '../utils/db';
 import { translateQueue } from '../utils/queue';
 import { formatSse } from '../utils/sse';
+import { setupSseStream } from '../utils/sseStream';
+import { isValidHash } from '../utils/validate';
+import type { VideoRow } from '../types/db';
 
 const VALID_LANG = /^[a-z]{2}(-[A-Z]{2})?$/;
 
 export default defineEventHandler(async (event) => {
   const { hash, lang } = getQuery(event);
-  if (typeof hash !== 'string' || !/^[0-9a-f]{64}$/.test(hash)) {
+  if (!isValidHash(hash)) {
     throw createError({ statusCode: 400, statusMessage: 'BAD_HASH' });
   }
   if (typeof lang !== 'string' || !VALID_LANG.test(lang)) {
@@ -21,7 +25,7 @@ export default defineEventHandler(async (event) => {
   const db = getDb();
   const video = db
     .prepare('SELECT sha256 FROM videos WHERE sha256 = ?')
-    .get(hash) as { sha256: string } | undefined;
+    .get(hash) as Pick<VideoRow, 'sha256'> | undefined;
   if (!video) throw createError({ statusCode: 404, statusMessage: 'VIDEO_NOT_FOUND' });
 
   // Require original transcription before allowing translate.
@@ -39,28 +43,14 @@ export default defineEventHandler(async (event) => {
   }
   await translateQueue.tryStartNext();
 
-  setResponseHeaders(event, {
-    'Content-Type': 'text/event-stream; charset=utf-8',
-    'Cache-Control': 'no-cache, no-transform',
-    Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
-  });
-  const stream = event.node.res;
+  const sse = setupSseStream(event);
   let frameId = 0;
-  const heartbeat = setInterval(() => stream.write(': heartbeat\n\n'), 15_000);
-  let closed = false;
-  event.node.req.on('close', () => {
-    closed = true;
-    clearInterval(heartbeat);
-  });
-
   try {
     for await (const frame of translateQueue.attach(task.id)) {
-      if (closed) break;
-      stream.write(formatSse({ ...frame, id: frameId++ }));
+      if (sse.isClosed()) break;
+      if (!sse.write(formatSse({ ...frame, id: frameId++ }))) break;
     }
   } finally {
-    clearInterval(heartbeat);
-    if (!closed) stream.end();
+    sse.close();
   }
 });

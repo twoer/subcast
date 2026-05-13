@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "outDir": "desktop-dist",
+    "rootDir": "desktop",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "sourceMap": true,
+    "declaration": false
+  },
+  // Only files that run in the Electron main process. desktop/modelManager/,
+  // desktop/diskSpace.ts, and desktop/**/__tests__ are consumed by Nitro
+  // (which has its own bundler) — including them here drags server/* into
+  // this compilation and emits stray .js files under server/utils/.
+  // preload.ts is intentionally NOT here — Electron's sandboxed preload
+  // requires CommonJS, but the rest of the main-process bundle is ESM
+  // (matches package.json "type": "module"). preload.ts compiles via
+  // tsconfig.preload.json into a .cjs sibling file.
+  "include": [
+    "desktop/main.ts",
+    "desktop/nitroEmbed.ts",
+    "desktop/types.ts",
+    "desktop/trayMenu.ts",
+    "desktop/menu.ts",
+    "desktop/diagnostics.ts",
+    "desktop/updater.ts",
+    "desktop/manualUpdater.ts",
+    "desktop/i18n.ts",
+    "desktop/platform/**/*.ts"
+  ],
+  "exclude": ["node_modules", ".nuxt", ".output"]
+}

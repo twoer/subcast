@@ -4,7 +4,46 @@
     "lan": "LAN",
     "settings": "Settings",
     "back": "Back",
-    "switchTo": "Switch to {lang}"
+    "switchTo": "Switch to {lang}",
+    "home": "Home",
+    "library": "Library",
+    "models": "Models",
+    "modelsActive": "Currently active transcription & AI models",
+    "manageModels": "Manage models",
+    "modelNotInstalled": "Not installed: {name}",
+    "ollamaNotRunning": "Ollama is not running"
+  },
+  "fileStatus": {
+    "transcribing": "Transcribing {pct}%",
+    "transcribeFailed": "Transcribe failed",
+    "transcribed": "Transcribed",
+    "translating": "Translating {lang} {pct}%",
+    "translateFailed": "Translate failed",
+    "translatedCount": "+{n} translated",
+    "aiRunning": "AI summarizing",
+    "aiReady": "AI summary"
+  },
+  "library": {
+    "title": "Library",
+    "subtitle": "Videos and subtitles cached locally. Click to open in the player, or remove here.",
+    "loading": "Loading…",
+    "totals": "{count} videos · {size}",
+    "noSubtitles": "No subtitles",
+    "deleteOne": "Delete",
+    "deleteOneTitle": "Delete this video?",
+    "deleteOneDesc": "{name} and its cached subtitles will be removed. This cannot be undone.",
+    "clearAll": "Clear all",
+    "clearAllTitle": "Clear all cached data?",
+    "clearAllDesc": "This will delete every cached video and subtitle file. This action cannot be undone.",
+    "cancel": "Cancel",
+    "confirm": "Delete",
+    "rename": "Rename",
+    "renameDesc": "Leave blank to restore the original filename.",
+    "renameConfirm": "Save",
+    "empty": {
+      "title": "Library is empty",
+      "description": "Drag a video into the home page and it will appear here."
+    }
   },
   "index": {
     "drop": "Drop a video file (optionally with .srt/.vtt/.ass), or",
@@ -52,6 +91,12 @@
   },
   "player": {
     "subtitles": "Subtitles",
+    "retranscribe": {
+      "button": "Re-transcribe",
+      "title": "Re-transcribe this video?",
+      "desc": "Clears the original subtitles, {n} translation(s), and AI summary, then re-runs Whisper with the current model. This cannot be undone.",
+      "confirm": "Re-transcribe"
+    },
     "original": "Original",
     "cues": "{n} cues",
     "suspect": "{n} suspect",
@@ -99,11 +144,95 @@
     "cancelTranslationTitle": "Cancel this translation?",
     "cancelTranslationDesc": "Cues translated so far will be kept. You can resume by switching to this language again later.",
     "cancelTranslationConfirm": "Stop translation",
+    "cancel": "Cancel",
+    "export": {
+      "title": "Export Subtitles",
+      "languages": "Languages",
+      "format": "Format",
+      "download": "Download",
+      "hintAtLeastOne": "Select at least one language.",
+      "hintExactly2": "Bilingual requires exactly 2 languages."
+    },
+    "search": {
+      "placeholder": "Search subtitles...",
+      "next": "Next match",
+      "prev": "Previous match",
+      "clear": "Clear search"
+    },
+    "insights": {
+      "tabLabel": "AI Insights",
+      "emptyTitle": "AI Insights",
+      "emptyHint": "Generate summary and chapters from the transcript.",
+      "feature1": "Paragraph summary + 3-5 key points",
+      "feature2": "3-8 clickable chapter markers",
+      "feature3": "Fully local · privacy-first",
+      "estimate": "{model} · ~30-60 seconds",
+      "generate": "Generate AI insights",
+      "generating": "Generating...",
+      "generatingReading": "Reading transcript...",
+      "generatingSummary": "Writing summary...",
+      "generatingChapters": "Writing chapters...",
+      "cancel": "Cancel",
+      "regenerate": "Regenerate",
+      "copy": "Copy",
+      "copied": "Copied",
+      "retry": "Try again",
+      "clear": "Clear",
+      "clearTitle": "Clear AI Insights?",
+      "clearDesc": "The cached summary and chapters will be removed. You can regenerate later. This cannot be undone.",
+      "clearConfirm": "Clear",
+      "summarySection": "Summary",
+      "chaptersSection": "Chapters",
+      "langMismatch": "This AI summary was generated in {lang}.",
+      "regenerateInLang": "Regenerate in {lang}",
+      "langZh": "Chinese",
+      "langEn": "English",
+      "outdatedHint": "Insights were generated with outdated settings (model or transcript changed).",
+      "errors": {
+        "OLLAMA_UNREACHABLE": "Ollama is not reachable. Make sure it's running.",
+        "MODEL_NOT_PULLED": "The Ollama model is not pulled yet.",
+        "VIDEO_TOO_LONG": "Video is too long for AI insights with the current model.",
+        "PARSE_FAILED": "The AI output couldn't be parsed. Please try again.",
+        "NETWORK": "Lost connection while generating insights.",
+        "fallback": "Failed to generate insights. Please try again."
+      }
+    }
+  },
+  "common": {
     "cancel": "Cancel"
   },
   "settings": {
     "title": "Settings",
     "subtitle": "Per-user preferences and on-disk cache management.",
+    "tabs": {
+      "overview": "Overview",
+      "preferences": "Preferences",
+      "models": "Models",
+      "diagnostics": "Diagnostics",
+      "help": "Help",
+      "about": "About"
+    },
+    "models": {
+      "activeTitle": "Active models",
+      "notInstalledWarn": "{name} is not fully installed — transcription will fail. Use \"Download more\" or pick an installed model from the list below.",
+      "whisper": "Whisper transcription models",
+      "ollama": "Ollama AI models",
+      "size": "{size}",
+      "active": "Active",
+      "switch": "Use",
+      "delete": "Delete",
+      "downloadMore": "Download more",
+      "loading": "Loading…",
+      "empty": "No models installed — click Download more above",
+      "ollamaOffline": "Ollama is not running — start it and refresh",
+      "refresh": "Refresh",
+      "deleteTitle": "Delete this model?",
+      "deleteDesc": "{name} ({size}) will be removed from this machine. You'll need to re-download it next time.",
+      "cancel": "Cancel",
+      "confirm": "Delete",
+      "switchFailed": "Switch failed: {error}",
+      "deleteFailed": "Delete failed: {error}"
+    },
     "hardware": "Hardware",
     "tier": "Tier",
     "ram": "RAM",
@@ -157,6 +286,127 @@
       "title": "Diagnostic",
       "body": "ZIP with sanitized JSONL logs (last 7d), settings, hardware info, installed models. No video content or cue text.",
       "export": "Export ZIP"
+    },
+    "logViewer": {
+      "title": "Log viewer",
+      "body": "Recent structured events. Strings in path / name fields are hashed unless Debug mode is on.",
+      "selectFile": "Date",
+      "tailLabel": "Lines",
+      "refresh": "Refresh",
+      "noFiles": "No log files yet — events appear here after the first transcription.",
+      "loading": "Loading…",
+      "loadFailed": "Failed to load log",
+      "showing": "Showing last {count} of {total} lines",
+      "truncatedNote": "Older lines exist. Increase the tail count or export the full ZIP.",
+      "writerUnhealthy": "Log writer is failing — recent events may not be persisted to disk."
+    }
+  },
+  "desktop": {
+    "setupCheck": {
+      "checking": "Checking setup…",
+      "retry": "Retry",
+      "probeFailed": "Setup status probe failed"
+    },
+    "setupWizard": {
+      "welcome": "First-run setup",
+      "manageTitle": "Manage models",
+      "stepLabel1": "Whisper",
+      "stepLabel2": "Ollama",
+      "stepLabel3": "Qwen AI",
+      "subtitleStep1": "Choose transcription model (Whisper)",
+      "subtitleStep2": "Install Ollama local runtime",
+      "subtitleStep3": "Choose AI translation model (Qwen)",
+      "recommended": "Recommended",
+      "foundAt": "Found existing file at",
+      "actionSymlink": "Symlink (no extra disk used)",
+      "actionCopy": "Copy into Subcast data dir",
+      "actionIgnore": "Ignore and download a fresh copy",
+      "mirrorToggle": "Use {host} (faster from mainland China)",
+      "downloading": "Downloading",
+      "linking": "Linking",
+      "copying": "Copying",
+      "installFailed": "Install failed: {error}",
+      "installCanceled": "Download canceled. Pick a model and hit Download again to resume.",
+      "skip": "Skip setup",
+      "back": "Back",
+      "next": "Next",
+      "finish": "Finish",
+      "linkExisting": "Link existing file",
+      "copyExisting": "Copy existing file",
+      "download": "Download",
+      "cancel": "Cancel",
+      "remainingSecs": "{n}s left",
+      "remainingMins": "{m}m {s}s left",
+      "perSecond": "/s",
+      "checkingEvery5s": "Checking every 5 seconds — keep this window open.",
+      "installedAt": "{name} installed at"
+    },
+    "ollama": {
+      "running": "Ollama is running",
+      "versionLabel": "version {version}",
+      "installedNotRunning": "Ollama is installed but not running",
+      "installedNotRunningDetail": "Found at {path}. Open the Ollama app (or run `ollama serve`) and we'll detect it automatically.",
+      "needsInstall": "Ollama not detected",
+      "needsInstallBody": "Subcast uses Ollama as the local AI runtime — it stays on your machine, never sends data anywhere. Download once, run from your menu bar / system tray.",
+      "openOllamaCom": "Open ollama.com",
+      "iveInstalled": "I've installed it",
+      "rechecking": "Re-checking…"
+    },
+    "qwen": {
+      "alreadyInstalled": "already installed",
+      "ready": "{tag} is ready",
+      "pull": "Pull {tag}",
+      "pullingStarting": "starting",
+      "pullingPrefix": "Pulling {tag} — {status}",
+      "pullFailed": "Pull failed: {error}"
+    },
+    "home": {
+      "setupIncomplete": "Setup incomplete:",
+      "openSetupWizard": "Open Setup Wizard",
+      "gapWhisper": "Transcription model",
+      "gapOllama": "Ollama runtime",
+      "gapQwen": "AI model",
+      "openFileFailed": "open-file failed"
+    },
+    "about": {
+      "subtitle": "Free · Offline · LLM — audio/video transcription & translation",
+      "fullyLocal": "100% local · zero data egress",
+      "depsHeader": "Built with these open-source components",
+      "licenseLine": "© 2026 twoer · Licensed under",
+      "buttons": {
+        "repository": "Repository",
+        "license": "License",
+        "reportIssue": "Report Issue"
+      }
+    },
+    "help": {
+      "title": "Help",
+      "introBody": "Quick reference for first-time setup quirks and where to look when something misbehaves. The full docs live in the repository README.",
+      "diagnostics": {
+        "title": "Export diagnostics",
+        "body": "Help → Export Diagnostics… (also in the tray menu) zips the last 7 days of structured logs plus a system.json snapshot — no video, transcript text, or filenames are included. Attach the zip when filing an issue."
+      },
+      "updates": {
+        "title": "Updates",
+        "windowsBody": "Windows auto-downloads differential updates in the background and applies them on next launch.",
+        "macBody": "macOS is manual: Help → Check for Updates… opens the release page in your browser; download and drag the new app into Applications."
+      },
+      "faq": {
+        "title": "Common issues",
+        "ollamaTitle": "Wizard says Ollama not detected",
+        "ollamaBody": "Ollama runs as its own menu-bar / system-tray app. Confirm its icon shows 'running', then click 'I've installed it' in the wizard.",
+        "mirrorTitle": "Whisper download is slow",
+        "mirrorBody": "Tick 'Use hf-mirror.com' in Step 1. Already-downloaded bytes resume from the mirror; no restart needed.",
+        "macGatekeeperTitle": "macOS 15+ blocks Subcast",
+        "macGatekeeperBody": "System Settings → Privacy & Security → scroll to the bottom for the explicit 'Open Anyway' button.",
+        "zombieTitle": "Translation stopped after a crash",
+        "zombieBody": "We mark it failed instead of silently re-spending Ollama tokens. Hit Retry on the home page when ready."
+      },
+      "links": {
+        "docs": "Documentation",
+        "repository": "Repository",
+        "reportIssue": "Report Issue"
+      }
     }
   }
 }

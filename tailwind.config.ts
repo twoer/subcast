@@ -10,6 +10,22 @@ export default {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
       },
+      // Two micro sizes below Tailwind's default `text-xs` (12px). Pre-token
+      // these were sprinkled as `text-[10px]` / `text-[11px]` magic values
+      // across 20+ call sites; a unified scale prevents drift and makes
+      // hierarchy intent explicit.
+      //
+      //   text-2xs (11px) — tabular mono data: timestamps, model names,
+      //                     library counts. Slightly tighter line-height
+      //                     than xs because these usually live on a single
+      //                     row with no wrapping.
+      //   text-3xs (10px) — uppercase labels and badges with `tracking-wider`.
+      //                     The wider tracking + ALL CAPS keeps them legible
+      //                     at this size; never use for body or paragraph copy.
+      fontSize: {
+        '2xs': ['11px', { lineHeight: '1rem' }],
+        '3xs': ['10px', { lineHeight: '0.875rem' }],
+      },
       colors: {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
