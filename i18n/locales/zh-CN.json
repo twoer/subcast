@@ -11,7 +11,8 @@
     "modelsActive": "当前激活的转录与 AI 模型",
     "manageModels": "管理模型",
     "modelNotInstalled": "未安装：{name}",
-    "ollamaNotRunning": "Ollama 未运行"
+    "llmNotInstalled": "AI 模型未安装",
+    "llmLabel": "AI 模型"
   },
   "fileStatus": {
     "transcribing": "转写中 {pct}%",
@@ -247,8 +248,8 @@
     "section": "偏好设置",
     "whisperModel": "Whisper 模型",
     "whisperHint": "越大越精准但越慢。更改对新转写任务生效。",
-    "ollamaModel": "Ollama 模型",
-    "ollamaHint": "使用 `ollama list` 显示的完整 tag。推荐：{model}。",
+    "llmModel": "AI 模型",
+    "llmHint": "由进程内 llama-server 提供的本地 Qwen 2.5 量化模型。推荐：{model}。",
     "cacheLimit": "缓存大小上限",
     "silenceThreshold": "静音阈值",
     "silenceHint": "字幕间隔 ≥ 此时长会在列表插入「── 无语音 ──」分隔符。",
@@ -383,14 +384,12 @@
       },
       "faq": {
         "title": "常见问题",
-        "ollamaTitle": "向导显示未检测到 Ollama",
-        "ollamaBody": "Ollama 是独立的菜单栏 / 任务栏程序。确认它的图标显示「正在运行」，回到向导点「我已安装」重检即可。",
         "mirrorTitle": "Whisper 下载很慢",
         "mirrorBody": "在 Step 1 勾选「使用 hf-mirror.com」。已经下载的字节会在镜像上继续 —— 无需重头开始。",
         "macGatekeeperTitle": "macOS 15+ 阻止 Subcast 运行",
         "macGatekeeperBody": "系统设置 → 隐私与安全性 → 下拉到底部找「仍要打开」按钮。",
         "zombieTitle": "崩溃后翻译没继续",
-        "zombieBody": "翻译会被标记为「上次未完成」，而不是偷偷重新调用 Ollama 浪费 token。在主页点「重试」即可。"
+        "zombieBody": "翻译会被标记为「上次未完成」，而不是偷偷重新调用模型浪费计算。在主页点「重试」即可。"
       },
       "links": {
         "docs": "查看文档",

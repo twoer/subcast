@@ -11,7 +11,8 @@
     "modelsActive": "Currently active transcription & AI models",
     "manageModels": "Manage models",
     "modelNotInstalled": "Not installed: {name}",
-    "ollamaNotRunning": "Ollama is not running"
+    "llmNotInstalled": "AI model not installed",
+    "llmLabel": "AI"
   },
   "fileStatus": {
     "transcribing": "Transcribing {pct}%",
@@ -247,8 +248,8 @@
     "section": "Preferences",
     "whisperModel": "Whisper model",
     "whisperHint": "Bigger = more accurate but slower. Changes apply to new transcribe tasks.",
-    "ollamaModel": "Ollama model",
-    "ollamaHint": "Use the exact tag visible in `ollama list`. Recommended: {model}.",
+    "llmModel": "AI model",
+    "llmHint": "Local Qwen 2.5 quantization served by an in-process llama-server. Recommended: {model}.",
     "cacheLimit": "Cache size limit",
     "silenceThreshold": "Silence threshold",
     "silenceHint": "Inter-cue gaps ≥ this duration get a 「── no audio ──」divider in the cue list.",
@@ -383,14 +384,12 @@
       },
       "faq": {
         "title": "Common issues",
-        "ollamaTitle": "Wizard says Ollama not detected",
-        "ollamaBody": "Ollama runs as its own menu-bar / system-tray app. Confirm its icon shows 'running', then click 'I've installed it' in the wizard.",
         "mirrorTitle": "Whisper download is slow",
         "mirrorBody": "Tick 'Use hf-mirror.com' in Step 1. Already-downloaded bytes resume from the mirror; no restart needed.",
         "macGatekeeperTitle": "macOS 15+ blocks Subcast",
         "macGatekeeperBody": "System Settings → Privacy & Security → scroll to the bottom for the explicit 'Open Anyway' button.",
         "zombieTitle": "Translation stopped after a crash",
-        "zombieBody": "We mark it failed instead of silently re-spending Ollama tokens. Hit Retry on the home page when ready."
+        "zombieBody": "We mark it failed instead of silently re-running inference. Hit Retry on the home page when ready."
       },
       "links": {
         "docs": "Documentation",

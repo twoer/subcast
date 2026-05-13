@@ -25,7 +25,7 @@ import { Badge } from '~/components/ui/badge';
 
 interface Settings {
   whisperModel: WhisperModelName;
-  ollamaModel: string;
+  llmModel: LlmModelId | undefined;
   cacheLimitGB: number;
   silenceThresholdMs: number;
   debugMode: boolean;
@@ -38,7 +38,7 @@ interface Hardware {
   arch: string;
   gpu: string;
   tier: 'entry' | 'standard' | 'recommended' | 'high';
-  recommended: { whisperModel: string; ollamaModel: string };
+  recommended: { whisperModel: string; llmModel: LlmModelId };
   lanIp?: string;
 }
 interface Resp {
@@ -51,6 +51,7 @@ const desktop = useDesktop();
 const { set: setActiveModelsCache, refresh: refreshActiveModels } = useActiveModels();
 
 const WHISPER_MODELS = WHISPER_MODEL_NAMES;
+const LLM_MODEL_IDS = Object.keys(LLM_MODELS) as LlmModelId[];
 
 const settings = ref<Settings | null>(null);
 const hardware = ref<Hardware | null>(null);
@@ -152,7 +153,7 @@ async function setActiveWhisper(name: string): Promise<void> {
     settings.value = res.settings;
     draft.value = { ...res.settings };
     if (modelsData.value) modelsData.value.whisper.active = res.settings.whisperModel;
-    setActiveModelsCache(res.settings.whisperModel, res.settings.ollamaModel);
+    setActiveModelsCache(res.settings.whisperModel, res.settings.llmModel);
     void refreshActiveModels();
   } catch (e) {
     modelsErr.value = t('settings.models.switchFailed', { error: e instanceof Error ? e.message : 'unknown' });
@@ -168,7 +169,7 @@ async function setActiveLlm(name: LlmModelId): Promise<void> {
     settings.value = res.settings;
     draft.value = { ...res.settings };
     if (modelsData.value) modelsData.value.llm.active = name;
-    setActiveModelsCache(res.settings.whisperModel, res.settings.ollamaModel);
+    setActiveModelsCache(res.settings.whisperModel, res.settings.llmModel);
     void refreshActiveModels();
   } catch (e) {
     modelsErr.value = t('settings.models.switchFailed', { error: e instanceof Error ? e.message : 'unknown' });
@@ -202,7 +203,6 @@ interface FaqItem {
   bodyKey: string;
 }
 const FAQ: FaqItem[] = [
-  { titleKey: 'desktop.help.faq.ollamaTitle', bodyKey: 'desktop.help.faq.ollamaBody' },
   { titleKey: 'desktop.help.faq.mirrorTitle', bodyKey: 'desktop.help.faq.mirrorBody' },
   { titleKey: 'desktop.help.faq.macGatekeeperTitle', bodyKey: 'desktop.help.faq.macGatekeeperBody' },
   { titleKey: 'desktop.help.faq.zombieTitle', bodyKey: 'desktop.help.faq.zombieBody' },
@@ -253,10 +253,11 @@ async function saveSlice(slice: Partial<Settings>): Promise<void> {
     settings.value = data.settings;
     draft.value = { ...data.settings };
     savedAt.value = Date.now();
-    setActiveModelsCache(data.settings.whisperModel, data.settings.ollamaModel);
+    setActiveModelsCache(data.settings.whisperModel, data.settings.llmModel);
     void refreshActiveModels();
     if (modelsData.value) {
       modelsData.value.whisper.active = data.settings.whisperModel;
+      modelsData.value.llm.active = data.settings.llmModel;
     }
   } catch (e) {
     errMsg.value = e instanceof Error ? e.message : 'failed to save';
@@ -269,7 +270,7 @@ async function saveActiveModels(): Promise<void> {
   if (!draft.value) return;
   await saveSlice({
     whisperModel: draft.value.whisperModel,
-    ollamaModel: draft.value.ollamaModel,
+    llmModel: draft.value.llmModel,
   });
 }
 
@@ -285,20 +286,20 @@ async function savePreferences(): Promise<void> {
 function applyRecommended() {
   if (!draft.value || !hardware.value) return;
   draft.value.whisperModel = hardware.value.recommended.whisperModel as Settings['whisperModel'];
-  draft.value.ollamaModel = hardware.value.recommended.ollamaModel;
+  draft.value.llmModel = hardware.value.recommended.llmModel;
 }
 
 function resetActiveModelsDraft(): void {
   if (!draft.value || !settings.value) return;
   draft.value.whisperModel = settings.value.whisperModel;
-  draft.value.ollamaModel = settings.value.ollamaModel;
+  draft.value.llmModel = settings.value.llmModel;
 }
 
 const dirtyModels = computed(() => {
   if (!settings.value || !draft.value) return false;
   return (
     draft.value.whisperModel !== settings.value.whisperModel
-    || draft.value.ollamaModel !== settings.value.ollamaModel
+    || draft.value.llmModel !== settings.value.llmModel
   );
 });
 
@@ -392,7 +393,7 @@ onBeforeUnmount(() => {
                 <dd class="font-mono text-xs">{{ hardware.platform }} ({{ hardware.arch }})</dd>
                 <dt class="text-muted-foreground">{{ t('settings.recommended') }}</dt>
                 <dd class="font-mono text-xs">
-                  whisper={{ hardware.recommended.whisperModel }} · ollama={{ hardware.recommended.ollamaModel }}
+                  whisper={{ hardware.recommended.whisperModel }} · llm={{ hardware.recommended.llmModel }}
                 </dd>
               </dl>
               <Button
@@ -539,16 +540,23 @@ onBeforeUnmount(() => {
               </div>
 
               <div class="space-y-1.5">
-                <Label for="ollama-model-active" class="text-sm font-medium">{{ t('settings.ollamaModel') }}</Label>
-                <input
-                  id="ollama-model-active"
-                  v-model="draft.ollamaModel"
-                  type="text"
-                  class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm ring-offset-background transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  placeholder="qwen2.5:7b"
-                >
+                <Label class="text-sm font-medium">{{ t('settings.llmModel') }}</Label>
+                <Select v-model="draft.llmModel">
+                  <SelectTrigger class="w-full">
+                    <SelectValue :placeholder="t('settings.models.notConfigured')" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem v-for="id in LLM_MODEL_IDS" :key="id" :value="id">
+                      <span class="font-mono">{{ id }}</span>
+                      <span
+                        v-if="hardware && id === hardware.recommended.llmModel"
+                        class="ml-2 rounded-sm bg-primary/10 px-1.5 py-0.5 text-3xs font-medium uppercase tracking-wider text-primary"
+                      >{{ t('settings.recommended') }}</span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
                 <p class="text-xs text-muted-foreground">
-                  {{ t('settings.ollamaHint', { model: hardware?.recommended.ollamaModel ?? '' }) }}
+                  {{ t('settings.llmHint', { model: hardware?.recommended.llmModel ?? '' }) }}
                 </p>
               </div>
 

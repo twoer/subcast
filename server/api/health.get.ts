@@ -5,30 +5,21 @@ import { loadSettings } from '../utils/settings';
 
 const INSTALL_HINTS = {
   macOS: {
-    ollama: 'brew install ollama && ollama serve',
-    'ollama-pull': (m: string) => `ollama pull ${m}`,
     'whisper-cli':
       'cd node_modules/nodejs-whisper/cpp/whisper.cpp/build && cmake --build . --target whisper-cli',
     'whisper-model': (m: string) => `npx --no-install nodejs-whisper download ${m}`,
   },
   Linux: {
-    ollama: 'curl -fsSL https://ollama.com/install.sh | sh && ollama serve',
-    'ollama-pull': (m: string) => `ollama pull ${m}`,
     'whisper-cli':
       'cd node_modules/nodejs-whisper/cpp/whisper.cpp/build && cmake --build . --target whisper-cli',
     'whisper-model': (m: string) => `npx --no-install nodejs-whisper download ${m}`,
   },
   Windows: {
-    ollama:
-      'Download from https://ollama.com/download then run `ollama serve` in a new terminal',
-    'ollama-pull': (m: string) => `ollama pull ${m}`,
     'whisper-cli':
       'cd node_modules\\nodejs-whisper\\cpp\\whisper.cpp\\build && cmake --build . --target whisper-cli --config Release',
     'whisper-model': (m: string) => `npx --no-install nodejs-whisper download ${m}`,
   },
   unknown: {
-    ollama: 'See https://ollama.com/download',
-    'ollama-pull': (m: string) => `ollama pull ${m}`,
     'whisper-cli':
       'cd node_modules/nodejs-whisper/cpp/whisper.cpp/build && cmake --build . --target whisper-cli',
     'whisper-model': (m: string) => `npx --no-install nodejs-whisper download ${m}`,
@@ -38,27 +29,11 @@ const INSTALL_HINTS = {
 export default defineEventHandler(async () => {
   const settings = loadSettings();
   const hardware = detectHardware();
-  // settings.llmModel is a tier id ('3b' | '7b' | '14b'); the legacy
-  // health probe still wants an Ollama tag string. Fall back to the
-  // hardware-tier recommendation so the homepage banner keeps working
-  // until the health UI is rewritten in a later 0.2 task.
-  const health = await detectHealth({
-    whisperModel: settings.whisperModel,
-    ollamaModel: hardware.recommended.ollamaModel,
-  });
+  const health = await detectHealth({ whisperModel: settings.whisperModel });
   const hints = INSTALL_HINTS[hardware.platform];
   const fixes: Array<{ id: string; description: string; command: string }> = [];
   for (const m of health.missing) {
-    if (m === 'ollama') {
-      fixes.push({ id: m, description: 'Install & start Ollama', command: hints.ollama });
-    } else if (m.startsWith('ollama-model:')) {
-      const model = m.slice('ollama-model:'.length);
-      fixes.push({
-        id: m,
-        description: `Pull Ollama model ${model}`,
-        command: hints['ollama-pull'](model),
-      });
-    } else if (m === 'whisper-cli') {
+    if (m === 'whisper-cli') {
       fixes.push({
         id: m,
         description: 'Build whisper-cli binary',

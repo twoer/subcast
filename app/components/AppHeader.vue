@@ -58,17 +58,19 @@ function whisperWarn(): string | null {
   return t('app.modelNotInstalled', { name: m.whisperModel });
 }
 
-function ollamaWarn(): string | null {
+function llmWarn(): string | null {
   const m = activeModels.value;
   if (!m) return null;
-  if (m.ollamaRunning === false) return t('app.ollamaNotRunning');
-  if (m.ollamaReady === false) return t('app.modelNotInstalled', { name: m.ollamaModel });
+  // llama-server is an in-process binary spawned by Subcast itself —
+  // there is no "runtime not started" state to surface. Either the
+  // active tier id matches an installed GGUF or it doesn't.
+  if (m.llmReady === false) return t('app.llmNotInstalled');
   return null;
 }
 
-const chipWarn = computed(() => whisperWarn() ?? ollamaWarn());
+const chipWarn = computed(() => whisperWarn() ?? llmWarn());
 const whisperWarnMsg = computed(() => whisperWarn());
-const ollamaWarnMsg = computed(() => ollamaWarn());
+const llmWarnMsg = computed(() => llmWarn());
 
 // In desktop mode, the dedicated Models tab is visible. In web mode it's
 // filtered out by `settings.vue`, so deep-link `#preferences` instead so
@@ -193,9 +195,9 @@ const NAV_BTN_ACTIVE = 'bg-accent text-foreground font-semibold';
             </span>
             <span class="shrink-0 text-muted-foreground/60">·</span>
             <span class="flex items-center gap-1 truncate font-mono text-2xs tabular-nums">
-              <span class="truncate">{{ activeModels?.ollamaModel ?? '—' }}</span>
+              <span class="truncate">{{ activeModels?.llmModel ?? '—' }}</span>
               <span
-                v-if="ollamaWarnMsg"
+                v-if="llmWarnMsg"
                 aria-hidden="true"
                 class="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
               />
@@ -241,21 +243,21 @@ const NAV_BTN_ACTIVE = 'bg-accent text-foreground font-semibold';
                 </div>
                 <div>
                   <div class="text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Ollama
+                    {{ $t('app.llmLabel') }}
                   </div>
                   <div class="mt-0.5 flex items-center gap-1.5 truncate font-mono text-sm font-medium text-foreground">
-                    <span class="truncate">{{ activeModels?.ollamaModel ?? '—' }}</span>
+                    <span class="truncate">{{ activeModels?.llmModel ?? '—' }}</span>
                     <span
-                      v-if="ollamaWarnMsg"
+                      v-if="llmWarnMsg"
                       aria-hidden="true"
                       class="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
                     />
                   </div>
                   <div
-                    v-if="ollamaWarnMsg"
+                    v-if="llmWarnMsg"
                     class="mt-0.5 text-2xs font-medium text-amber-600"
                   >
-                    {{ ollamaWarnMsg }}
+                    {{ llmWarnMsg }}
                   </div>
                 </div>
               </div>
