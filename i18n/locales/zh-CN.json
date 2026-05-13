@@ -358,7 +358,12 @@
       "pull": "拉取 {tag}",
       "pullingStarting": "启动中",
       "pullingPrefix": "正在拉取 {tag} — {status}",
-      "pullFailed": "拉取失败：{error}"
+      "pullFailed": "拉取失败：{error}",
+      "fixKey": "修复 Ollama 身份密钥",
+      "fixKeyHint": "Ollama 的身份密钥文件缺失（这是 Ollama 自身的常见问题）。点击修复后即可重试拉取。",
+      "fixKeyWorking": "正在生成密钥…",
+      "fixKeyDone": "密钥已生成，请重新点击「拉取」",
+      "fixKeyFailed": "修复失败：{error}"
     },
     "home": {
       "setupIncomplete": "首次设置未完成：",

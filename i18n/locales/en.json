@@ -358,7 +358,12 @@
       "pull": "Pull {tag}",
       "pullingStarting": "starting",
       "pullingPrefix": "Pulling {tag} — {status}",
-      "pullFailed": "Pull failed: {error}"
+      "pullFailed": "Pull failed: {error}",
+      "fixKey": "Fix Ollama identity key",
+      "fixKeyHint": "Ollama's identity key file is missing (a known Ollama issue). Click to generate it, then retry the pull.",
+      "fixKeyWorking": "Generating key…",
+      "fixKeyDone": "Key generated. Click Pull again to retry.",
+      "fixKeyFailed": "Fix failed: {error}"
     },
     "home": {
       "setupIncomplete": "Setup incomplete:",

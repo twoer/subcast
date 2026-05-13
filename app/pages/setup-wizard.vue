@@ -154,6 +154,21 @@ const qwenTask = ref<QwenPullSnapshot | null>(null);
 const qwenActionError = ref<string | null>(null);
 let qwenPollTimer: ReturnType<typeof setInterval> | null = null;
 
+// Fix-key flow state. Tri-state ('idle' | 'working' | 'done') so the
+// UI can show a spinner while ssh-keygen runs and a confirmation
+// nudge afterwards.
+const fixKeyState = ref<'idle' | 'working' | 'done'>('idle');
+const fixKeyError = ref<string | null>(null);
+
+// Match the well-known Ollama identity-key error in either the inline
+// pull-task error or the synchronous start-pull error. Anything
+// containing `id_ed25519` is the missing-key bug — there's no other
+// legitimate error path Ollama emits with that filename.
+const missingOllamaKey = computed<boolean>(() => {
+  const haystack = `${qwenTask.value?.error ?? ''} ${qwenActionError.value ?? ''}`;
+  return haystack.includes('id_ed25519');
+});
+
 // --- Status fetch ---------------------------------------------------------
 
 async function loadStatus(): Promise<void> {
@@ -410,6 +425,29 @@ async function cancelQwenPull(): Promise<void> {
     await $fetch('/api/desktop/qwen/pull', { method: 'DELETE' });
   } catch {
     /* surface via next poll */
+  }
+}
+
+/**
+ * One-shot fix for the missing `~/.ollama/id_ed25519` Ollama bug.
+ * Generates the key via the desktop endpoint, then clears the prior
+ * pull-task state so the failed-task banner goes away and the user is
+ * primed to click "Pull" again.
+ */
+async function fixOllamaKey(): Promise<void> {
+  fixKeyState.value = 'working';
+  fixKeyError.value = null;
+  try {
+    await $fetch<{ ok: boolean }>('/api/desktop/ollama/fix-key', { method: 'POST' });
+    // Clear the previous error state so the "请重新点击拉取" hint
+    // takes the banner spot.
+    qwenTask.value = null;
+    qwenActionError.value = null;
+    fixKeyState.value = 'done';
+  } catch (e) {
+    const err = e as { statusMessage?: string; message?: string };
+    fixKeyError.value = err.statusMessage ?? err.message ?? 'fix-key failed';
+    fixKeyState.value = 'idle';
   }
 }
 
@@ -947,6 +985,36 @@ function formatEta(s: number | null): string {
         </section>
 
         <div v-if="qwenActionError" class="text-sm text-destructive">{{ qwenActionError }}</div>
+
+        <!-- Targeted recovery for the Ollama id_ed25519 bug. Shows only
+             when we matched the specific error signature, so users don't
+             see a misleading "fix" affordance for unrelated failures. -->
+        <section
+          v-if="missingOllamaKey || fixKeyState !== 'idle'"
+          class="flex items-start gap-3 rounded-lg border border-warning/40 bg-warning/[0.08] p-3 text-sm"
+        >
+          <AlertCircle class="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+          <div class="flex-1 space-y-2">
+            <p class="text-foreground">{{ t('desktop.qwen.fixKeyHint') }}</p>
+            <p v-if="fixKeyState === 'done'" class="text-success">
+              {{ t('desktop.qwen.fixKeyDone') }}
+            </p>
+            <p v-if="fixKeyError" class="text-destructive">
+              {{ t('desktop.qwen.fixKeyFailed', { error: fixKeyError }) }}
+            </p>
+          </div>
+          <Button
+            v-if="fixKeyState !== 'done'"
+            size="sm"
+            :disabled="fixKeyState === 'working'"
+            @click="fixOllamaKey"
+          >
+            <Loader2 v-if="fixKeyState === 'working'" class="h-3.5 w-3.5 animate-spin" />
+            {{ fixKeyState === 'working'
+              ? t('desktop.qwen.fixKeyWorking')
+              : t('desktop.qwen.fixKey') }}
+          </Button>
+        </section>
       </template>
 
       <!-- ===== Footer ===== -->
