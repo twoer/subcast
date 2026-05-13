@@ -83,4 +83,24 @@ describe('LlmServer state machine', () => {
     vi.useRealTimers();
     server.dispose();
   });
+
+  it('parses listening port from stdout', async () => {
+    const { Readable } = await import('node:stream');
+    const fakeStdout = Readable.from([
+      'llama server starting\n',
+      'HTTP server listening on 127.0.0.1:51302\n',
+      'ready\n',
+    ]);
+    const fakeProc = {
+      stdout: fakeStdout,
+      stderr: Readable.from([]),
+      on: vi.fn(),
+    } as unknown as ChildProcess;
+    const port = await (
+      new LlmServer() as unknown as {
+        waitForListeningPort: (p: ChildProcess, t: number) => Promise<number>;
+      }
+    ).waitForListeningPort(fakeProc, 2000);
+    expect(port).toBe(51302);
+  });
 });

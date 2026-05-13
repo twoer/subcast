@@ -113,11 +113,39 @@ export class LlmServer {
       '--keep', '-1',
       '--n-gpu-layers', '999',
     ]);
-    // Port-from-stdout parsing arrives in Task 1.3; for now reject so
-    // tests must inject spawnFn.
-    void proc;
-    throw new Error('LlmServer.realSpawn requires Task 1.3 (port parsing) — inject spawnFn in tests');
+    const port = await this.waitForListeningPort(proc, 10_000);
+    return { proc, port };
   };
+
+  /**
+   * Resolve with the TCP port llama-server announces on stdout/stderr.
+   * Matches lines like `HTTP server listening on 127.0.0.1:51302` (also
+   * tolerates IPv6 bracketed forms). Rejects after `timeoutMs` if no
+   * announcement is seen — caller should treat that as a spawn failure.
+   */
+  private waitForListeningPort(proc: ChildProcess, timeoutMs: number): Promise<number> {
+    return new Promise((resolve, reject) => {
+      const re = /listening on (?:[0-9.]+|\[?[0-9a-f:]+\]?):(\d+)/i;
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new Error(`llama-server did not announce listening port within ${timeoutMs}ms`));
+      }, timeoutMs);
+      const onChunk = (chunk: Buffer | string) => {
+        const m = re.exec(String(chunk));
+        if (m) {
+          cleanup();
+          resolve(Number(m[1]));
+        }
+      };
+      const cleanup = () => {
+        clearTimeout(timer);
+        proc.stdout?.off('data', onChunk);
+        proc.stderr?.off('data', onChunk);
+      };
+      proc.stdout?.on('data', onChunk);
+      proc.stderr?.on('data', onChunk);
+    });
+  }
 
   private armIdleTimer(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
