@@ -5,10 +5,7 @@
  *
  *   Step 1 — Whisper transcription model: pick a tier and install
  *            (symlink existing file / copy / download from HF).
- *   Step 2 — Ollama runtime: detect; if missing, open ollama.com in the
- *            user's browser, then poll until they've installed and
- *            started it (we deliberately do NOT spawn or manage Ollama).
- *   Step 3 — Qwen language model (Phase 2.7).
+ *   Step 2 — Qwen language model (Phase 2.7).
  *
  * On mount the wizard inspects existing state and jumps to the earliest
  * unmet step so returning users aren't forced through completed work.
@@ -22,7 +19,6 @@ import {
   ChevronLeft,
   ChevronRight,
   AlertCircle,
-  ExternalLink,
   Loader2,
   X as XIcon,
   Check,
@@ -46,7 +42,6 @@ type WhisperMirror = 'huggingface' | 'hf-mirror';
 type InstallKind = 'symlink' | 'copy' | 'download';
 type InstallState = 'running' | 'success' | 'error' | 'canceled';
 type ScanAction = 'symlink' | 'copy' | 'ignore';
-type OllamaState = 'running' | 'installed-not-running' | 'needs-install';
 type QwenVariant = '3b' | '7b' | '14b';
 type QwenPullState = 'running' | 'success' | 'error';
 
@@ -87,11 +82,6 @@ interface InstallSnapshot {
   destPath?: string;
   error?: string;
 }
-interface OllamaSnapshot {
-  state: OllamaState;
-  version?: string;
-  binaryPath?: string;
-}
 interface QwenPullProgress {
   status: string;
   digest?: string;
@@ -130,7 +120,7 @@ const QWEN_VARIANTS: Array<{ id: QwenVariant; tag: string; sizeLabel: string; re
 
 // --- State ----------------------------------------------------------------
 
-const currentStep = ref<1 | 2 | 3>(1);
+const currentStep = ref<1 | 2>(1);
 const status = ref<SetupStatus | null>(null);
 const statusError = ref<string | null>(null);
 
@@ -142,32 +132,13 @@ const task = ref<InstallSnapshot | null>(null);
 const actionError = ref<string | null>(null);
 let whisperPollTimer: ReturnType<typeof setInterval> | null = null;
 
-// Step 2
-const ollama = ref<OllamaSnapshot | null>(null);
-const ollamaProbing = ref(false);
-const ollamaWaiting = ref(false); // true after "I've installed it" until we see 'running'
-let ollamaPollTimer: ReturnType<typeof setInterval> | null = null;
-
-// Step 3
+// Step 2 (transitional — Qwen-pull markup remains until Task 4.2 swaps in
+// the LLM picker; `selectedQwen` / `qwenTask` become `selectedLlm` /
+// `llmTask` then).
 const selectedQwen = ref<QwenVariant>('7b');
 const qwenTask = ref<QwenPullSnapshot | null>(null);
 const qwenActionError = ref<string | null>(null);
 let qwenPollTimer: ReturnType<typeof setInterval> | null = null;
-
-// Fix-key flow state. Tri-state ('idle' | 'working' | 'done') so the
-// UI can show a spinner while ssh-keygen runs and a confirmation
-// nudge afterwards.
-const fixKeyState = ref<'idle' | 'working' | 'done'>('idle');
-const fixKeyError = ref<string | null>(null);
-
-// Match the well-known Ollama identity-key error in either the inline
-// pull-task error or the synchronous start-pull error. Anything
-// containing `id_ed25519` is the missing-key bug — there's no other
-// legitimate error path Ollama emits with that filename.
-const missingOllamaKey = computed<boolean>(() => {
-  const haystack = `${qwenTask.value?.error ?? ''} ${qwenActionError.value ?? ''}`;
-  return haystack.includes('id_ed25519');
-});
 
 // --- Status fetch ---------------------------------------------------------
 
@@ -297,44 +268,7 @@ async function cancelInstall(): Promise<void> {
   }
 }
 
-// --- Step 2 (Ollama) ------------------------------------------------------
-
-async function probeOllamaStatus(): Promise<void> {
-  ollamaProbing.value = true;
-  try {
-    ollama.value = await $fetch<OllamaSnapshot>('/api/desktop/ollama/status');
-  } catch {
-    /* keep last */
-  } finally {
-    ollamaProbing.value = false;
-  }
-  if (ollama.value?.state === 'running') {
-    ollamaWaiting.value = false;
-    stopOllamaPolling();
-  }
-}
-
-function startOllamaPolling(): void {
-  if (ollamaPollTimer !== null) return;
-  // 5s cadence: detection probe itself uses a 2s timeout, so back-to-back
-  // probes with a 3s gap give us a steady rhythm without hammering.
-  ollamaPollTimer = setInterval(() => void probeOllamaStatus(), 5_000);
-}
-
-function stopOllamaPolling(): void {
-  if (ollamaPollTimer !== null) {
-    clearInterval(ollamaPollTimer);
-    ollamaPollTimer = null;
-  }
-}
-
-function clickIveInstalled(): void {
-  ollamaWaiting.value = true;
-  void probeOllamaStatus();
-  startOllamaPolling();
-}
-
-// --- Step 3 (Qwen) --------------------------------------------------------
+// --- Step 2 (Qwen) --------------------------------------------------------
 
 const installedQwen = computed<Set<QwenVariant>>(() => {
   const installed = new Set<QwenVariant>();
@@ -428,29 +362,6 @@ async function cancelQwenPull(): Promise<void> {
   }
 }
 
-/**
- * One-shot fix for the missing `~/.ollama/id_ed25519` Ollama bug.
- * Generates the key via the desktop endpoint, then clears the prior
- * pull-task state so the failed-task banner goes away and the user is
- * primed to click "Pull" again.
- */
-async function fixOllamaKey(): Promise<void> {
-  fixKeyState.value = 'working';
-  fixKeyError.value = null;
-  try {
-    await $fetch<{ ok: boolean }>('/api/desktop/ollama/fix-key', { method: 'POST' });
-    // Clear the previous error state so the "请重新点击拉取" hint
-    // takes the banner spot.
-    qwenTask.value = null;
-    qwenActionError.value = null;
-    fixKeyState.value = 'done';
-  } catch (e) {
-    const err = e as { statusMessage?: string; message?: string };
-    fixKeyError.value = err.statusMessage ?? err.message ?? 'fix-key failed';
-    fixKeyState.value = 'idle';
-  }
-}
-
 /** Default-select the largest installed variant; fall back to recommended. */
 function pickQwenDefault(): QwenVariant {
   for (const v of ['14b', '7b', '3b'] as const) {
@@ -475,18 +386,9 @@ function pickWhisperDefault(): WhisperModelName {
 
 // --- Lifecycle ------------------------------------------------------------
 
-async function enterStep(step: 1 | 2 | 3): Promise<void> {
+async function enterStep(step: 1 | 2): Promise<void> {
   currentStep.value = step;
   if (step === 2) {
-    await probeOllamaStatus();
-    // If Ollama already running we just sit on the auto-detected "✓" state
-    // and let the user click Next. Otherwise keep polling — they may flip
-    // to ollama.com, install, and return without clicking "I've installed".
-    if (ollama.value?.state !== 'running') startOllamaPolling();
-  } else {
-    stopOllamaPolling();
-  }
-  if (step === 3) {
     selectedQwen.value = pickQwenDefault();
     await pollQwenTask();
     if (qwenTask.value?.state === 'running') startQwenPolling();
@@ -505,7 +407,7 @@ const route = useRoute();
  */
 const isManageEntry = computed<boolean>(() => {
   const s = Number(route.query.step);
-  return s === 1 || s === 2 || s === 3;
+  return s === 1 || s === 2;
 });
 
 const wizardTitle = computed<string>(() =>
@@ -521,11 +423,11 @@ onMounted(async () => {
   // on disk — largest installed → largest reusable → base.
   if (status.value) selectedModel.value = pickWhisperDefault();
 
-  // `?step=1|2|3` from Settings → Models "Download more" buttons forces
+  // `?step=1|2` from Settings → Models "Download more" buttons forces
   // landing on that step even when first-run setup is fully complete —
   // otherwise the auto-redirect below would bounce the user home.
   const forcedStep = Number(route.query.step);
-  if (forcedStep === 1 || forcedStep === 2 || forcedStep === 3) {
+  if (forcedStep === 1 || forcedStep === 2) {
     await enterStep(forcedStep);
     return;
   }
@@ -533,19 +435,17 @@ onMounted(async () => {
   // First-run flow: resume from earliest unmet step, or fast-forward home
   // if every dependency is already satisfied.
   if (!status.value) return;
-  if (status.value.hasWhisperModel && status.value.ollamaRunning && status.value.hasQwen) {
+  if (status.value.hasWhisperModel && status.value.hasQwen) {
     await navigateTo('/', { replace: true });
     return;
   }
   if (status.value.hasWhisperModel) {
-    if (status.value.ollamaRunning) await enterStep(3);
-    else await enterStep(2);
+    await enterStep(2);
   }
 });
 
 onBeforeUnmount(() => {
   stopWhisperPolling();
-  stopOllamaPolling();
   stopQwenPolling();
 });
 
@@ -557,8 +457,6 @@ const canAdvanceStep1 = computed<boolean>(() => {
   // Or we just finished installing the selected model this session.
   return installFinished.value;
 });
-
-const canAdvanceStep2 = computed<boolean>(() => ollama.value?.state === 'running');
 
 const canFinish = computed<boolean>(
   () => qwenAlreadyInstalled.value || qwenPullFinished.value,
@@ -599,9 +497,7 @@ async function goNextStep(): Promise<void> {
   if (currentStep.value === 1 && canAdvanceStep1.value) {
     await persistWhisperChoice();
     await enterStep(2);
-  } else if (currentStep.value === 2 && canAdvanceStep2.value) {
-    await enterStep(3);
-  } else if (currentStep.value === 3) {
+  } else if (currentStep.value === 2) {
     await persistQwenChoice();
     await navigateTo('/');
   }
@@ -609,7 +505,6 @@ async function goNextStep(): Promise<void> {
 
 async function goPrevStep(): Promise<void> {
   if (currentStep.value === 2) await enterStep(1);
-  else if (currentStep.value === 3) await enterStep(2);
 }
 
 // --- UI helpers -----------------------------------------------------------
@@ -642,7 +537,6 @@ function formatEta(s: number | null): string {
           <template
             v-for="(label, i) in [
               t('desktop.setupWizard.stepLabel1'),
-              t('desktop.setupWizard.stepLabel2'),
               t('desktop.setupWizard.stepLabel3'),
             ]"
             :key="i"
@@ -670,7 +564,7 @@ function formatEta(s: number | null): string {
               >{{ label }}</span>
             </li>
             <li
-              v-if="i < 2"
+              v-if="i < 1"
               class="mx-1 mt-4 h-0.5 flex-1 rounded-full transition-colors"
               :class="currentStep > i + 1 ? 'bg-success' : 'bg-border'"
             />
@@ -679,7 +573,6 @@ function formatEta(s: number | null): string {
 
         <p class="text-sm text-muted-foreground">
           <template v-if="currentStep === 1">{{ t('desktop.setupWizard.subtitleStep1') }}</template>
-          <template v-else-if="currentStep === 2">{{ t('desktop.setupWizard.subtitleStep2') }}</template>
           <template v-else>{{ t('desktop.setupWizard.subtitleStep3') }}</template>
         </p>
       </header>
@@ -859,71 +752,8 @@ function formatEta(s: number | null): string {
         <div v-if="actionError" class="text-sm text-destructive">{{ actionError }}</div>
       </template>
 
-      <!-- ===== Step 2 — Ollama ===== -->
+      <!-- ===== Step 2 — Qwen (transitional; LLM picker in Task 4.2) ===== -->
       <template v-else-if="currentStep === 2">
-        <section class="space-y-4">
-          <div
-            v-if="ollama?.state === 'running'"
-            class="rounded-lg border border-success/30 bg-success/10 p-4 text-sm"
-          >
-            <p class="flex items-center gap-1.5 font-medium text-success">
-              <CheckCircle2 class="h-4 w-4" />
-              {{ t('desktop.ollama.running') }}
-            </p>
-            <p v-if="ollama.version" class="mt-1 pl-6 text-xs text-success">
-              {{ t('desktop.ollama.versionLabel', { version: ollama.version }) }}
-            </p>
-          </div>
-
-          <div
-            v-else-if="ollama?.state === 'installed-not-running'"
-            class="rounded-lg border border-warning/30 bg-warning/10 p-4 text-sm"
-          >
-            <p class="flex items-center gap-1.5 font-medium text-warning">
-              <AlertCircle class="h-4 w-4" />
-              {{ t('desktop.ollama.installedNotRunning') }}
-            </p>
-            <p class="mt-2 pl-6 text-xs text-warning/80">
-              {{ t('desktop.ollama.installedNotRunningDetail', { path: ollama.binaryPath ?? '' }) }}
-            </p>
-          </div>
-
-          <div
-            v-else
-            class="card-compact text-sm"
-          >
-            <p class="font-medium">{{ t('desktop.ollama.needsInstall') }}</p>
-            <p class="mt-2 text-xs text-muted-foreground">
-              {{ t('desktop.ollama.needsInstallBody') }}
-            </p>
-            <div class="mt-4 flex flex-wrap gap-2">
-              <a
-                href="https://ollama.com/download"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
-              >
-                <ExternalLink class="h-3.5 w-3.5 opacity-70" />
-                {{ t('desktop.ollama.openOllamaCom') }}
-              </a>
-              <Button
-                variant="outline"
-                size="sm"
-                :disabled="ollamaWaiting && ollamaProbing"
-                @click="clickIveInstalled"
-              >
-                {{ ollamaWaiting ? t('desktop.ollama.rechecking') : t('desktop.ollama.iveInstalled') }}
-              </Button>
-            </div>
-            <p v-if="ollamaWaiting" class="mt-3 text-xs text-muted-foreground">
-              {{ t('desktop.setupWizard.checkingEvery5s') }}
-            </p>
-          </div>
-        </section>
-      </template>
-
-      <!-- ===== Step 3 — Qwen ===== -->
-      <template v-else>
         <section class="space-y-3">
           <div
             v-for="v in QWEN_VARIANTS"
@@ -985,36 +815,6 @@ function formatEta(s: number | null): string {
         </section>
 
         <div v-if="qwenActionError" class="text-sm text-destructive">{{ qwenActionError }}</div>
-
-        <!-- Targeted recovery for the Ollama id_ed25519 bug. Shows only
-             when we matched the specific error signature, so users don't
-             see a misleading "fix" affordance for unrelated failures. -->
-        <section
-          v-if="missingOllamaKey || fixKeyState !== 'idle'"
-          class="flex items-start gap-3 rounded-lg border border-warning/40 bg-warning/[0.08] p-3 text-sm"
-        >
-          <AlertCircle class="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-          <div class="flex-1 space-y-2">
-            <p class="text-foreground">{{ t('desktop.qwen.fixKeyHint') }}</p>
-            <p v-if="fixKeyState === 'done'" class="text-success">
-              {{ t('desktop.qwen.fixKeyDone') }}
-            </p>
-            <p v-if="fixKeyError" class="text-destructive">
-              {{ t('desktop.qwen.fixKeyFailed', { error: fixKeyError }) }}
-            </p>
-          </div>
-          <Button
-            v-if="fixKeyState !== 'done'"
-            size="sm"
-            :disabled="fixKeyState === 'working'"
-            @click="fixOllamaKey"
-          >
-            <Loader2 v-if="fixKeyState === 'working'" class="h-3.5 w-3.5 animate-spin" />
-            {{ fixKeyState === 'working'
-              ? t('desktop.qwen.fixKeyWorking')
-              : t('desktop.qwen.fixKey') }}
-          </Button>
-        </section>
       </template>
 
       <!-- ===== Footer ===== -->
@@ -1055,22 +855,14 @@ function formatEta(s: number | null): string {
             {{ t('desktop.setupWizard.next') }}
             <ChevronRight class="h-4 w-4" />
           </Button>
+          <!-- Step 2 primary action -->
           <Button
-            v-else-if="currentStep === 2"
-            :disabled="!canAdvanceStep2"
-            @click="goNextStep"
-          >
-            {{ t('desktop.setupWizard.next') }}
-            <ChevronRight class="h-4 w-4" />
-          </Button>
-          <!-- Step 3 primary action -->
-          <Button
-            v-if="currentStep === 3 && !qwenAlreadyInstalled && !qwenPullFinished"
+            v-if="currentStep === 2 && !qwenAlreadyInstalled && !qwenPullFinished"
             :disabled="qwenPullRunning"
             @click="startQwenPull"
           >{{ t('desktop.qwen.pull', { tag: QWEN_VARIANTS.find((v) => v.id === selectedQwen)?.tag ?? '' }) }}</Button>
           <Button
-            v-if="currentStep === 3"
+            v-if="currentStep === 2"
             :disabled="!canFinish"
             @click="goNextStep"
           >{{ t('desktop.setupWizard.finish') }}</Button>
