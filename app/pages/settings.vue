@@ -216,7 +216,7 @@ const FAQ: FaqItem[] = [
 const appVersion = computed<string>(() => desktop.appVersion ?? '0.1.0');
 const aboutDependencies: Array<{ name: string; version: string; license: string }> = [
   { name: 'Whisper.cpp', version: 'v1.8.x', license: 'MIT' },
-  { name: 'Ollama', version: 'external', license: 'MIT' },
+  { name: 'llama.cpp', version: 'bundled', license: 'MIT' },
   { name: 'ffmpeg-static', version: 'LGPL build', license: 'LGPL' },
   { name: 'Electron', version: 'v36.x', license: 'MIT' },
   { name: 'Nuxt 4 · Vue 3', version: 'latest', license: 'MIT' },

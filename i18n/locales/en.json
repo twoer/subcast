@@ -135,7 +135,7 @@
       "esc": "Close dialog"
     },
     "errors": {
-      "disconnected": "Lost connection to the translation service. Make sure Ollama is running.",
+      "disconnected": "Lost connection to the translation service.",
       "FATAL_UNKNOWN": "Translation failed unexpectedly. Please try again.",
       "TASK_NOT_FOUND": "This translation task has expired. Try switching the language again.",
       "fallback": "Translation failed. Please try again.",
@@ -190,8 +190,6 @@
       "langEn": "English",
       "outdatedHint": "Insights were generated with outdated settings (model or transcript changed).",
       "errors": {
-        "OLLAMA_UNREACHABLE": "Ollama is not reachable. Make sure it's running.",
-        "MODEL_NOT_PULLED": "The Ollama model is not pulled yet.",
         "VIDEO_TOO_LONG": "Video is too long for AI insights with the current model.",
         "PARSE_FAILED": "The AI output couldn't be parsed. Please try again.",
         "NETWORK": "Lost connection while generating insights.",

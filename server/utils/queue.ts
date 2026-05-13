@@ -7,8 +7,8 @@ import { randomUUID } from 'node:crypto';
 
 import { getDb, SUBCAST_PATHS } from './db';
 import { logEvent } from './log';
-import { DEFAULT_TRANSLATE_MODEL, translateAll, unloadOllamaModel } from './ollama';
 import { ProcessAbortedError } from './process';
+import { translateAll } from './translate';
 import { detectHallucination, type HallucinationReason } from './quality';
 import { loadSettings } from './settings';
 import type { TranscribeOptions } from './whisper';
@@ -623,16 +623,15 @@ class TranslateQueue {
    * `TranscribeQueue.ensureTask` for the full resurrection contract —
    * the rules here are identical, with one practical note: translation
    * does NOT persist per-batch progress, so a resurrected task restarts
-   * from batch 0. Cheap when Ollama is healthy, but the user pays the
-   * inference cost again.
+   * from batch 0. Cheap when the LLM is already loaded, but the user
+   * pays the inference cost again.
+   *
+   * The `model` column on `translate_tasks` is purely informational now
+   * that the LLM backend exposes a single active model — we record
+   * `'llm'` so legacy queries still see a non-null value.
    */
   ensureTask(videoSha: string, lang: string, model?: string): TranslateTaskSummary {
-    // 0.1 read `settings.ollamaModel` here (an Ollama tag string). With
-    // the 0.2 settings shape the active LLM is just a tier id and the
-    // legacy translate worker still wants a full tag, so fall through
-    // to DEFAULT_TRANSLATE_MODEL. The translate path will be rewritten
-    // to use the LLMBackend abstraction in a later 0.2 task.
-    const effectiveModel = model ?? DEFAULT_TRANSLATE_MODEL;
+    const effectiveModel = model ?? 'llm';
     const db = getDb();
     const existing = db
       .prepare(
@@ -765,7 +764,6 @@ class TranslateQueue {
       });
 
       const out = await translateAll(origCues, lang, {
-        model,
         signal: active.abort.signal,
         onSuperBatchStart: (info) => {
           emit({
@@ -849,11 +847,9 @@ class TranslateQueue {
           ? 'CANCELED'
           : msg.startsWith('BATCH_RETRY_EXHAUSTED')
             ? 'BATCH_RETRY_EXHAUSTED'
-            : msg.includes('Ollama HTTP') || msg.includes('OLLAMA_UNREACHABLE')
-              ? 'OLLAMA_UNREACHABLE'
-              : msg === 'ORIGINAL_NOT_READY'
-                ? 'ORIGINAL_NOT_READY'
-                : 'FATAL_UNKNOWN';
+            : msg === 'ORIGINAL_NOT_READY'
+              ? 'ORIGINAL_NOT_READY'
+              : 'FATAL_UNKNOWN';
       if (code === 'CANCELED') {
         // status row already 'canceled' by cancel()
         emit({ event: 'status', data: { taskId, status: 'canceled' } });
@@ -866,7 +862,8 @@ class TranslateQueue {
     } finally {
       active.emitter.emit('end');
       this.active = null;
-      unloadOllamaModel(model).catch(() => {});
+      // The llama-server backend auto-unloads on idle (see llmServer.ts),
+      // so the queue no longer needs to send an explicit unload signal.
       this.tryStartNext().catch((err) => {
         logEvent({
           level: 'error',

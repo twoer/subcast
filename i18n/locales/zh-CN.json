@@ -135,7 +135,7 @@
       "esc": "关闭对话框"
     },
     "errors": {
-      "disconnected": "与翻译服务的连接已断开，请确认 Ollama 正在运行。",
+      "disconnected": "与翻译服务的连接已断开。",
       "FATAL_UNKNOWN": "翻译时出现意外错误，请稍后重试。",
       "TASK_NOT_FOUND": "此翻译任务已失效，请重新切换语言。",
       "fallback": "翻译失败，请重试。",
@@ -190,8 +190,6 @@
       "langZh": "中文",
       "langEn": "英文",
       "errors": {
-        "OLLAMA_UNREACHABLE": "Ollama 未运行，请确认本地服务已启动。",
-        "MODEL_NOT_PULLED": "Ollama 模型尚未拉取。",
         "VIDEO_TOO_LONG": "视频太长，当前模型无法生成 AI 总结。",
         "PARSE_FAILED": "AI 输出无法解析，请重试。",
         "NETWORK": "生成期间网络中断。",
