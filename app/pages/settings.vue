@@ -20,6 +20,8 @@ import {
 } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { WHISPER_MODEL_NAMES, type WhisperModelName } from '#shared/whisperModels';
+import { LLM_MODELS, type LlmModelId } from '../../desktop/modelManager/llmConfig';
+import { Badge } from '~/components/ui/badge';
 
 interface Settings {
   whisperModel: WhisperModelName;
@@ -105,10 +107,10 @@ function onTabChange(value: string | number): void {
 
 // ── Models tab state ────────────────────────────────────────────────
 interface WhisperModelRow { name: string; sizeBytes: number }
-interface OllamaModelRow { name: string; sizeBytes: number; modifiedAt: string | null }
+interface LlmModelRow { name: LlmModelId; filename: string; sizeBytes: number }
 interface ModelsResp {
   whisper: { active: string; installed: WhisperModelRow[] };
-  ollama: { running: boolean; active: string; installed: OllamaModelRow[] };
+  llm: { active: LlmModelId | undefined; installed: LlmModelRow[] };
 }
 
 const modelsData = ref<ModelsResp | null>(null);
@@ -119,9 +121,13 @@ const installedWhisperNames = computed<Set<string>>(
   () => new Set(modelsData.value?.whisper.installed.map((m) => m.name) ?? []),
 );
 
+function getLlmFilename(id: LlmModelId): string {
+  return LLM_MODELS[id].filename;
+}
+
 type DeleteTarget =
   | { kind: 'whisper'; name: string; sizeBytes: number }
-  | { kind: 'ollama'; name: string; sizeBytes: number };
+  | { kind: 'llm'; name: LlmModelId; sizeBytes: number };
 const pendingDelete = ref<DeleteTarget | null>(null);
 
 async function loadModels(): Promise<void> {
@@ -153,15 +159,15 @@ async function setActiveWhisper(name: string): Promise<void> {
   }
 }
 
-async function setActiveOllama(name: string): Promise<void> {
+async function setActiveLlm(name: LlmModelId): Promise<void> {
   try {
     const res = await $fetch<{ settings: Settings }>('/api/settings', {
       method: 'PUT',
-      body: { ollamaModel: name },
+      body: { llmModel: name },
     });
     settings.value = res.settings;
     draft.value = { ...res.settings };
-    if (modelsData.value) modelsData.value.ollama.active = res.settings.ollamaModel;
+    if (modelsData.value) modelsData.value.llm.active = name;
     setActiveModelsCache(res.settings.whisperModel, res.settings.ollamaModel);
     void refreshActiveModels();
   } catch (e) {
@@ -177,7 +183,7 @@ async function confirmDelete(): Promise<void> {
     const url =
       target.kind === 'whisper'
         ? `/api/desktop/whisper/${encodeURIComponent(target.name)}`
-        : `/api/desktop/ollama/${encodeURIComponent(target.name)}`;
+        : `/api/desktop/llm/${encodeURIComponent(target.name)}`;
     await $fetch(url, { method: 'DELETE' });
     await loadModels();
   } catch (e) {
@@ -251,7 +257,6 @@ async function saveSlice(slice: Partial<Settings>): Promise<void> {
     void refreshActiveModels();
     if (modelsData.value) {
       modelsData.value.whisper.active = data.settings.whisperModel;
-      modelsData.value.ollama.active = data.settings.ollamaModel;
     }
   } catch (e) {
     errMsg.value = e instanceof Error ? e.message : 'failed to save';
@@ -655,7 +660,7 @@ onBeforeUnmount(() => {
               <div class="mb-4 flex items-center justify-between gap-3">
                 <h2 class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   <Boxes class="h-3.5 w-3.5" />
-                  {{ t('settings.models.ollama') }}
+                  {{ t('settings.models.llm') }}
                 </h2>
                 <div class="flex items-center gap-3">
                   <Tooltip>
@@ -674,7 +679,7 @@ onBeforeUnmount(() => {
                     <TooltipContent>{{ t('settings.models.refresh') }}</TooltipContent>
                   </Tooltip>
                   <NuxtLink
-                    to="/setup-wizard?step=3"
+                    to="/setup-wizard?step=2"
                     class="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent"
                   >
                     <Plus class="h-3.5 w-3.5" />
@@ -682,43 +687,50 @@ onBeforeUnmount(() => {
                   </NuxtLink>
                 </div>
               </div>
-              <Alert v-if="modelsData && !modelsData.ollama.running" class="mb-3 border-warning/30 bg-warning/[0.06]">
-                <AlertTriangle class="h-4 w-4 text-warning" />
-                <AlertDescription>{{ t('settings.models.ollamaOffline') }}</AlertDescription>
-              </Alert>
+
+              <p v-if="modelsData?.llm" class="mb-3 text-xs text-muted-foreground">
+                {{
+                  modelsData.llm.active
+                    ? t('settings.models.activeFile', { name: getLlmFilename(modelsData.llm.active) })
+                    : t('settings.models.notConfigured')
+                }}
+              </p>
+
               <ul
-                v-if="modelsData && modelsData.ollama.installed.length > 0"
+                v-if="modelsData && modelsData.llm.installed.length > 0"
                 class="-mx-2 space-y-1 px-2"
               >
                 <li
-                  v-for="m in modelsData.ollama.installed"
+                  v-for="m in modelsData.llm.installed"
                   :key="m.name"
                   class="group flex items-center justify-between gap-3 rounded-md px-2 py-2 transition-colors hover:bg-accent/50"
                 >
                   <div class="flex min-w-0 flex-1 items-center gap-3">
-                    <span class="truncate font-mono text-sm font-medium text-foreground">{{ m.name }}</span>
+                    <span class="truncate font-mono text-sm font-medium text-foreground">{{ m.filename }}</span>
                     <span class="font-mono text-xs text-muted-foreground">{{ fmtBytes(m.sizeBytes) }}</span>
-                    <span
-                      v-if="m.name === modelsData.ollama.active"
-                      class="inline-flex items-center gap-1 rounded-sm bg-primary/10 px-1.5 py-0.5 text-3xs font-medium uppercase tracking-wider text-primary"
+                    <Badge
+                      v-if="m.name === modelsData.llm.active"
+                      variant="secondary"
+                      size="sm"
+                      class="uppercase tracking-wider"
                     >
                       <CheckCircle2 class="h-3 w-3" />
                       {{ t('settings.models.active') }}
-                    </span>
+                    </Badge>
                   </div>
                   <div class="flex items-center gap-1">
                     <Button
-                      v-if="m.name !== modelsData.ollama.active"
+                      v-if="m.name !== modelsData.llm.active"
                       variant="secondary"
                       size="xs"
-                      @click="setActiveOllama(m.name)"
+                      @click="setActiveLlm(m.name)"
                     >{{ t('settings.models.switch') }}</Button>
                     <Button
-                      v-if="m.name !== modelsData.ollama.active"
+                      v-if="m.name !== modelsData.llm.active"
                       variant="ghost"
                       size="xs"
                       class="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      @click="pendingDelete = { kind: 'ollama', name: m.name, sizeBytes: m.sizeBytes }"
+                      @click="pendingDelete = { kind: 'llm', name: m.name, sizeBytes: m.sizeBytes }"
                     >
                       <Trash2 />
                       {{ t('settings.models.delete') }}
@@ -727,11 +739,11 @@ onBeforeUnmount(() => {
                 </li>
               </ul>
               <p
-                v-else-if="modelsData && modelsData.ollama.running"
+                v-else-if="modelsData"
                 class="py-4 text-center text-sm text-muted-foreground"
-              >{{ t('settings.models.empty') }}</p>
+              >{{ t('settings.models.emptyLlm') }}</p>
               <p
-                v-else-if="!modelsData"
+                v-else
                 class="py-4 text-center text-sm text-muted-foreground"
               >{{ t('settings.models.loading') }}</p>
             </section>
