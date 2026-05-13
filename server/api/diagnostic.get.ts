@@ -38,9 +38,13 @@ function recentLogs(debug: boolean): Record<string, string> {
 export default defineEventHandler(async (event) => {
   const settings = loadSettings();
   const hardware = detectHardware();
+  // settings.llmModel is a tier id ('3b' | '7b' | '14b'); detectHealth
+  // still expects a legacy Ollama tag string. Fall back to the hardware
+  // recommendation until the health probe is rewritten in a later 0.2
+  // task.
   const health = await detectHealth({
     whisperModel: settings.whisperModel,
-    ollamaModel: settings.ollamaModel,
+    ollamaModel: hardware.recommended.ollamaModel,
   });
 
   const zip = new JSZip();

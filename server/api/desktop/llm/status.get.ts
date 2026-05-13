@@ -14,10 +14,7 @@ import { createError, defineEventHandler } from 'h3';
 import { detectHardware } from '../../../utils/hardware';
 import { loadSettings } from '../../../utils/settings';
 import { scanLlmModels } from '../../../../desktop/modelManager/llmScan';
-import {
-  recommendLlmModel,
-  type LlmModelId,
-} from '../../../../desktop/modelManager/llmConfig';
+import { recommendLlmModel } from '../../../../desktop/modelManager/llmConfig';
 import { llmModelPath } from '../../../../desktop/modelManager/llmInstall';
 
 export default defineEventHandler(async (event) => {
@@ -28,10 +25,7 @@ export default defineEventHandler(async (event) => {
   const [scan, hw, settings] = await Promise.all([
     scanLlmModels(),
     Promise.resolve(detectHardware()),
-    // `llmModel` lands on SubcastSettings in Task 3.2; until then read it
-    // through a permissive cast so the response already carries the right
-    // shape once the field exists.
-    Promise.resolve(loadSettings() as { llmModel?: LlmModelId }),
+    Promise.resolve(loadSettings()),
   ]);
   const tagged = scan.map((m) => ({
     name: m.name,

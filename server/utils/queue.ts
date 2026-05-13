@@ -627,7 +627,12 @@ class TranslateQueue {
    * inference cost again.
    */
   ensureTask(videoSha: string, lang: string, model?: string): TranslateTaskSummary {
-    const effectiveModel = model ?? loadSettings().ollamaModel ?? DEFAULT_TRANSLATE_MODEL;
+    // 0.1 read `settings.ollamaModel` here (an Ollama tag string). With
+    // the 0.2 settings shape the active LLM is just a tier id and the
+    // legacy translate worker still wants a full tag, so fall through
+    // to DEFAULT_TRANSLATE_MODEL. The translate path will be rewritten
+    // to use the LLMBackend abstraction in a later 0.2 task.
+    const effectiveModel = model ?? DEFAULT_TRANSLATE_MODEL;
     const db = getDb();
     const existing = db
       .prepare(

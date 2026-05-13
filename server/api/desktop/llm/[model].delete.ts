@@ -29,10 +29,7 @@ export default defineEventHandler(async (event) => {
   }
   const id = model as LlmModelId;
 
-  // `llmModel` lands on SubcastSettings in Task 3.2; until then read it
-  // through a permissive cast so this endpoint already behaves correctly
-  // once the field exists.
-  const settings = loadSettings() as { llmModel?: LlmModelId };
+  const settings = loadSettings();
   if (settings.llmModel === id) {
     throw createError({ statusCode: 409, statusMessage: 'IS_ACTIVE' });
   }

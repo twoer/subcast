@@ -68,7 +68,11 @@ export default defineEventHandler(async (event) => {
     },
     ollama: {
       running: ollama.running,
-      active: settings.ollamaModel,
+      // 0.1 stored an Ollama tag here (e.g. 'qwen2.5:7b'). With the
+      // 0.2 settings shape this is just the tier id ('7b' or undefined);
+      // the Models tab is being rewritten in a later task to consume
+      // the LLM endpoints directly instead of routing through here.
+      active: settings.llmModel ?? null,
       installed: ollama.models,
     },
   };

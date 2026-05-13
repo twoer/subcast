@@ -37,13 +37,15 @@ const INSTALL_HINTS = {
 
 export default defineEventHandler(async () => {
   const settings = loadSettings();
-  const [hardware, health] = await Promise.all([
-    Promise.resolve(detectHardware()),
-    detectHealth({
-      whisperModel: settings.whisperModel,
-      ollamaModel: settings.ollamaModel,
-    }),
-  ]);
+  const hardware = detectHardware();
+  // settings.llmModel is a tier id ('3b' | '7b' | '14b'); the legacy
+  // health probe still wants an Ollama tag string. Fall back to the
+  // hardware-tier recommendation so the homepage banner keeps working
+  // until the health UI is rewritten in a later 0.2 task.
+  const health = await detectHealth({
+    whisperModel: settings.whisperModel,
+    ollamaModel: hardware.recommended.ollamaModel,
+  });
   const hints = INSTALL_HINTS[hardware.platform];
   const fixes: Array<{ id: string; description: string; command: string }> = [];
   for (const m of health.missing) {
