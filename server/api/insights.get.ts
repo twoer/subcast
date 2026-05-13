@@ -5,7 +5,7 @@ import { defineEventHandler, getQuery, createError, setResponseHeaders, getHeade
 import type { H3Event } from 'h3';
 import { getDb, SUBCAST_PATHS } from '../utils/db';
 import { parseVtt } from '../utils/vtt';
-import { buildPrompt, type Insights } from '../utils/insights';
+import { buildInsightMessages, type Insights } from '../utils/insights';
 import { logEvent } from '../utils/log';
 import { HASH_RE } from '../utils/validate';
 import type { SettingsRow, VideoRow } from '../types/db';
@@ -98,13 +98,14 @@ export default defineEventHandler(async (event) => {
   if (!task) {
     const transcript = readFileSync(origPath, 'utf-8');
     const cues = parseVtt(transcript);
-    const prompt = buildPrompt(transcript, uiLanguage);
-    if (prompt.length > MAX_PROMPT_CHARS) {
+    const messages = buildInsightMessages(transcript, uiLanguage);
+    const promptChars = messages.reduce((n, m) => n + m.content.length, 0);
+    if (promptChars > MAX_PROMPT_CHARS) {
       res.write(frame('error', { code: 'VIDEO_TOO_LONG', message: 'Video too long for AI insights' }));
       res.end();
       return;
     }
-    task = startTask({ hash, model, uiLanguage, prompt, cues });
+    task = startTask({ hash, model, uiLanguage, messages, cues });
   }
 
   res.write(

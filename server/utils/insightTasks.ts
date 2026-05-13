@@ -3,7 +3,8 @@ import { EventEmitter } from 'node:events';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { ollamaStreamChat } from './ollama';
+import { llmBackend } from './llmClient';
+import type { LLMMessage } from './llmClient';
 import {
   parseInsights,
   snapChapters,
@@ -52,7 +53,7 @@ export interface StartParams {
   hash: string;
   model: string;
   uiLanguage: 'zh-CN' | 'en';
-  prompt: string;
+  messages: LLMMessage[];
   cues: readonly Cue[];
 }
 
@@ -126,16 +127,26 @@ export function abortAllInsightTasks(): number {
 }
 
 async function runGeneration(task: InsightTask, params: StartParams): Promise<void> {
-  const { prompt, cues, hash, model, uiLanguage } = params;
+  const { messages, cues, hash, model, uiLanguage } = params;
   const db = getDb();
   let attempt = 0;
+  const backend = llmBackend();
 
   while (attempt < TEMPS.length) {
     task.raw = '';
     try {
-      for await (const delta of ollamaStreamChat(model, prompt, task.abort.signal, TEMPS[attempt]!)) {
-        task.raw += delta;
-        if (attempt === 0) task.events.emit('token', delta);
+      const stream = backend.chatStream({
+        messages,
+        temperature: TEMPS[attempt]!,
+        maxTokens: 4096,
+        signal: task.abort.signal,
+      });
+      for await (const chunk of stream) {
+        if (chunk.delta) {
+          task.raw += chunk.delta;
+          if (attempt === 0) task.events.emit('token', chunk.delta);
+        }
+        if (chunk.finishReason === 'cancel') break;
       }
 
       const parsed = parseInsights(task.raw);

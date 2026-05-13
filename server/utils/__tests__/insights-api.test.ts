@@ -14,14 +14,26 @@ const { tmpRoot } = vi.hoisted(() => {
   return { tmpRoot: r };
 });
 
-vi.mock('../ollama', () => ({
-  ollamaStreamChat: async function* () {
-    yield '## Summary\n\n';
-    yield 'Mock summary text.\n\n';
-    yield '- Point A\n- Point B\n\n';
-    yield '## Chapters\n\n- [00:00:00] Intro — start\n';
-  },
-}));
+vi.mock('../llmClient', () => {
+  // Deterministic stub backend: yields the same canned markdown the
+  // previous Ollama mock did, but through the new LLMBackend interface.
+  const stub = {
+    async chat() {
+      return '## Summary\n\nMock summary text.\n\n## Chapters\n\n- [00:00:00] Intro — start\n';
+    },
+    async *chatStream() {
+      yield { delta: '## Summary\n\n' };
+      yield { delta: 'Mock summary text.\n\n' };
+      yield { delta: '- Point A\n- Point B\n\n' };
+      yield { delta: '## Chapters\n\n- [00:00:00] Intro — start\n' };
+      yield { delta: '', finishReason: 'stop' as const };
+    },
+  };
+  return {
+    llmBackend: () => stub,
+    createLLMBackend: () => stub,
+  };
+});
 
 /* eslint-disable import/first -- vi.hoisted + vi.mock must precede imports */
 import { join } from 'node:path';
