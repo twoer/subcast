@@ -65,19 +65,30 @@ let healthHandle: ReturnType<typeof setInterval> | null = null;
  * mode (the endpoint 404s and we fall back to undefined). Surfaces a
  * "Return to Setup" banner above the upload zone so users who skipped a
  * step have a single click back into the wizard.
+ *
+ * The wizard itself splits into Whisper (setup-status) + LLM (llm/status)
+ * since the post-llama.cpp migration, so we probe both in parallel.
  */
 interface DesktopSetupStatus {
   hasWhisperModel: boolean;
-  ollamaRunning: boolean;
-  hasQwen: boolean;
+}
+interface LlmStatusResp {
+  installed: Array<{ name: string }>;
 }
 const desktopSetup = ref<DesktopSetupStatus | null>(null);
+const llmStatus = ref<LlmStatusResp | null>(null);
 
 async function refreshDesktopSetup(): Promise<void> {
   try {
-    desktopSetup.value = await $fetch<DesktopSetupStatus>('/api/desktop/setup-status');
+    const [status, llm] = await Promise.all([
+      $fetch<DesktopSetupStatus>('/api/desktop/setup-status'),
+      $fetch<LlmStatusResp>('/api/desktop/llm/status'),
+    ]);
+    desktopSetup.value = status;
+    llmStatus.value = llm;
   } catch {
     desktopSetup.value = null;
+    llmStatus.value = null;
   }
 }
 
@@ -86,8 +97,7 @@ const desktopSetupGaps = computed<string[]>(() => {
   if (!s) return [];
   const gaps: string[] = [];
   if (!s.hasWhisperModel) gaps.push(t('desktop.home.gapWhisper'));
-  if (!s.ollamaRunning) gaps.push(t('desktop.home.gapOllama'));
-  if (!s.hasQwen) gaps.push(t('desktop.home.gapQwen'));
+  if ((llmStatus.value?.installed.length ?? 0) === 0) gaps.push(t('desktop.home.gapLlm'));
   return gaps;
 });
 

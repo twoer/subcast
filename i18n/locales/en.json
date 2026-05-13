@@ -311,13 +311,12 @@
       "welcome": "First-run setup",
       "manageTitle": "Manage models",
       "stepLabel1": "Whisper",
-      "stepLabel2": "Ollama",
-      "stepLabel3": "Qwen AI",
+      "stepLabel2": "AI model",
       "subtitleStep1": "Choose transcription model (Whisper)",
-      "subtitleStep2": "Install Ollama local runtime",
-      "subtitleStep3": "Choose AI translation model (Qwen)",
+      "subtitleStep2": "Choose AI model (translation & insights)",
       "recommended": "Recommended",
       "foundAt": "Found existing file at",
+      "scanFound": "Found in {source}",
       "actionSymlink": "Symlink (no extra disk used)",
       "actionCopy": "Copy into Subcast data dir",
       "actionIgnore": "Ignore and download a fresh copy",
@@ -341,36 +340,20 @@
       "checkingEvery5s": "Checking every 5 seconds — keep this window open.",
       "installedAt": "{name} installed at"
     },
-    "ollama": {
-      "running": "Ollama is running",
-      "versionLabel": "version {version}",
-      "installedNotRunning": "Ollama is installed but not running",
-      "installedNotRunningDetail": "Found at {path}. Open the Ollama app (or run `ollama serve`) and we'll detect it automatically.",
-      "needsInstall": "Ollama not detected",
-      "needsInstallBody": "Subcast uses Ollama as the local AI runtime — it stays on your machine, never sends data anywhere. Download once, run from your menu bar / system tray.",
-      "openOllamaCom": "Open ollama.com",
-      "iveInstalled": "I've installed it",
-      "rechecking": "Re-checking…"
-    },
-    "qwen": {
-      "alreadyInstalled": "already installed",
-      "ready": "{tag} is ready",
-      "pull": "Pull {tag}",
-      "pullingStarting": "starting",
-      "pullingPrefix": "Pulling {tag} — {status}",
-      "pullFailed": "Pull failed: {error}",
-      "fixKey": "Fix Ollama identity key",
-      "fixKeyHint": "Ollama's identity key file is missing (a known Ollama issue). Click to generate it, then retry the pull.",
-      "fixKeyWorking": "Generating key…",
-      "fixKeyDone": "Key generated. Click Pull again to retry.",
-      "fixKeyFailed": "Fix failed: {error}"
+    "llm": {
+      "selectModel": "Select AI model",
+      "alreadyInstalled": "Installed",
+      "foundIn": "Found in {source}",
+      "lowMemoryWarning": "Your machine has under 8 GB RAM — running an AI model may slow the system. You can skip this step and configure AI later in Settings.",
+      "installing": "Downloading {name}…",
+      "ready": "{name} is ready",
+      "installFailed": "Download failed: {error}"
     },
     "home": {
       "setupIncomplete": "Setup incomplete:",
       "openSetupWizard": "Open Setup Wizard",
       "gapWhisper": "Transcription model",
-      "gapOllama": "Ollama runtime",
-      "gapQwen": "AI model",
+      "gapLlm": "AI model",
       "openFileFailed": "open-file failed"
     },
     "about": {

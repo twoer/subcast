@@ -311,13 +311,12 @@
       "welcome": "首次设置",
       "manageTitle": "管理模型",
       "stepLabel1": "Whisper 转录",
-      "stepLabel2": "Ollama 运行时",
-      "stepLabel3": "Qwen AI 模型",
+      "stepLabel2": "AI 模型",
       "subtitleStep1": "选择转录模型 (Whisper)",
-      "subtitleStep2": "安装 Ollama 本地运行时",
-      "subtitleStep3": "选择 AI 翻译模型 (Qwen)",
+      "subtitleStep2": "选择 AI 模型（翻译 & 摘要）",
       "recommended": "推荐",
       "foundAt": "已在本机检测到：",
+      "scanFound": "已在 {source} 找到",
       "actionSymlink": "软链接（不占额外空间）",
       "actionCopy": "复制到 Subcast 数据目录",
       "actionIgnore": "忽略，从网络下载新的",
@@ -341,36 +340,20 @@
       "checkingEvery5s": "每 5 秒自动检查一次 — 请保持本窗口开启。",
       "installedAt": "{name} 已安装在"
     },
-    "ollama": {
-      "running": "Ollama 正在运行",
-      "versionLabel": "版本 {version}",
-      "installedNotRunning": "已安装但未运行",
-      "installedNotRunningDetail": "检测到 {path}。打开 Ollama 应用（或运行 `ollama serve`），我们会自动识别。",
-      "needsInstall": "未检测到 Ollama",
-      "needsInstallBody": "Subcast 使用 Ollama 作为本地 AI 运行时 — 全部数据留在你的电脑上。安装一次即可，从菜单栏 / 任务栏运行。",
-      "openOllamaCom": "前往 ollama.com",
-      "iveInstalled": "我已安装",
-      "rechecking": "正在重新检测…"
-    },
-    "qwen": {
+    "llm": {
+      "selectModel": "选择 AI 模型",
       "alreadyInstalled": "已安装",
-      "ready": "{tag} 已就绪",
-      "pull": "拉取 {tag}",
-      "pullingStarting": "启动中",
-      "pullingPrefix": "正在拉取 {tag} — {status}",
-      "pullFailed": "拉取失败：{error}",
-      "fixKey": "修复 Ollama 身份密钥",
-      "fixKeyHint": "Ollama 的身份密钥文件缺失（这是 Ollama 自身的常见问题）。点击修复后即可重试拉取。",
-      "fixKeyWorking": "正在生成密钥…",
-      "fixKeyDone": "密钥已生成，请重新点击「拉取」",
-      "fixKeyFailed": "修复失败：{error}"
+      "foundIn": "已在 {source} 找到",
+      "lowMemoryWarning": "你的机器内存不足 8 GB，运行 AI 模型可能影响系统响应。可以跳过此步，AI 功能稍后再在设置里配置。",
+      "installing": "正在下载 {name}…",
+      "ready": "{name} 已就绪",
+      "installFailed": "下载失败：{error}"
     },
     "home": {
       "setupIncomplete": "首次设置未完成：",
       "openSetupWizard": "打开设置向导",
       "gapWhisper": "转录模型",
-      "gapOllama": "Ollama 运行时",
-      "gapQwen": "AI 模型",
+      "gapLlm": "AI 模型",
       "openFileFailed": "打开文件失败"
     },
     "about": {
