@@ -72,6 +72,16 @@ function buildExtraResources() {
     } else {
       console.warn(`[electron-builder] whisper-cli missing at ${whisperRel} — packaging without it. Run scripts/fetch-whisper-cli.mjs (Phase 1.8.c) before release.`);
     }
+
+    // llama-server: same missing-file fallback as whisper-cli. Without the
+    // binary the AI Insights / 翻译 features fail at first chat() call, but
+    // the rest of the app still works — so let packaging continue and warn.
+    const llamaRel = `binaries/${t.os === 'mac' ? 'darwin' : t.os === 'win' ? 'win32' : t.os}-${t.arch}/llama-server${t.ext}`;
+    if (fs.existsSync(path.join(root, llamaRel))) {
+      out.push({ from: llamaRel, to: `llama-server${t.ext}` });
+    } else {
+      console.warn(`[electron-builder] llama-server missing at ${llamaRel} — packaging without it. Run scripts/fetch-llama-server.mjs.`);
+    }
   }
 
   // Default Whisper model (ggml-base.bin, ~148 MB) — shipped so first
@@ -117,7 +127,7 @@ async function ensureExecutable(context) {
     ? join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`, 'Contents', 'Resources')
     : join(context.appOutDir, 'resources');
 
-  for (const name of ['ffmpeg', 'ffprobe', 'whisper-cli']) {
+  for (const name of ['ffmpeg', 'ffprobe', 'whisper-cli', 'llama-server']) {
     const target = join(resourcesDir, name);
     try {
       await access(target);

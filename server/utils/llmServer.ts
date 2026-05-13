@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 
 import { spawn, type ChildProcess } from 'node:child_process';
+import { llmModelPath } from '../../desktop/modelManager/llmInstall';
+import { loadSettings } from './settings';
 
 export type LlmServerState = 'idle' | 'starting' | 'running' | 'stopping';
 
@@ -141,11 +143,23 @@ export class LlmServer {
   }
 
   private realSpawn = async (): Promise<SpawnResult> => {
-    if (!this.opts.binaryPath || !this.opts.modelPath) {
-      throw new Error('LlmServer: binaryPath and modelPath must be set before spawn');
+    if (!this.opts.binaryPath) {
+      throw new Error('LlmServer: binaryPath must be set before spawn');
+    }
+    // Resolve `modelPath` at spawn time (not at construction) so the user
+    // can switch tiers in Settings and have the next spawn pick up the new
+    // model without restarting the app. `opts.modelPath` is a test seam —
+    // real production reads from settings.
+    let modelPath = this.opts.modelPath;
+    if (!modelPath) {
+      const llmModel = loadSettings().llmModel;
+      if (!llmModel) {
+        throw new Error('LLM_MODEL_NOT_CONFIGURED');
+      }
+      modelPath = llmModelPath(llmModel);
     }
     const proc = spawn(this.opts.binaryPath, [
-      '--model', this.opts.modelPath,
+      '--model', modelPath,
       '--host', '127.0.0.1',
       '--port', String(this.opts.preferredPort ?? 0),
       '--keep', '-1',
@@ -234,13 +248,16 @@ export class LlmServer {
 }
 
 // Lazy singleton — Nitro modules import via `getLlmServer()` instead of
-// constructing their own. Wiring up in Task 7.1 via env vars.
+// constructing their own. `binaryPath` is injected by Electron main
+// (`desktop/nitroEmbed.ts` sets `SUBCAST_LLM_BINARY_PATH`). `modelPath`
+// is intentionally NOT set here — `realSpawn()` reads it from
+// `loadSettings().llmModel` at spawn time so tier switches in the
+// Settings UI take effect on the next ensure() without an app restart.
 let instance: LlmServer | null = null;
 export function getLlmServer(opts?: LlmServerOptions): LlmServer {
   if (instance === null) {
     instance = new LlmServer({
       binaryPath: process.env.SUBCAST_LLM_BINARY_PATH,
-      // modelPath plumbed in Task 3.x once settings.llmModel is in place
       ...opts,
     });
   }
