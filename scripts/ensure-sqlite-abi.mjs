@@ -23,7 +23,8 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import process from 'node:process';
 
@@ -95,18 +96,62 @@ function currentBinaryAbi() {
   return m ? m[1] : null;
 }
 
+/**
+ * Actually load the .node binary under the targeted runtime and ask it
+ * what ABI it was built for. This is the ground truth — `.forge-meta`
+ * can lie if pnpm has relinked the .node from its content-addressed
+ * store underneath us (which silently happens after a `pnpm install`
+ * or `pnpm dedupe`, and is the original reason for this script's bugs).
+ *
+ * Returns the ABI string the binary actually targets, or null if it
+ * fails to load at all.
+ */
+function probeActualAbi(targetRuntime) {
+  const env = { ...process.env };
+  let runtime;
+  if (targetRuntime === 'electron') {
+    try {
+      const req = createRequire(import.meta.url);
+      runtime = req('electron');
+    } catch {
+      return null;
+    }
+    env.ELECTRON_RUN_AS_NODE = '1';
+  } else {
+    runtime = process.execPath;
+  }
+  // require() resolves better-sqlite3's JS wrapper without touching the
+  // native .node — the ABI check only fires when you actually open a
+  // database. Construct + close to force the dlopen.
+  const probe = `
+    try {
+      const Database = require('better-sqlite3');
+      const db = new Database(':memory:');
+      db.close();
+      process.stdout.write(process.versions.modules);
+    } catch (e) {
+      process.stdout.write('LOAD_FAIL:' + e.message);
+    }
+  `;
+  const res = spawnSync(runtime, ['-e', probe], { env, cwd: REPO, encoding: 'utf8' });
+  if (res.status !== 0) return null;
+  const out = (res.stdout || '').trim();
+  if (out.startsWith('LOAD_FAIL')) return null;
+  return /^\d+$/.test(out) ? out : null;
+}
+
 const targetAbi = TARGET === 'electron' ? electronAbi() : currentNodeAbi();
-const have = currentBinaryAbi();
+const have = probeActualAbi(TARGET);
 
 if (have === targetAbi) {
   console.log(
-    `[ensure-abi] better-sqlite3 already built for ABI ${targetAbi} (${TARGET}); skipping.`,
+    `[ensure-abi] better-sqlite3 loads cleanly under ${TARGET} (ABI ${targetAbi}); skipping.`,
   );
   process.exit(0);
 }
 
 console.log(
-  `[ensure-abi] rebuilding better-sqlite3 for ABI ${targetAbi} (${TARGET}); was ${have ?? 'unknown'}.`,
+  `[ensure-abi] rebuilding better-sqlite3 for ABI ${targetAbi} (${TARGET}); probe got ${have ?? 'LOAD_FAIL'} (meta says ${currentBinaryAbi() ?? 'unknown'}).`,
 );
 
 // `pnpm exec electron-rebuild` is what the existing release / hot
