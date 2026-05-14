@@ -17,6 +17,7 @@ import type { SseFrame } from './sse';
 import { parseVtt, serializeVtt, type Cue } from './vtt';
 import type {
   ChunkRow,
+  InsightTaskRow,
   TranscribeTaskRow,
   TranslateTaskRow,
   VideoRow,
@@ -602,6 +603,26 @@ export type TranslateTaskSummary = Pick<
   'id' | 'video_sha' | 'target_lang' | 'status' | 'model' | 'progress_pct' | 'priority' | 'error_msg'
 >;
 
+export type InsightTaskSummary = Pick<
+  InsightTaskRow,
+  'id' | 'video_sha' | 'status' | 'model' | 'ui_language' | 'error_msg'
+>;
+
+type LLMTaskKind = 'translate' | 'insight';
+
+interface ActiveLLMTask {
+  taskId: string;
+  kind: LLMTaskKind;
+  videoSha: string;
+  emitter: EventEmitter;
+  abort: AbortController;
+  donePromise: Promise<void>;
+  // translate-specific live state (used by runTranslateWorker only)
+  doneCues?: Cue[];
+  lang?: string;
+  model?: string;
+}
+
 interface ActiveTranslateTask {
   taskId: string;
   videoSha: string;
@@ -1029,3 +1050,64 @@ class TranslateQueue {
 }
 
 export const translateQueue = new TranslateQueue();
+
+// ─────────────────────────────────────────────────────────────────────
+// LLMQueue — single-concurrent worker for translate + insight tasks.
+// ─────────────────────────────────────────────────────────────────────
+
+class LLMQueue {
+  private active: ActiveLLMTask | null = null;
+
+  /**
+   * Returns the canonical insight task row for `(videoSha, uiLanguage)`,
+   * creating one if none exists. Symmetric resurrection contract with
+   * TranslateQueue.ensureTask: error/canceled rows flip back to queued.
+   */
+  ensureInsightTask(
+    videoSha: string,
+    uiLanguage: 'zh-CN' | 'en',
+    model: string,
+  ): InsightTaskSummary {
+    const db = getDb();
+    const existing = db
+      .prepare(
+        `SELECT id, video_sha, status, model, ui_language, error_msg
+         FROM insight_tasks WHERE video_sha = ? AND ui_language = ?`,
+      )
+      .get(videoSha, uiLanguage) as InsightTaskSummary | undefined;
+    if (existing) {
+      if (existing.status === 'error' || existing.status === 'canceled') {
+        db.prepare(
+          `UPDATE insight_tasks SET status='queued', error_msg=NULL WHERE id=?`,
+        ).run(existing.id);
+        logEvent({
+          level: 'info',
+          event: 'insight_resurrected',
+          taskId: existing.id,
+          fromStatus: existing.status,
+        });
+        existing.status = 'queued';
+        existing.error_msg = null;
+      }
+      return existing;
+    }
+    const id = randomUUID();
+    db.prepare(
+      `INSERT INTO insight_tasks (id, video_sha, status, model, ui_language, created_at)
+       VALUES (?, ?, 'queued', ?, ?, ?)`,
+    ).run(id, videoSha, model, uiLanguage, Date.now());
+    return {
+      id,
+      video_sha: videoSha,
+      status: 'queued',
+      model,
+      ui_language: uiLanguage,
+      error_msg: null,
+    };
+  }
+
+  // tryStartNext / runTranslateWorker / runInsightWorker / attach / cancel /
+  // cancelActive — added in subsequent slices.
+}
+
+export const llmQueue = new LLMQueue();

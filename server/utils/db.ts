@@ -133,6 +133,13 @@ function migrate(db: Database.Database): void {
   }
 }
 
+export function closeDb(): void {
+  if (_db) {
+    _db.close();
+    _db = null;
+  }
+}
+
 export const SUBCAST_PATHS = {
   home: SUBCAST_HOME,
   videos: join(SUBCAST_HOME, 'videos'),
