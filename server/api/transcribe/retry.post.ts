@@ -28,8 +28,7 @@ import { createError, defineEventHandler, readBody } from 'h3';
 import { isWhisperModelName } from '#shared/whisperModels';
 import { getDb, SUBCAST_PATHS } from '../../utils/db';
 import { logEvent } from '../../utils/log';
-import { getTaskByHash, abortTask } from '../../utils/insightTasks';
-import { transcribeQueue } from '../../utils/queue';
+import { transcribeQueue, llmQueue } from '../../utils/queue';
 import { loadSettings } from '../../utils/settings';
 import { isValidHash } from '../../utils/validate';
 import { isWhisperModelReady } from '../../utils/whisperInstalled';
@@ -70,9 +69,16 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'VIDEO_NOT_FOUND' });
   }
 
-  // Abort in-flight insight generation before wiping its output dir.
-  const runningInsight = getTaskByHash(hash);
-  if (runningInsight?.status === 'running') abortTask(runningInsight.id);
+  // Cancel any in-flight insight tasks before wiping the output dir.
+  const runningInsights = db
+    .prepare(
+      `SELECT id FROM insight_tasks
+       WHERE video_sha = ? AND status IN ('queued','running')`,
+    )
+    .all(hash) as { id: string }[];
+  for (const row of runningInsights) {
+    llmQueue.cancel(row.id);
+  }
 
   // Cancel any active transcribe/translate tasks for this video. The
   // queue's `cancelTask` clears the active worker if it owns the task.

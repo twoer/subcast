@@ -44,6 +44,7 @@ import {
 import { installAppMenu } from './menu.js';
 import { seedBundledBaseModel } from './modelManager/seedBundledModel.js';
 import { connectToDevServer, startNitro } from './nitroEmbed.js';
+import { killOrphans } from './orphanCleanup.js';
 import { resolveResourcesPath } from './paths.js';
 import { installTray } from './trayMenu.js';
 import { disposeUpdater, installUpdater } from './updater.js';
@@ -203,6 +204,24 @@ async function createMainWindow(api: SubcastWindowAPI): Promise<void> {
 
 async function bootstrap(): Promise<void> {
   await app.whenReady();
+
+  // Reap orphan sidecars left behind by a hard kill (Force Quit, OOM,
+  // power loss). When Electron dies without running `before-quit`,
+  // any running `llama-server` / `whisper-cli` is re-parented to PID 1
+  // and continues to hold its TCP port — which makes the next launch
+  // fail to bind. Cleanup is best-effort; failure here shouldn't
+  // block boot. No-op on Windows (v1 doesn't ship AI sidecars there).
+  try {
+    const cleaned = await killOrphans(['llama-server', 'whisper-cli']);
+    if (cleaned > 0) {
+      console.log(`[subcast] killed ${cleaned} orphan sidecar(s) from prior crash`);
+    }
+  } catch (err) {
+    console.warn(
+      '[subcast] orphan cleanup skipped:',
+      err instanceof Error ? err.message : err,
+    );
+  }
 
   // Capture any file paths the OS handed us via argv at launch (Windows
   // "Open with Subcast" / Subcast.exe video.mp4). macOS uses `open-file`
@@ -432,13 +451,17 @@ app.on('second-instance', (_event, argv) => {
 async function shutdownNitro(): Promise<void> {
   if (!nitroApiToken || !nitroApiPort) return;
   try {
-    // The shutdown handler awaits child-process reap (SIGTERM → SIGKILL,
-    // ~2s ceiling per child). Allow enough headroom so a wedged whisper
-    // doesn't make us abandon the call before it's actually been killed.
+    // Internal teardown budget: queue cancel (~2 s per running task) +
+    // LlmServer.stop (SIGTERM grace 5 s + SIGKILL). Cap this fetch at 10 s
+    // so a slow llama-server shutdown finishes BEFORE we app.exit(0) and
+    // orphans the child. If we tied this to the same 5 s as the SIGKILL
+    // grace, both timers raced and llama-server occasionally survived as
+    // a launchd-reparented orphan that orphanCleanup had to mop up on
+    // next boot.
     await fetch(`http://127.0.0.1:${nitroApiPort}/api/desktop/shutdown`, {
       method: 'POST',
       headers: { 'x-subcast-token': nitroApiToken },
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.timeout(10_000),
     });
   } catch (err) {
     console.warn('[subcast] shutdown POST failed:', err instanceof Error ? err.message : err);

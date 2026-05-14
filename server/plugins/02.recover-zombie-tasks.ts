@@ -16,7 +16,7 @@
  */
 
 import { getDb } from '../utils/db';
-import { translateQueue } from '../utils/queue';
+import { llmQueue } from '../utils/queue';
 
 export default defineNitroPlugin(async () => {
   const db = getDb();
@@ -54,5 +54,5 @@ export default defineNitroPlugin(async () => {
   // 00.queue.ts already kicked tryStartNext, but it ran before our
   // re-queue here in plugin-load order. Nudge again so the freshly
   // re-queued rows actually start.
-  await translateQueue.tryStartNext();
+  await llmQueue.tryStartNext();
 });

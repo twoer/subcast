@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 import { totalmem, cpus, platform, arch, networkInterfaces } from 'node:os';
 import type { WhisperModelName } from '#shared/whisperModels';
+import type { LlmModelId } from '../../desktop/modelManager/llmConfig';
 
 export type HardwareTier = 'entry' | 'standard' | 'recommended' | 'high';
 
@@ -14,7 +15,7 @@ export interface HardwareInfo {
   tier: HardwareTier;
   recommended: {
     whisperModel: WhisperModelName;
-    ollamaModel: string;
+    llmModel: LlmModelId;
   };
   lanIp?: string;
 }
@@ -47,15 +48,18 @@ function classifyTier(memGB: number, gpu: HardwareInfo['gpu']): HardwareTier {
 }
 
 function recommendModels(tier: HardwareTier): HardwareInfo['recommended'] {
+  // LLM tier mapping intentionally caps `standard` (8 GB) at the 3B
+  // model: a 4-bit-quantized 7B GGUF + working set comfortably exceeds
+  // the headroom an 8 GB Mac has after macOS + Chromium + Subcast itself.
   switch (tier) {
     case 'entry':
-      return { whisperModel: 'base', ollamaModel: 'qwen2.5:1.5b' };
+      return { whisperModel: 'base', llmModel: '3b' };
     case 'standard':
-      return { whisperModel: 'small', ollamaModel: 'qwen2.5:7b' };
+      return { whisperModel: 'small', llmModel: '3b' };
     case 'recommended':
-      return { whisperModel: 'medium', ollamaModel: 'qwen2.5:7b' };
+      return { whisperModel: 'medium', llmModel: '7b' };
     case 'high':
-      return { whisperModel: 'large-v3-turbo', ollamaModel: 'qwen2.5:14b' };
+      return { whisperModel: 'large-v3-turbo', llmModel: '14b' };
   }
 }
 

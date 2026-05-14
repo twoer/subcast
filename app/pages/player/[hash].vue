@@ -90,7 +90,10 @@ const hash = computed(() => String(route.params.hash));
 
 const videoRef = ref<HTMLVideoElement | null>(null);
 const currentLang = ref<string>('original');
-const ollamaModel = ref<string>('qwen2.5:7b');
+// Tier id ('3b' | '7b' | '14b') or undefined when no LLM is configured.
+// Passed to InsightsPanel so it can label the footer with the model that
+// generated existing insights vs. the one a fresh run would use.
+const llmModel = ref<string>('—');
 
 const {
   isPlaying,
@@ -298,8 +301,8 @@ onMounted(async () => {
   void loadCachedLangs();
   openOriginalStream();
   try {
-    const s = await $fetch<{ ollamaModel?: string }>('/api/settings');
-    if (s.ollamaModel) ollamaModel.value = s.ollamaModel;
+    const s = await $fetch<{ settings?: { llmModel?: string } }>('/api/settings');
+    if (s.settings?.llmModel) llmModel.value = s.settings.llmModel;
   } catch { /* ignore */ }
   // Resolve display name → originalName → hash-fallback for the header.
   // Reuses /api/cache/list (already cached by other panels) — cheap.
@@ -719,7 +722,7 @@ watch(activeIdx, (idx) => {
               <InsightsPanel
                 :hash="hash"
                 :cue-count="cuesByLang['original']?.length ?? 0"
-                :current-ollama-model="ollamaModel"
+                :current-llm-model="llmModel"
                 @seek="seekToMs"
               />
             </TabsContent>

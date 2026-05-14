@@ -1,18 +1,18 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 
 /**
- * GET /api/desktop/qwen/pull
+ * DELETE /api/desktop/llm/install
  *
- * Current pull snapshot, or null if no pull has been kicked off this
- * session. Wizard polls this every 500ms while running.
+ * Abort an in-progress download. Symlink / copy run too fast to be
+ * abortable — the call succeeds but is a no-op against them.
  */
 
 import { createError, defineEventHandler } from 'h3';
-import { getQwenPullStatus } from '../../../utils/qwenPullTask';
+import { abortInstall } from '../../../utils/llmInstallTask';
 
 export default defineEventHandler(() => {
   if (process.env.SUBCAST_DESKTOP !== 'true') {
     throw createError({ statusCode: 404, statusMessage: 'NOT_FOUND' });
   }
-  return getQwenPullStatus();
+  return { aborted: abortInstall() };
 });

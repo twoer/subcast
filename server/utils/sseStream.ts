@@ -14,16 +14,21 @@
  *      makes `stream.write()` throw EPIPE; without catching, the iterator
  *      keeps consuming queue frames the client will never see.
  *
- *   3. **Forever-running heartbeat** — a 1h hard cap forces the loop to exit
- *      so an abandoned tab doesn't keep a worker stream attached for the
- *      lifetime of the server process.
+ *   3. **Forever-running heartbeat** — a hard lifetime cap forces the loop
+ *      to exit so an abandoned tab doesn't keep a worker stream attached
+ *      for the lifetime of the server process.
  */
 
 import type { H3Event } from 'h3';
 import { setResponseHeaders } from 'h3';
 
 const HEARTBEAT_INTERVAL_MS = 15_000;
-const MAX_LIFETIME_MS = 60 * 60 * 1000; // 1h hard cap per connection
+// 2h hard cap per connection. Bumped from 1h after AI Insights on long
+// transcripts (10k+ tokens with 14B Q4) ran up against the limit on slow
+// hardware — generation can legitimately take 30-60 min and we want a
+// margin. A truly stuck stream still gets terminated; this is a zombie-
+// tab safety, not an SLA.
+const MAX_LIFETIME_MS = 2 * 60 * 60 * 1000;
 const TCP_KEEPALIVE_MS = 30_000;
 
 export interface SseStreamHandle {

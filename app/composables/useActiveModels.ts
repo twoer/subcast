@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 
 /**
- * Shared {whisperModel, ollamaModel} + readiness flags the AppHeader chip
+ * Shared {whisperModel, llmModel} + readiness flags the AppHeader chip
  * displays.
  *
  * Backed by `useState` so the chip survives page navigations without
@@ -10,32 +10,33 @@
  * synchronously then `refresh()` to settle readiness.
  *
  * Readiness semantics:
- *   - `whisperReady` / `ollamaReady`: `true` only when the active
+ *   - `whisperReady` / `llmReady`: `true` only when the active
  *     model name appears in the installed list. `false` when the
- *     model is configured but missing (the case that motivated this
- *     composable's readiness extension — fresh installs default to
- *     `qwen2.5:7b` but Ollama may not actually have it). `null` means
- *     "unknown" — web mode (no Ollama probe), or the first paint
- *     before `refresh()` settles.
- *   - `ollamaRunning`: mirrors what `/api/desktop/models` reports.
- *     `null` in web mode.
+ *     model is configured but missing (fresh installs default to
+ *     no LLM at all, and the user has to download one from the
+ *     setup wizard / Models tab). `null` means "unknown" — web mode
+ *     (no llm scan), or the first paint before `refresh()` settles.
+ *   - Unlike the Ollama-backed 0.1 build, there is no separate
+ *     "runtime not started" state for the LLM: llama-server is an
+ *     in-process binary spawned on demand, so installed ↔ ready.
  */
+
+import type { LlmModelId } from '../../desktop/modelManager/llmConfig';
 
 interface ActiveModels {
   whisperModel: string;
-  ollamaModel: string;
+  llmModel: LlmModelId | undefined;
   whisperReady: boolean | null;
-  ollamaReady: boolean | null;
-  ollamaRunning: boolean | null;
+  llmReady: boolean | null;
 }
 
 interface SettingsResp {
-  settings: { whisperModel: string; ollamaModel: string };
+  settings: { whisperModel: string; llmModel: LlmModelId | undefined };
 }
 
 interface DesktopModelsResp {
   whisper: { active: string; installed: Array<{ name: string }> };
-  ollama: { running: boolean; active: string; installed: Array<{ name: string }> };
+  llm: { active: LlmModelId | undefined; installed: Array<{ name: LlmModelId }> };
 }
 
 export function useActiveModels() {
@@ -45,13 +46,13 @@ export function useActiveModels() {
   async function refreshFromDesktop(): Promise<void> {
     const res = await $fetch<DesktopModelsResp>('/api/desktop/models');
     const whisperInstalled = new Set(res.whisper.installed.map((m) => m.name));
-    const ollamaInstalled = new Set(res.ollama.installed.map((m) => m.name));
+    const llmInstalled = new Set(res.llm.installed.map((m) => m.name));
+    const active = res.llm.active;
     data.value = {
       whisperModel: res.whisper.active,
-      ollamaModel: res.ollama.active,
+      llmModel: active,
       whisperReady: whisperInstalled.has(res.whisper.active),
-      ollamaReady: res.ollama.running && ollamaInstalled.has(res.ollama.active),
-      ollamaRunning: res.ollama.running,
+      llmReady: active !== undefined && llmInstalled.has(active),
     };
   }
 
@@ -59,10 +60,9 @@ export function useActiveModels() {
     const res = await $fetch<SettingsResp>('/api/settings');
     data.value = {
       whisperModel: res.settings.whisperModel,
-      ollamaModel: res.settings.ollamaModel,
+      llmModel: res.settings.llmModel,
       whisperReady: null,
-      ollamaReady: null,
-      ollamaRunning: null,
+      llmReady: null,
     };
   }
 
@@ -84,16 +84,15 @@ export function useActiveModels() {
    * change — caller should follow up with `refresh()` to resolve it
    * against the installed-models endpoint.
    */
-  function set(whisperModel: string, ollamaModel: string): void {
+  function set(whisperModel: string, llmModel: LlmModelId | undefined): void {
     const prev = data.value;
     const namesChanged =
-      !prev || prev.whisperModel !== whisperModel || prev.ollamaModel !== ollamaModel;
+      !prev || prev.whisperModel !== whisperModel || prev.llmModel !== llmModel;
     data.value = {
       whisperModel,
-      ollamaModel,
+      llmModel,
       whisperReady: namesChanged ? null : prev?.whisperReady ?? null,
-      ollamaReady: namesChanged ? null : prev?.ollamaReady ?? null,
-      ollamaRunning: prev?.ollamaRunning ?? null,
+      llmReady: namesChanged ? null : prev?.llmReady ?? null,
     };
   }
 
