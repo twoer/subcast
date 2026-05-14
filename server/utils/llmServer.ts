@@ -58,7 +58,7 @@ export class LlmServer {
   private unusable = false;
 
   constructor(opts: LlmServerOptions = {}) {
-    this.opts = { idleShutdownMs: 5 * 60_000, ...opts };
+    this.opts = { idleShutdownMs: 2 * 60_000, ...opts };
   }
 
   get state(): LlmServerState {
