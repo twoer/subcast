@@ -21,6 +21,7 @@ export interface QueueItemLike {
   progressPct: number;
   targetLang?: string;
   errorMsg?: string | null;
+  errorCode?: string | null;
 }
 
 export interface FileStatus {

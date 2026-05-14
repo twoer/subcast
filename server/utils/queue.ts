@@ -417,8 +417,8 @@ class TranscribeQueue {
             ? 'WHISPER_NOT_CONFIGURED'
             : 'FATAL_UNKNOWN';
         db.prepare(
-          `UPDATE transcribe_tasks SET status='failed', error_msg = ? WHERE id = ?`,
-        ).run(msg, taskId);
+          `UPDATE transcribe_tasks SET status='failed', error_msg=?, error_code=? WHERE id=?`,
+        ).run(msg, code, taskId);
         emit({
           event: 'error',
           data: { taskId, code, msg },
@@ -906,7 +906,7 @@ class LLMQueue {
     const origPath = join(SUBCAST_PATHS.cache, row.video_sha, 'original.vtt');
     if (!existsSync(origPath)) {
       db.prepare(
-        `UPDATE insight_tasks SET status='error', error_msg=?, completed_at=? WHERE id=?`,
+        `UPDATE insight_tasks SET status='error', error_msg=?, error_code='ORIGINAL_NOT_READY', completed_at=? WHERE id=?`,
       ).run('ORIGINAL_NOT_READY', Date.now(), taskId);
       return this.tryStartNext();
     }
@@ -1124,8 +1124,8 @@ class LLMQueue {
         // status row already 'canceled' by cancel()
         emit({ event: 'status', data: { taskId, status: 'canceled' } });
       } else {
-        db.prepare(`UPDATE translate_tasks SET status='failed', error_msg=? WHERE id=?`)
-          .run(msg, taskId);
+        db.prepare(`UPDATE translate_tasks SET status='failed', error_msg=?, error_code=? WHERE id=?`)
+          .run(msg, code, taskId);
         emit({ event: 'error', data: { taskId, code, msg } });
       }
       logEvent({ level: 'error', event: 'translate_failed', taskId, lang, code, msg });

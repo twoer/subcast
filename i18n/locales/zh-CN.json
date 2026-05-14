@@ -146,6 +146,9 @@
       "TASK_NOT_FOUND": "任务已失效，请重新触发。",
       "MODEL_NOT_CONFIGURED": "AI 模型未配置或不可用，请到 设置 → 模型 中安装/选择一个。",
       "WHISPER_NOT_CONFIGURED": "Whisper 转录组件未就绪，请到 设置 → 模型 中下载语音模型。",
+      "ORIGINAL_NOT_READY": "原文转写还未就绪，请先完成转写。",
+      "BATCH_RETRY_EXHAUSTED": "翻译重试多次仍失败，请稍后重试或更换模型。",
+      "PARSE_FAILED": "AI 输出无法解析，请重试。",
       "fallback": "操作失败，请重试。",
       "retry": "重试"
     },

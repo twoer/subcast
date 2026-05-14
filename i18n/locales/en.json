@@ -146,6 +146,9 @@
       "TASK_NOT_FOUND": "This task has expired. Please retry.",
       "MODEL_NOT_CONFIGURED": "No AI model is configured or available. Open Settings → Models to install one.",
       "WHISPER_NOT_CONFIGURED": "Whisper transcription is not ready. Open Settings → Models to download a voice model.",
+      "ORIGINAL_NOT_READY": "Original transcript isn't ready yet. Run transcription first.",
+      "BATCH_RETRY_EXHAUSTED": "Translation retried several times and still failed. Try again or switch models.",
+      "PARSE_FAILED": "The AI output couldn't be parsed. Please try again.",
       "fallback": "Operation failed. Please try again.",
       "retry": "Retry"
     },

@@ -104,7 +104,7 @@ export async function runInsightWorker(
         errMsg.includes('MODEL_UNUSABLE')
       ) {
         db.prepare(
-          `UPDATE insight_tasks SET status='error', error_msg=?, completed_at=? WHERE id=?`,
+          `UPDATE insight_tasks SET status='error', error_msg=?, error_code='MODEL_NOT_CONFIGURED', completed_at=? WHERE id=?`,
         ).run(errMsg, Date.now(), taskId);
         emit({ event: 'error', data: { code: 'MODEL_NOT_CONFIGURED', message: errMsg } });
         return;
@@ -125,7 +125,7 @@ export async function runInsightWorker(
         }
         const message = err instanceof Error ? err.message : String(err);
         db.prepare(
-          `UPDATE insight_tasks SET status='error', error_msg=?, completed_at=? WHERE id=?`,
+          `UPDATE insight_tasks SET status='error', error_msg=?, error_code='PARSE_FAILED', completed_at=? WHERE id=?`,
         ).run(message, Date.now(), taskId);
         emit({ event: 'error', data: { code: 'PARSE_FAILED', message } });
         return;

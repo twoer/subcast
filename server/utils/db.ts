@@ -140,6 +140,17 @@ function migrate(db: Database.Database): void {
     `);
     db.pragma('user_version = 8');
   }
+  if (version < 9) {
+    // Structured error code on each task table — mirrors the SSE error
+    // frame's `{code, message}` shape so the home tasks panel can
+    // friendly-render via i18n instead of dumping raw error strings.
+    db.exec(`
+      ALTER TABLE transcribe_tasks ADD COLUMN error_code TEXT DEFAULT NULL;
+      ALTER TABLE translate_tasks ADD COLUMN error_code TEXT DEFAULT NULL;
+      ALTER TABLE insight_tasks ADD COLUMN error_code TEXT DEFAULT NULL;
+    `);
+    db.pragma('user_version = 9');
+  }
 }
 
 /**

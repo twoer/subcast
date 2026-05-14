@@ -19,7 +19,19 @@ interface QueueItem {
   uiLanguage?: 'zh-CN' | 'en';
   createdAt: number;
   errorMsg?: string | null;
+  errorCode?: string | null;
 }
+
+// Known error codes the workers emit. Anything outside this set falls
+// back to showing the raw error_msg (still useful for debugging).
+const KNOWN_ERROR_CODES = new Set([
+  'WHISPER_NOT_CONFIGURED',
+  'MODEL_NOT_CONFIGURED',
+  'ORIGINAL_NOT_READY',
+  'BATCH_RETRY_EXHAUSTED',
+  'PARSE_FAILED',
+  'FATAL_UNKNOWN',
+]);
 
 interface HealthFix {
   id: string;
@@ -330,6 +342,16 @@ function insightLabel(lang: string | undefined): string {
   return lang === 'zh-CN' ? 'AI 总结 (中文)' : 'AI Summary (en)';
 }
 
+// Render a structured error code via i18n; fall back to the raw message
+// when the code is unknown (worker emitted a code we don't have a key
+// for, or the row predates the error_code column).
+function friendlyTaskError(item: QueueItem): string {
+  if (item.errorCode && KNOWN_ERROR_CODES.has(item.errorCode)) {
+    return t(`player.errors.${item.errorCode}`);
+  }
+  return item.errorMsg ?? '';
+}
+
 // Kind label: noun form regardless of status. The status badge already
 // conveys queued/running/done/failed via colour, so the line just names
 // the task ("what was/is being done") plus its parameters.
@@ -545,10 +567,10 @@ function statusBadgeClass(s: QueueItem['status']) {
                 class="mt-2 h-1.5"
               />
               <p
-                v-if="item.errorMsg"
+                v-if="item.errorMsg || item.errorCode"
                 class="mt-1 truncate text-xs text-destructive"
-                :title="item.errorMsg"
-              >{{ item.errorMsg }}</p>
+                :title="item.errorMsg ?? ''"
+              >{{ friendlyTaskError(item) }}</p>
             </div>
             <div class="whitespace-nowrap font-mono text-xs tabular-nums text-muted-foreground">
               <template v-if="item.kind === 'transcribe' && item.totalChunks">

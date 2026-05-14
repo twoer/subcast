@@ -17,15 +17,15 @@ type VideoJoinFields = {
 };
 
 type TranscribeJoinRow =
-  & Pick<TranscribeTaskRow, 'id' | 'video_sha' | 'status' | 'model' | 'total_chunks' | 'done_chunks' | 'created_at' | 'error_msg'>
+  & Pick<TranscribeTaskRow, 'id' | 'video_sha' | 'status' | 'model' | 'total_chunks' | 'done_chunks' | 'created_at' | 'error_msg' | 'error_code'>
   & VideoJoinFields;
 
 type TranslateJoinRow =
-  & Pick<TranslateTaskRow, 'id' | 'video_sha' | 'target_lang' | 'status' | 'model' | 'progress_pct' | 'priority' | 'created_at' | 'error_msg'>
+  & Pick<TranslateTaskRow, 'id' | 'video_sha' | 'target_lang' | 'status' | 'model' | 'progress_pct' | 'priority' | 'created_at' | 'error_msg' | 'error_code'>
   & VideoJoinFields;
 
 type InsightJoinRow =
-  & Pick<InsightTaskRow, 'id' | 'video_sha' | 'status' | 'model' | 'ui_language' | 'created_at' | 'error_msg'>
+  & Pick<InsightTaskRow, 'id' | 'video_sha' | 'status' | 'model' | 'ui_language' | 'created_at' | 'error_msg' | 'error_code'>
   & VideoJoinFields;
 
 interface QueueItem {
@@ -42,6 +42,7 @@ interface QueueItem {
   uiLanguage?: 'zh-CN' | 'en';
   createdAt: number;
   errorMsg?: string | null;
+  errorCode?: string | null;
 }
 
 export default defineEventHandler(() => {
@@ -51,7 +52,7 @@ export default defineEventHandler(() => {
   const transcribes = db
     .prepare(
       `SELECT t.id, t.video_sha, t.status, t.model, t.total_chunks, t.done_chunks,
-              t.created_at, t.error_msg, v.original_name, v.display_name
+              t.created_at, t.error_msg, t.error_code, v.original_name, v.display_name
        FROM transcribe_tasks t
        LEFT JOIN videos v ON v.sha256 = t.video_sha
        WHERE t.status IN ('queued','running') OR t.created_at > ?
@@ -62,7 +63,7 @@ export default defineEventHandler(() => {
   const translates = db
     .prepare(
       `SELECT t.id, t.video_sha, t.target_lang, t.status, t.model, t.progress_pct,
-              t.priority, t.created_at, t.error_msg, v.original_name, v.display_name
+              t.priority, t.created_at, t.error_msg, t.error_code, v.original_name, v.display_name
        FROM translate_tasks t
        LEFT JOIN videos v ON v.sha256 = t.video_sha
        WHERE t.status IN ('queued','running') OR t.created_at > ?
@@ -98,6 +99,7 @@ export default defineEventHandler(() => {
       doneChunks: t.done_chunks,
       createdAt: t.created_at,
       errorMsg: t.error_msg,
+      errorCode: t.error_code,
     });
   }
   for (const t of translates) {
@@ -112,6 +114,7 @@ export default defineEventHandler(() => {
       targetLang: t.target_lang,
       createdAt: t.created_at,
       errorMsg: t.error_msg,
+      errorCode: t.error_code,
     });
   }
   for (const t of insights) {
@@ -126,6 +129,7 @@ export default defineEventHandler(() => {
       uiLanguage: t.ui_language,
       createdAt: t.created_at,
       errorMsg: t.error_msg,
+      errorCode: t.error_code,
     });
   }
   // Active (queued/running) first, then recent finished

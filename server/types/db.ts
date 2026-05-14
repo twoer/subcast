@@ -43,6 +43,7 @@ export interface TranscribeTaskRow {
   total_chunks: number | null;
   done_chunks: number;
   error_msg: string | null;
+  error_code: string | null;
   created_at: number;
   completed_at: number | null;
 }
@@ -66,6 +67,7 @@ export interface TranslateTaskRow {
   progress_pct: number;
   priority: number;
   error_msg: string | null;
+  error_code: string | null;
   created_at: number;
   completed_at: number | null;
 }
@@ -82,6 +84,7 @@ export interface InsightTaskRow {
   model: string;
   ui_language: 'zh-CN' | 'en';
   error_msg: string | null;
+  error_code: string | null;
   created_at: number;
   completed_at: number | null;
 }
