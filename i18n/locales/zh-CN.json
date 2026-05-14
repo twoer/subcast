@@ -26,16 +26,16 @@
   },
   "library": {
     "title": "资源库",
-    "subtitle": "已下载到本机的视频与字幕，可点击播放或在此删除。",
+    "subtitle": "已下载到本机的媒体与字幕，可点击播放或在此删除。",
     "loading": "加载中…",
-    "totals": "{count} 个视频 · {size}",
+    "totals": "{count} 个文件 · {size}",
     "noSubtitles": "无字幕",
     "deleteOne": "删除",
-    "deleteOneTitle": "删除该视频？",
+    "deleteOneTitle": "删除该文件？",
     "deleteOneDesc": "「{name}」及其缓存字幕将被删除，此操作不可撤销。",
     "clearAll": "全部清除",
     "clearAllTitle": "清除所有缓存？",
-    "clearAllDesc": "将删除所有缓存视频与字幕文件。此操作不可撤销。",
+    "clearAllDesc": "将删除所有缓存媒体与字幕文件。此操作不可撤销。",
     "cancel": "取消",
     "confirm": "删除",
     "rename": "重命名",
@@ -43,11 +43,11 @@
     "renameConfirm": "保存",
     "empty": {
       "title": "资源库为空",
-      "description": "在首页拖入视频后会出现在这里。"
+      "description": "在首页拖入媒体文件后会出现在这里。"
     }
   },
   "index": {
-    "drop": "拖入视频文件（可附带 .srt/.vtt/.ass 字幕），或",
+    "drop": "拖入视频或音频文件（可附带 .srt/.vtt/.ass 字幕），或",
     "choose": "选择文件",
     "uploading": "上传中…",
     "queue": "任务队列",
@@ -59,7 +59,7 @@
     "translating": "翻译中",
     "kindTranscribe": "转写",
     "kindTranslate": "翻译",
-    "noVideo": "拖入的内容里没有视频文件",
+    "noVideo": "拖入的内容里没有视频或音频文件",
     "status": {
       "queued": "排队中",
       "running": "运行中",
@@ -70,7 +70,7 @@
       "error": "出错"
     },
     "library": {
-      "title": "最近视频",
+      "title": "最近播放",
       "noSubs": "无字幕",
       "viewAll": "在设置中查看全部",
       "more": "更多",
@@ -92,7 +92,7 @@
   },
   "companion": {
     "title": "伴生字幕检测",
-    "body": "在视频旁发现字幕文件：",
+    "body": "在媒体文件旁发现字幕文件：",
     "useExisting": "使用现有字幕",
     "ignore": "忽略并重新转写"
   },
@@ -100,7 +100,7 @@
     "subtitles": "字幕",
     "retranscribe": {
       "button": "重新转写",
-      "title": "重新转写视频？",
+      "title": "重新转写？",
       "desc": "将清空原始字幕、{n} 条翻译以及 AI 总结，并使用当前 Whisper 模型重新转写。此操作不可撤销。",
       "confirm": "重新转写"
     },
@@ -136,7 +136,7 @@
       "mute": "静音切换",
       "fullscreen": "全屏切换",
       "subs": "字幕开关",
-      "jumpPct": "跳转视频 10%-90% 进度",
+      "jumpPct": "跳转 10%-90% 进度",
       "help": "显示此帮助",
       "esc": "关闭对话框"
     },
@@ -201,7 +201,7 @@
       "langZh": "中文",
       "langEn": "英文",
       "errors": {
-        "VIDEO_TOO_LONG": "视频太长，当前模型无法生成 AI 总结。",
+        "VIDEO_TOO_LONG": "媒体内容太长，当前模型无法生成 AI 总结。",
         "PARSE_FAILED": "AI 输出无法解析，请重试。",
         "MODEL_NOT_CONFIGURED": "AI 模型未配置或不可用，请到 设置 → 模型 中安装/选择一个。",
         "NETWORK": "生成期间网络中断。",
@@ -264,7 +264,7 @@
     "silenceThreshold": "静音阈值",
     "silenceHint": "字幕间隔 ≥ 此时长会在列表插入「── 无语音 ──」分隔符。",
     "cueFontSize": "字幕列表字号",
-    "cueFontSizeHint": "仅影响右侧字幕列表面板；视频字幕样式在播放器内单独设置。",
+    "cueFontSizeHint": "仅影响右侧字幕列表面板；播放器内字幕样式在播放器内单独设置。",
     "debugTitle": "调试模式",
     "debugDescription": "JSONL 日志保留原始路径与文件名。",
     "debugMode": "调试模式（JSONL 日志保留原始路径/文件名）",
@@ -282,22 +282,22 @@
     },
     "cache": {
       "title": "缓存",
-      "totals": "{count} 个视频 · {size}",
-      "noVideos": "暂无已缓存的视频",
-      "noVideosDesc": "在首页拖入视频后会出现在这里。",
+      "totals": "{count} 个文件 · {size}",
+      "noVideos": "暂无缓存",
+      "noVideosDesc": "在首页拖入媒体文件后会出现在这里。",
       "noSubtitles": "无字幕",
       "deleteOne": "删除",
-      "deleteOneTitle": "删除该视频？",
+      "deleteOneTitle": "删除该文件？",
       "deleteOneDesc": "「{name}」及其缓存字幕将被删除，此操作不可撤销。",
       "clearAll": "全部清除",
       "clearAllTitle": "清除所有缓存？",
-      "clearAllDesc": "将删除所有缓存视频与字幕文件。此操作不可撤销。",
+      "clearAllDesc": "将删除所有缓存媒体与字幕文件。此操作不可撤销。",
       "cancel": "取消",
       "confirm": "删除"
     },
     "diagnostic": {
       "title": "诊断包",
-      "body": "导出 ZIP，包含脱敏后的 JSONL 日志（近 7 天）、设置、硬件信息、已安装模型。不包含任何视频或字幕文本。",
+      "body": "导出 ZIP，包含脱敏后的 JSONL 日志（近 7 天）、设置、硬件信息、已安装模型。不包含任何媒体内容或字幕文本。",
       "export": "导出 ZIP"
     },
     "logViewer": {
@@ -385,7 +385,7 @@
       "introBody": "首次安装常见问题速查 + 出问题时找哪里。完整文档见仓库 README。",
       "diagnostics": {
         "title": "导出诊断",
-        "body": "Help → Export Diagnostics…（托盘菜单里也有）会把近 7 天的结构化日志 + 一份 system.json 打包成 zip。不包含视频、字幕文本、文件名 —— 提交 issue 时附上即可。"
+        "body": "Help → Export Diagnostics…（托盘菜单里也有）会把近 7 天的结构化日志 + 一份 system.json 打包成 zip。不包含媒体内容、字幕文本、文件名 —— 提交 issue 时附上即可。"
       },
       "updates": {
         "title": "更新",

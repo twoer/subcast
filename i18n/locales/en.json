@@ -26,16 +26,16 @@
   },
   "library": {
     "title": "Library",
-    "subtitle": "Videos and subtitles cached locally. Click to open in the player, or remove here.",
+    "subtitle": "Media files and subtitles cached locally. Click to open in the player, or remove here.",
     "loading": "Loading…",
-    "totals": "{count} videos · {size}",
+    "totals": "{count} files · {size}",
     "noSubtitles": "No subtitles",
     "deleteOne": "Delete",
-    "deleteOneTitle": "Delete this video?",
+    "deleteOneTitle": "Delete this file?",
     "deleteOneDesc": "{name} and its cached subtitles will be removed. This cannot be undone.",
     "clearAll": "Clear all",
     "clearAllTitle": "Clear all cached data?",
-    "clearAllDesc": "This will delete every cached video and subtitle file. This action cannot be undone.",
+    "clearAllDesc": "This will delete every cached media file and subtitle. This action cannot be undone.",
     "cancel": "Cancel",
     "confirm": "Delete",
     "rename": "Rename",
@@ -43,11 +43,11 @@
     "renameConfirm": "Save",
     "empty": {
       "title": "Library is empty",
-      "description": "Drag a video into the home page and it will appear here."
+      "description": "Drag a media file into the home page and it will appear here."
     }
   },
   "index": {
-    "drop": "Drop a video file (optionally with .srt/.vtt/.ass), or",
+    "drop": "Drop a video or audio file (optionally with .srt/.vtt/.ass), or",
     "choose": "Choose files",
     "uploading": "Uploading…",
     "queue": "Queue",
@@ -59,7 +59,7 @@
     "translating": "Translating",
     "kindTranscribe": "Transcribe",
     "kindTranslate": "Translate",
-    "noVideo": "No video file in the drop",
+    "noVideo": "No video or audio file in the drop",
     "status": {
       "queued": "Queued",
       "running": "Running",
@@ -70,7 +70,7 @@
       "error": "Error"
     },
     "library": {
-      "title": "Recent videos",
+      "title": "Recently played",
       "noSubs": "No subtitles",
       "viewAll": "View all in settings",
       "more": "More",
@@ -92,7 +92,7 @@
   },
   "companion": {
     "title": "Companion subtitles detected",
-    "body": "Found a subtitle file alongside the video:",
+    "body": "Found a subtitle file alongside the media:",
     "useExisting": "Use existing",
     "ignore": "Ignore & re-transcribe"
   },
@@ -100,7 +100,7 @@
     "subtitles": "Subtitles",
     "retranscribe": {
       "button": "Re-transcribe",
-      "title": "Re-transcribe this video?",
+      "title": "Re-transcribe this file?",
       "desc": "Clears the original subtitles, {n} translation(s), and AI summary, then re-runs Whisper with the current model. This cannot be undone.",
       "confirm": "Re-transcribe"
     },
@@ -136,7 +136,7 @@
       "mute": "Toggle mute",
       "fullscreen": "Toggle fullscreen",
       "subs": "Toggle subtitles",
-      "jumpPct": "Jump to 10%-90% of video",
+      "jumpPct": "Jump to 10%-90% of playback",
       "help": "Show this help",
       "esc": "Close dialog"
     },
@@ -201,7 +201,7 @@
       "langEn": "English",
       "outdatedHint": "Insights were generated with outdated settings (model or transcript changed).",
       "errors": {
-        "VIDEO_TOO_LONG": "Video is too long for AI insights with the current model.",
+        "VIDEO_TOO_LONG": "Media is too long for AI insights with the current model.",
         "PARSE_FAILED": "The AI output couldn't be parsed. Please try again.",
         "MODEL_NOT_CONFIGURED": "No AI model is configured or available. Open Settings → Models to install one.",
         "NETWORK": "Lost connection while generating insights.",
@@ -264,7 +264,7 @@
     "silenceThreshold": "Silence threshold",
     "silenceHint": "Inter-cue gaps ≥ this duration get a 「── no audio ──」divider in the cue list.",
     "cueFontSize": "Cue list font size",
-    "cueFontSizeHint": "Affects only the subtitle list panel; video subtitles are configured in the player.",
+    "cueFontSizeHint": "Affects only the subtitle list panel; in-player subtitle styling is configured separately.",
     "debugTitle": "Debug mode",
     "debugDescription": "Keep raw paths and filenames in JSONL logs.",
     "debugMode": "Debug mode (keep raw paths/filenames in JSONL logs)",
@@ -282,22 +282,22 @@
     },
     "cache": {
       "title": "Cache",
-      "totals": "{count} videos · {size}",
-      "noVideos": "No cached videos yet",
-      "noVideosDesc": "Drag a video into the home page and it will appear here.",
+      "totals": "{count} files · {size}",
+      "noVideos": "No cached files yet",
+      "noVideosDesc": "Drag a media file into the home page and it will appear here.",
       "noSubtitles": "No subtitles",
       "deleteOne": "Delete",
-      "deleteOneTitle": "Delete this video?",
+      "deleteOneTitle": "Delete this file?",
       "deleteOneDesc": "{name} and its cached subtitles will be removed. This cannot be undone.",
       "clearAll": "Clear all",
       "clearAllTitle": "Clear all cached data?",
-      "clearAllDesc": "This will delete every cached video and subtitle file. This action cannot be undone.",
+      "clearAllDesc": "This will delete every cached media file and subtitle. This action cannot be undone.",
       "cancel": "Cancel",
       "confirm": "Delete"
     },
     "diagnostic": {
       "title": "Diagnostic",
-      "body": "ZIP with sanitized JSONL logs (last 7d), settings, hardware info, installed models. No video content or cue text.",
+      "body": "ZIP with sanitized JSONL logs (last 7d), settings, hardware info, installed models. No media content or cue text.",
       "export": "Export ZIP"
     },
     "logViewer": {
@@ -385,7 +385,7 @@
       "introBody": "Quick reference for first-time setup quirks and where to look when something misbehaves. The full docs live in the repository README.",
       "diagnostics": {
         "title": "Export diagnostics",
-        "body": "Help → Export Diagnostics… (also in the tray menu) zips the last 7 days of structured logs plus a system.json snapshot — no video, transcript text, or filenames are included. Attach the zip when filing an issue."
+        "body": "Help → Export Diagnostics… (also in the tray menu) zips the last 7 days of structured logs plus a system.json snapshot — no media content, transcript text, or filenames are included. Attach the zip when filing an issue."
       },
       "updates": {
         "title": "Updates",
