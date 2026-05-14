@@ -821,7 +821,7 @@ class LLMQueue {
       )
       .get(taskId) as { id: string; video_sha: string; target_lang: string; model: string };
     db.prepare(`UPDATE translate_tasks SET status='running' WHERE id=?`).run(taskId);
-    this.active = {
+    const activeSlot: ActiveLLMTask = {
       taskId,
       kind: 'translate',
       videoSha: row.video_sha,
@@ -832,8 +832,9 @@ class LLMQueue {
       doneCues: [],
       donePromise: Promise.resolve(),
     };
-    const wp = this.runTranslateWorker(this.active);
-    this.active.donePromise = wp.catch(() => {});
+    this.active = activeSlot;
+    const wp = this.runTranslateWorker(activeSlot);
+    activeSlot.donePromise = wp.catch(() => {});
     wp.catch((err) => {
       logEvent({
         level: 'error',
@@ -1090,30 +1091,47 @@ class LLMQueue {
       return;
     }
 
-    // Cache hit short-circuit
     const vttPath = join(SUBCAST_PATHS.cache, task.video_sha, `${task.target_lang}.vtt`);
-    if (task.status === 'completed' && existsSync(vttPath)) {
-      const cues = parseVtt(await readFile(vttPath, 'utf8'));
-      yield {
-        event: 'status',
-        data: {
-          taskId,
-          status: 'running',
-          model: task.model,
-          lang: task.target_lang,
-          fromCache: true,
-        },
-      };
-      yield {
-        event: 'cue-translated',
-        data: {
-          taskId,
-          batchIdx: 0,
-          cues: cues.map((c) => ({ startMs: c.startMs, endMs: c.endMs, text: c.text })),
-        },
-      };
-      yield { event: 'done', data: { taskId, totalCues: cues.length, fromCache: true } };
-      return;
+    if (task.status === 'completed') {
+      if (existsSync(vttPath)) {
+        const cues = parseVtt(await readFile(vttPath, 'utf8'));
+        yield {
+          event: 'status',
+          data: {
+            taskId,
+            status: 'running',
+            model: task.model,
+            lang: task.target_lang,
+            fromCache: true,
+          },
+        };
+        yield {
+          event: 'cue-translated',
+          data: {
+            taskId,
+            batchIdx: 0,
+            cues: cues.map((c) => ({ startMs: c.startMs, endMs: c.endMs, text: c.text })),
+          },
+        };
+        yield { event: 'done', data: { taskId, totalCues: cues.length, fromCache: true } };
+        return;
+      }
+      // File missing — self-heal: demote back to queued and re-run.
+      logEvent({
+        level: 'warn',
+        event: 'result_file_missing_resurrect',
+        kind: 'translate',
+        taskId,
+        expectedPath: vttPath,
+      });
+      getDb()
+        .prepare(
+          `UPDATE translate_tasks SET status='queued', progress_pct=0, error_msg=NULL WHERE id=?`,
+        )
+        .run(taskId);
+      yield { event: 'status', data: { taskId, status: 'queued' } };
+      await this.tryStartNext();
+      // Fall through to live-tail below (don't return)
     }
     if (task.status === 'failed') {
       yield {
@@ -1243,11 +1261,21 @@ class LLMQueue {
         yield { event: 'done', data: { insights: obj, fromCache: true } };
         return;
       }
-      yield {
-        event: 'error',
-        data: { taskId, code: 'CACHE_MISSING', message: 'insights.json missing' },
-      };
-      return;
+      // File missing — self-heal: demote back to queued and re-run.
+      logEvent({
+        level: 'warn',
+        event: 'result_file_missing_resurrect',
+        kind: 'insight',
+        taskId,
+        expectedPath: path,
+      });
+      getDb()
+        .prepare(`UPDATE insight_tasks SET status='queued', error_msg=NULL WHERE id=?`)
+        .run(taskId);
+      yield { event: 'status', data: { taskId, status: 'queued' } };
+      await this.tryStartNext();
+      // Fall through to live-tail (re-fetch task status, continue normally)
+      task.status = 'queued';
     }
     if (task.status === 'error') {
       yield {
