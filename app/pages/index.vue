@@ -6,16 +6,17 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip
 import { getFileStatus } from '~/utils/fileStatus';
 
 interface QueueItem {
-  kind: 'transcribe' | 'translate';
+  kind: 'transcribe' | 'translate' | 'insight';
   id: string;
   videoSha: string;
   videoName: string;
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'canceled';
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'canceled' | 'done' | 'error';
   model: string;
   progressPct: number;
   totalChunks?: number | null;
   doneChunks?: number;
   targetLang?: string;
+  uiLanguage?: 'zh-CN' | 'en';
   createdAt: number;
   errorMsg?: string | null;
 }
@@ -65,19 +66,30 @@ let healthHandle: ReturnType<typeof setInterval> | null = null;
  * mode (the endpoint 404s and we fall back to undefined). Surfaces a
  * "Return to Setup" banner above the upload zone so users who skipped a
  * step have a single click back into the wizard.
+ *
+ * The wizard itself splits into Whisper (setup-status) + LLM (llm/status)
+ * since the post-llama.cpp migration, so we probe both in parallel.
  */
 interface DesktopSetupStatus {
   hasWhisperModel: boolean;
-  ollamaRunning: boolean;
-  hasQwen: boolean;
+}
+interface LlmStatusResp {
+  installed: Array<{ name: string }>;
 }
 const desktopSetup = ref<DesktopSetupStatus | null>(null);
+const llmStatus = ref<LlmStatusResp | null>(null);
 
 async function refreshDesktopSetup(): Promise<void> {
   try {
-    desktopSetup.value = await $fetch<DesktopSetupStatus>('/api/desktop/setup-status');
+    const [status, llm] = await Promise.all([
+      $fetch<DesktopSetupStatus>('/api/desktop/setup-status'),
+      $fetch<LlmStatusResp>('/api/desktop/llm/status'),
+    ]);
+    desktopSetup.value = status;
+    llmStatus.value = llm;
   } catch {
     desktopSetup.value = null;
+    llmStatus.value = null;
   }
 }
 
@@ -86,8 +98,7 @@ const desktopSetupGaps = computed<string[]>(() => {
   if (!s) return [];
   const gaps: string[] = [];
   if (!s.hasWhisperModel) gaps.push(t('desktop.home.gapWhisper'));
-  if (!s.ollamaRunning) gaps.push(t('desktop.home.gapOllama'));
-  if (!s.hasQwen) gaps.push(t('desktop.home.gapQwen'));
+  if ((llmStatus.value?.installed.length ?? 0) === 0) gaps.push(t('desktop.home.gapLlm'));
   return gaps;
 });
 
@@ -310,8 +321,17 @@ onBeforeUnmount(() => {
   window.removeEventListener('subcast:open-file', onOsOpenFileEvent);
 });
 
+// i18n TODO: extract insight labels (insightLabel zh/en) into locale files
+function insightLabel(lang: string | undefined): string {
+  return lang === 'zh-CN' ? 'AI 总结 (中文)' : 'AI Summary (en)';
+}
+
 function fmtKindLabel(item: QueueItem): string {
   const active = item.status === 'queued' || item.status === 'running';
+  if (item.kind === 'insight') {
+    const prefix = active ? insightLabel(item.uiLanguage) : t(`index.status.${item.status}`);
+    return `${prefix} · ${item.model}`;
+  }
   const prefix = item.kind === 'transcribe'
     ? active ? t('index.transcribing') : t('index.status.completed')
     : active ? t('index.translating') : t('index.status.completed');
@@ -325,8 +345,10 @@ function statusBadgeClass(s: QueueItem['status']) {
     case 'running':
       return 'bg-primary/10 text-primary border-transparent hover:bg-primary/15';
     case 'completed':
+    case 'done':
       return 'border-success/40 bg-success/10 text-success';
     case 'failed':
+    case 'error':
       return 'border-destructive/40 bg-destructive/10 text-destructive';
     case 'canceled':
       return 'border-border bg-muted text-muted-foreground';

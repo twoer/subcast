@@ -4,7 +4,7 @@ import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { getDb, SUBCAST_PATHS } from '../../utils/db';
 import { logEvent } from '../../utils/log';
-import { getTaskByHash, abortTask } from '../../utils/insightTasks';
+import { llmQueue } from '../../utils/queue';
 import { isValidHash } from '../../utils/validate';
 import type { VideoRow } from '../../types/db';
 
@@ -20,10 +20,17 @@ export default defineEventHandler(async (event) => {
   if (!row) {
     throw createError({ statusCode: 404, statusMessage: 'NOT_FOUND' });
   }
-  // Abort any in-flight insight generation before tearing the cache dir down,
-  // otherwise it would try to write into a directory we're about to delete.
-  const running = getTaskByHash(hash);
-  if (running?.status === 'running') abortTask(running.id);
+  // Cancel any in-flight insight tasks before tearing the cache dir down,
+  // otherwise they would try to write into a directory we're about to delete.
+  const runningInsights = db
+    .prepare(
+      `SELECT id FROM insight_tasks
+       WHERE video_sha = ? AND status IN ('queued','running')`,
+    )
+    .all(hash) as { id: string }[];
+  for (const row of runningInsights) {
+    llmQueue.cancel(row.id);
+  }
   const videoPath = join(SUBCAST_PATHS.videos, `${hash}${row.ext}`);
   const cacheDir = join(SUBCAST_PATHS.cache, hash);
   if (existsSync(videoPath)) await rm(videoPath, { force: true });

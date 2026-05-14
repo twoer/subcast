@@ -3,10 +3,11 @@
 /**
  * GET /api/desktop/setup-status
  *
- * Probes the three first-run dependencies for the setup wizard:
- *   - hasWhisperModel: any plausible ggml-*.bin reachable from the scanner
- *   - ollamaRunning  : localhost:11434/api/tags responds
- *   - hasQwen        : Ollama lists any qwen* model
+ * Probes the Whisper side of the first-run state for the setup wizard.
+ * The LLM side moved to a dedicated `/api/desktop/llm/status` endpoint
+ * (richer per-tier data: installed / scanned / migration hint) — checking
+ * it here too would duplicate the scan and force this endpoint to grow a
+ * second mode. Callers that need LLM readiness now hit both endpoints.
  *
  * 404 in web mode — the endpoint only makes sense for the Electron shell.
  * Auth handled by `server/middleware/auth-desktop.ts` (every /api/ route
@@ -18,25 +19,6 @@ import { scanWhisperModels } from '../../../desktop/modelManager/whisperScan';
 import { detectHardware } from '../../utils/hardware';
 import { whisperModelPath } from '../../utils/whisperPaths';
 
-const OLLAMA_URL = process.env.SUBCAST_OLLAMA_URL ?? 'http://localhost:11434';
-
-interface OllamaTagsResponse {
-  models?: Array<{ name: string }>;
-}
-
-async function probeOllama(): Promise<{ running: boolean; models: string[] }> {
-  try {
-    const res = await fetch(`${OLLAMA_URL}/api/tags`, {
-      signal: AbortSignal.timeout(2_000),
-    });
-    if (!res.ok) return { running: false, models: [] };
-    const body = (await res.json()) as OllamaTagsResponse;
-    return { running: true, models: (body.models ?? []).map((m) => m.name) };
-  } catch {
-    return { running: false, models: [] };
-  }
-}
-
 export default defineEventHandler(async (event) => {
   if (process.env.SUBCAST_DESKTOP !== 'true') {
     throw createError({ statusCode: 404, statusMessage: 'NOT_FOUND' });
@@ -44,7 +26,7 @@ export default defineEventHandler(async (event) => {
   // The unused param silences "event must be used" lint without hiding intent.
   void event;
 
-  const [whisperModels, ollama] = await Promise.all([scanWhisperModels(), probeOllama()]);
+  const whisperModels = await scanWhisperModels();
 
   // Mark each scan hit as `installed` when its path matches the
   // canonical install location for that model. The wizard uses this
@@ -68,9 +50,5 @@ export default defineEventHandler(async (event) => {
     hasWhisperModel: taggedModels.some((m) => m.installed),
     whisperModels: taggedModels,
     recommendedWhisperModel: hw.recommended.whisperModel,
-    recommendedOllamaModel: hw.recommended.ollamaModel,
-    ollamaRunning: ollama.running,
-    hasQwen: ollama.models.some((m) => m.toLowerCase().startsWith('qwen')),
-    qwenModels: ollama.models.filter((m) => m.toLowerCase().startsWith('qwen')),
   };
 });

@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
+import type { LLMMessage } from './llmClient';
 import type { Cue } from './vtt';
 
 export interface Chapter {
@@ -20,9 +21,16 @@ const LANG_NAMES: Record<string, string> = {
   'en-US': 'English',
 };
 
-export function buildPrompt(transcriptVtt: string, uiLang: string): string {
+/**
+ * Build the chat messages used to ask the local LLM for video insights.
+ * The system message carries the format contract; the user message carries
+ * only the transcript so the model "sees" the data, not the instructions,
+ * as the active turn — this works better for the OpenAI-compat chat API
+ * that llama-server speaks.
+ */
+export function buildInsightMessages(transcriptVtt: string, uiLang: string): LLMMessage[] {
   const langName = LANG_NAMES[uiLang] ?? 'English';
-  return [
+  const system = [
     'You are summarizing a video transcript. Output strict markdown following the template below. Do not add any other sections, code fences, or commentary.',
     '',
     `LANGUAGE: All output text MUST be in ${langName}.`,
@@ -42,11 +50,23 @@ export function buildPrompt(transcriptVtt: string, uiLang: string): string {
     '- [HH:MM:SS] <Chapter title> — <one-sentence description>',
     '- [HH:MM:SS] <Chapter title> — <one-sentence description>',
     '(3 to 8 chapters total; use exact timestamps that appear in the transcript)',
-    '',
-    'TRANSCRIPT:',
-    '',
-    transcriptVtt,
   ].join('\n');
+  const user = `TRANSCRIPT:\n\n${transcriptVtt}`;
+  return [
+    { role: 'system', content: system },
+    { role: 'user', content: user },
+  ];
+}
+
+/**
+ * @deprecated Use {@link buildInsightMessages} instead. Retained for callers
+ * that still need a single concatenated prompt string (e.g. size-budget
+ * heuristics that count characters).
+ */
+export function buildPrompt(transcriptVtt: string, uiLang: string): string {
+  return buildInsightMessages(transcriptVtt, uiLang)
+    .map((m) => m.content)
+    .join('\n\n');
 }
 
 function tsToMs(ts: string): number {
