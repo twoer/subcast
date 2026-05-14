@@ -123,7 +123,7 @@ export function getTaskByHash(_hash: string): undefined {
   return undefined;
 }
 
-// TODO(slice-4): stub retained for insights/[id].delete not yet migrated
+// TODO(slice-7): stub retained for callers not yet migrated (cache/delete, transcribe/retry)
 export function abortTask(_taskId: string): false {
   return false;
 }
