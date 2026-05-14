@@ -35,9 +35,18 @@ export default defineEventHandler(async (event) => {
   const cacheDir = join(SUBCAST_PATHS.cache, hash);
   if (existsSync(videoPath)) await rm(videoPath, { force: true });
   if (existsSync(cacheDir)) await rm(cacheDir, { recursive: true, force: true });
-  db.prepare(
-    `UPDATE videos SET deleted_at = ? WHERE sha256 = ? AND deleted_at IS NULL`,
-  ).run(Date.now(), hash);
+  // Cascade delete in a single transaction so a crash between statements
+  // can't leave orphan chunks / subtitles / task rows.
+  db.transaction(() => {
+    db.prepare(
+      `DELETE FROM chunks WHERE task_id IN (SELECT id FROM transcribe_tasks WHERE video_sha = ?)`,
+    ).run(hash);
+    db.prepare(`DELETE FROM transcribe_tasks WHERE video_sha = ?`).run(hash);
+    db.prepare(`DELETE FROM translate_tasks WHERE video_sha = ?`).run(hash);
+    db.prepare(`DELETE FROM subtitles WHERE video_sha = ?`).run(hash);
+    db.prepare(`DELETE FROM insight_tasks WHERE video_sha = ?`).run(hash);
+    db.prepare(`DELETE FROM videos WHERE sha256 = ?`).run(hash);
+  })();
   logEvent({ level: 'info', event: 'cache_delete_one', sha: hash });
   return { ok: true, hash };
 });

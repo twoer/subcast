@@ -19,12 +19,13 @@ export default defineEventHandler(async () => {
     }
   }
   const db = getDb();
-  // Soft-delete the videos so /api/queue/list still resolves the videoName
-  // for historical tasks, but they no longer appear in /api/cache/list.
   db.transaction(() => {
-    db.prepare(
-      `UPDATE videos SET deleted_at = ? WHERE deleted_at IS NULL`,
-    ).run(Date.now());
+    db.prepare(`DELETE FROM chunks`).run();
+    db.prepare(`DELETE FROM subtitles`).run();
+    db.prepare(`DELETE FROM transcribe_tasks`).run();
+    db.prepare(`DELETE FROM translate_tasks`).run();
+    db.prepare(`DELETE FROM insight_tasks`).run();
+    db.prepare(`DELETE FROM videos`).run();
   })();
   logEvent({ level: 'info', event: 'cache_clear_all' });
   return { ok: true };
