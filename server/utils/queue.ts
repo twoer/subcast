@@ -62,6 +62,14 @@ interface ActiveTask {
 
 class TranscribeQueue {
   private active: ActiveTask | null = null;
+  // Mirrors the LLMQueue.queueEvents pattern (Slice 10): lets attach() block
+  // on slot availability instead of dropping SSE when another transcribe is
+  // currently active.
+  private queueEvents = new EventEmitter();
+
+  constructor() {
+    this.queueEvents.setMaxListeners(100);
+  }
 
   cancel(taskId: string): boolean {
     const db = getDb();
@@ -170,6 +178,7 @@ class TranscribeQueue {
       abort: new AbortController(),
       donePromise: Promise.resolve(),
     };
+    this.queueEvents.emit('active-changed');
     const workerPromise = this.runWorker(next.id, next.video_sha, next.model);
     this.active.donePromise = workerPromise.catch(() => {});
     workerPromise.catch((err) => {
@@ -410,6 +419,7 @@ class TranscribeQueue {
     } finally {
       active.emitter.emit('end');
       this.active = null;
+      this.queueEvents.emit('active-changed');
       this.tryStartNext().catch((err) => {
         logEvent({
           level: 'error',
@@ -516,9 +526,28 @@ class TranscribeQueue {
       await this.tryStartNext();
     }
     if (!this.active || this.active.taskId !== taskId) {
-      // Couldn't start (probably another task is active); the user must
-      // reconnect. Slice 3 doesn't model wait-in-line.
-      return;
+      // Another transcribe is currently running; wait until our slot opens
+      // instead of dropping the SSE (which the frontend reports as
+      // "disconnected" — see useSubtitleStreams.ts).
+      while (!this.active || this.active.taskId !== taskId) {
+        const fresh = getDb()
+          .prepare(`SELECT status FROM transcribe_tasks WHERE id=?`)
+          .get(taskId) as { status?: string } | undefined;
+        const s = fresh?.status;
+        if (!s || s === 'completed' || s === 'failed' || s === 'canceled') {
+          // Terminal in DB but we're not active — recurse so the caller hits
+          // the cache-hit / error / canceled branches at the top of attach.
+          yield* this.attach(taskId);
+          return;
+        }
+        await new Promise<void>((resolve) => {
+          const onChange = (): void => {
+            this.queueEvents.off('active-changed', onChange);
+            resolve();
+          };
+          this.queueEvents.once('active-changed', onChange);
+        });
+      }
     }
 
     const emitter = this.active.emitter;
@@ -1078,7 +1107,11 @@ class LLMQueue {
             ? 'BATCH_RETRY_EXHAUSTED'
             : msg === 'ORIGINAL_NOT_READY'
               ? 'ORIGINAL_NOT_READY'
-              : 'FATAL_UNKNOWN';
+              : msg.includes('LLM_MODEL_NOT_CONFIGURED') ||
+                  msg.includes('LLM_BINARY_MISSING') ||
+                  msg.includes('MODEL_UNUSABLE')
+                ? 'MODEL_NOT_CONFIGURED'
+                : 'FATAL_UNKNOWN';
       if (code === 'CANCELED') {
         // status row already 'canceled' by cancel()
         emit({ event: 'status', data: { taskId, status: 'canceled' } });

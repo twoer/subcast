@@ -139,7 +139,7 @@
       "esc": "关闭对话框"
     },
     "errors": {
-      "disconnected": "与翻译服务的连接已断开。",
+      "disconnected": "与服务的连接已断开。",
       "FATAL_UNKNOWN": "翻译时出现意外错误，请稍后重试。",
       "TASK_NOT_FOUND": "此翻译任务已失效，请重新切换语言。",
       "fallback": "翻译失败，请重试。",
@@ -196,6 +196,7 @@
       "errors": {
         "VIDEO_TOO_LONG": "视频太长，当前模型无法生成 AI 总结。",
         "PARSE_FAILED": "AI 输出无法解析，请重试。",
+        "MODEL_NOT_CONFIGURED": "AI 模型未配置或不可用，请到 设置 → 模型 中安装/选择一个。",
         "NETWORK": "生成期间网络中断。",
         "fallback": "生成失败，请重试。"
       }

@@ -93,6 +93,22 @@ export async function runInsightWorker(
         emit({ event: 'error', data: { code: 'CANCELED' } });
         return;
       }
+      // Configuration errors won't recover by retrying with a different
+      // temperature — short-circuit with a specific code so the UI can
+      // direct the user to Settings instead of saying "AI output couldn't
+      // be parsed, retry."
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (
+        errMsg.includes('LLM_MODEL_NOT_CONFIGURED') ||
+        errMsg.includes('LLM_BINARY_MISSING') ||
+        errMsg.includes('MODEL_UNUSABLE')
+      ) {
+        db.prepare(
+          `UPDATE insight_tasks SET status='error', error_msg=?, completed_at=? WHERE id=?`,
+        ).run(errMsg, Date.now(), taskId);
+        emit({ event: 'error', data: { code: 'MODEL_NOT_CONFIGURED', message: errMsg } });
+        return;
+      }
       if (attempt >= TEMPS.length) {
         const dir = join(SUBCAST_PATHS.cache, videoSha);
         try {

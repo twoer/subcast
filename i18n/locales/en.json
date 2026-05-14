@@ -139,7 +139,7 @@
       "esc": "Close dialog"
     },
     "errors": {
-      "disconnected": "Lost connection to the translation service.",
+      "disconnected": "Lost connection to the server.",
       "FATAL_UNKNOWN": "Translation failed unexpectedly. Please try again.",
       "TASK_NOT_FOUND": "This translation task has expired. Try switching the language again.",
       "fallback": "Translation failed. Please try again.",
@@ -196,6 +196,7 @@
       "errors": {
         "VIDEO_TOO_LONG": "Video is too long for AI insights with the current model.",
         "PARSE_FAILED": "The AI output couldn't be parsed. Please try again.",
+        "MODEL_NOT_CONFIGURED": "No AI model is configured or available. Open Settings → Models to install one.",
         "NETWORK": "Lost connection while generating insights.",
         "fallback": "Failed to generate insights. Please try again."
       }
