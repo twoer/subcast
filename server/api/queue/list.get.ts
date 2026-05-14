@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 // Aggregated queue snapshot for the index page panel. Returns active +
 // recent (last 24h) tasks across transcribe, translate, and insight queues.
-import { getDb } from '../../utils/db';
+import { getDb, SUBCAST_PATHS } from '../../utils/db';
+import { logEvent } from '../../utils/log';
 import type {
   InsightTaskRow,
   TranscribeTaskRow,
@@ -135,5 +136,27 @@ export default defineEventHandler(() => {
     if (oa !== ob) return oa - ob;
     return b.createdAt - a.createdAt;
   });
+
+  // Diagnostic: when the API returns 0 items, capture enough context to
+  // tell apart "DB really has no recent tasks" vs "wrong DB / stale snapshot".
+  // Compare totals (unfiltered) to filtered counts to spot 24h-cutoff misses
+  // and to confirm the process is reading the DB you expect.
+  if (items.length === 0) {
+    const totals = {
+      transcribe: (db.prepare(`SELECT COUNT(*) AS n FROM transcribe_tasks`).get() as { n: number }).n,
+      translate: (db.prepare(`SELECT COUNT(*) AS n FROM translate_tasks`).get() as { n: number }).n,
+      insight: (db.prepare(`SELECT COUNT(*) AS n FROM insight_tasks`).get() as { n: number }).n,
+    };
+    logEvent({
+      level: 'info',
+      event: 'queue_list_empty',
+      cutoffMs: cutoff,
+      nowMs: Date.now(),
+      home: SUBCAST_PATHS.home,
+      totals,
+      filtered: { transcribe: transcribes.length, translate: translates.length, insight: insights.length },
+    });
+  }
+
   return { items };
 });
