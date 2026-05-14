@@ -21,7 +21,7 @@
  *   node scripts/ensure-sqlite-abi.mjs electron   # rebuild for Electron ABI
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, copyFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { execSync, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -140,13 +140,42 @@ function probeActualAbi(targetRuntime) {
   return /^\d+$/.test(out) ? out : null;
 }
 
+// Nitro auto-traces server-side native deps and copies them into
+// .output/server/node_modules/. That copy is taken at `nuxt build` time
+// (system Node, ABI 127). Without overwriting it after rebuild, the
+// packaged app loads the stale ABI 127 binary and crashes on launch
+// with "compiled against a different Node.js version" — even though the
+// top-level node_modules copy is correct.
+const NITRO_BUNDLED_NODE = join(
+  REPO,
+  '.output/server/node_modules/better-sqlite3/build/Release/better_sqlite3.node',
+);
+const SOURCE_NODE = join(
+  REPO,
+  'node_modules/.pnpm/better-sqlite3@12.10.0/node_modules/better-sqlite3/build/Release/better_sqlite3.node',
+);
+
+function syncNitroBundledCopy(label) {
+  if (!existsSync(NITRO_BUNDLED_NODE) || !existsSync(SOURCE_NODE)) return;
+  try {
+    copyFileSync(SOURCE_NODE, NITRO_BUNDLED_NODE);
+    console.log(`[ensure-abi] mirrored source .node into .output (${label}).`);
+  } catch (err) {
+    console.warn(`[ensure-abi] failed to mirror .node into .output: ${err.message}`);
+  }
+}
+
 const targetAbi = TARGET === 'electron' ? electronAbi() : currentNodeAbi();
 const have = probeActualAbi(TARGET);
 
 if (have === targetAbi) {
   console.log(
-    `[ensure-abi] better-sqlite3 loads cleanly under ${TARGET} (ABI ${targetAbi}); skipping.`,
+    `[ensure-abi] better-sqlite3 loads cleanly under ${TARGET} (ABI ${targetAbi}); skipping rebuild.`,
   );
+  // Even without a rebuild, the .output copy may be stale from a previous
+  // build context (e.g. `nuxt build` ran with system Node, then ABI got
+  // flipped by a separate `electron-rebuild`). Always mirror just in case.
+  syncNitroBundledCopy('source already correct');
   process.exit(0);
 }
 
@@ -180,3 +209,6 @@ try {
 } catch {
   // non-fatal
 }
+
+// After rebuild, sync the freshly-rebuilt .node into the Nitro bundle.
+syncNitroBundledCopy('after rebuild');

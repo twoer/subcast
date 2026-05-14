@@ -89,7 +89,7 @@ const EN: Bundle = {
     title: 'Subcast failed to start',
     message: 'Subcast failed to start',
     causesIntro:
-      'Possible causes: port already in use · insufficient disk permissions · another Subcast instance still running.',
+      'Open Log Folder for details, or report this with the latest log file attached.',
     openLogs: 'Open Log Folder',
     reportIssue: 'Report Issue…',
     quit: 'Quit',
@@ -143,7 +143,7 @@ const ZH: Bundle = {
   startupFailure: {
     title: 'Subcast 启动失败',
     message: 'Subcast 启动失败',
-    causesIntro: '可能原因：端口被占用 · 磁盘权限不足 · 另一个 Subcast 实例仍在运行。',
+    causesIntro: '打开日志文件夹查看详情，或带上最新的日志文件报告问题。',
     openLogs: '打开日志文件夹',
     reportIssue: '报告问题…',
     quit: '退出',
