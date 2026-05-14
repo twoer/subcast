@@ -127,8 +127,3 @@ export function getTaskByHash(_hash: string): undefined {
 export function abortTask(_taskId: string): false {
   return false;
 }
-
-// TODO(slice-7): stub retained for desktop/shutdown.post not yet migrated
-export function abortAllInsightTasks(): 0 {
-  return 0;
-}
