@@ -52,6 +52,7 @@
     "uploading": "Uploading…",
     "queue": "Queue",
     "queueMeta": "{active} active / {total} recent",
+    "queueEmpty": "No recent tasks",
     "cancel": "Cancel",
     "transcribing": "Transcribing",
     "translating": "Translating",

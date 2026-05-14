@@ -501,18 +501,18 @@ function statusBadgeClass(s: QueueItem['status']) {
         </div>
       </section>
 
-      <section v-if="queueItems.length > 0" class="mt-10">
+      <section class="mt-10">
         <div class="mb-3 flex items-center justify-between">
           <h2 class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             <ListVideo class="h-3.5 w-3.5" />
             {{ t('index.queue') }}
           </h2>
-          <span class="text-xs text-muted-foreground">
+          <span v-if="queueItems.length > 0" class="text-xs text-muted-foreground">
             {{ t('index.queueMeta', { active: activeCount, total: queueItems.length }) }}
           </span>
         </div>
         <div class="card-list">
-          <ul class="space-y-1">
+          <ul v-if="queueItems.length > 0" class="space-y-1">
             <li
               v-for="item in queueItems"
               :key="`${item.kind}:${item.id}`"
@@ -565,6 +565,9 @@ function statusBadgeClass(s: QueueItem['status']) {
               </Tooltip>
             </li>
           </ul>
+          <p v-else class="px-3 py-4 text-sm text-muted-foreground">
+            {{ t('index.queueEmpty') }}
+          </p>
         </div>
       </section>
     </div>

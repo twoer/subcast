@@ -52,6 +52,7 @@
     "uploading": "上传中…",
     "queue": "任务队列",
     "queueMeta": "{active} 进行中 / {total} 最近",
+    "queueEmpty": "暂无任务",
     "cancel": "取消",
     "transcribing": "转写中",
     "translating": "翻译中",
