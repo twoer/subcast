@@ -15,6 +15,7 @@ export const badgeVariants = cva(
         destructive:
           "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
         outline: "text-foreground",
+        active: "border-transparent bg-primary/10 text-primary hover:bg-primary/15",
       },
       // Status/state badges across the app standardised on the `sm` size
       // (10px text, square-ish corners) for visual density. `default`

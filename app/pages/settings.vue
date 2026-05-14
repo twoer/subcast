@@ -626,13 +626,15 @@ onBeforeUnmount(() => {
                   <div class="flex min-w-0 flex-1 items-center gap-3">
                     <span class="font-mono text-sm font-medium text-foreground">{{ m.name }}</span>
                     <span class="font-mono text-xs text-muted-foreground">{{ fmtBytes(m.sizeBytes) }}</span>
-                    <span
+                    <Badge
                       v-if="m.name === modelsData.whisper.active"
-                      class="inline-flex items-center gap-1 rounded-sm bg-primary/10 px-1.5 py-0.5 text-3xs font-medium uppercase tracking-wider text-primary"
+                      variant="active"
+                      size="sm"
+                      class="uppercase tracking-wider"
                     >
                       <CheckCircle2 class="h-3 w-3" />
                       {{ t('settings.models.active') }}
-                    </span>
+                    </Badge>
                   </div>
                   <div class="flex items-center gap-1">
                     <Button
@@ -696,14 +698,6 @@ onBeforeUnmount(() => {
                 </div>
               </div>
 
-              <p v-if="modelsData?.llm" class="mb-3 text-xs text-muted-foreground">
-                {{
-                  modelsData.llm.active
-                    ? t('settings.models.activeFile', { name: getLlmFilename(modelsData.llm.active) })
-                    : t('settings.models.notConfigured')
-                }}
-              </p>
-
               <ul
                 v-if="modelsData && modelsData.llm.installed.length > 0"
                 class="-mx-2 space-y-1 px-2"
@@ -718,7 +712,7 @@ onBeforeUnmount(() => {
                     <span class="font-mono text-xs text-muted-foreground">{{ fmtBytes(m.sizeBytes) }}</span>
                     <Badge
                       v-if="m.name === modelsData.llm.active"
-                      variant="secondary"
+                      variant="active"
                       size="sm"
                       class="uppercase tracking-wider"
                     >
