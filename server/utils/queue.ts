@@ -625,29 +625,6 @@ interface ActiveLLMTask {
   model?: string;
 }
 
-class TranslateQueueFacade {
-  ensureTask(videoSha: string, lang: string, model?: string): TranslateTaskSummary {
-    return llmQueue.ensureTask(videoSha, lang, model);
-  }
-  bumpPriority(taskId: string): void {
-    llmQueue.bumpPriority(taskId);
-  }
-  cancel(taskId: string): boolean {
-    return llmQueue.cancel(taskId);
-  }
-  async tryStartNext(): Promise<void> {
-    return llmQueue.tryStartNext();
-  }
-  attach(taskId: string) {
-    return llmQueue.attach(taskId);
-  }
-  async cancelActive(): Promise<void> {
-    return llmQueue.cancelActive();
-  }
-}
-
-export const translateQueue = new TranslateQueueFacade();
-
 // ─────────────────────────────────────────────────────────────────────
 // LLMQueue — single-concurrent worker for translate + insight tasks.
 // ─────────────────────────────────────────────────────────────────────
@@ -1104,11 +1081,42 @@ class LLMQueue {
     const active = this.active;
     if (!active) return;
     const id = active.taskId;
-    getDb().prepare(`UPDATE translate_tasks SET status='canceled' WHERE id=?`).run(id);
+    const kind = active.kind;
+    const db = getDb();
+    if (kind === 'translate') {
+      db.prepare(`UPDATE translate_tasks SET status='canceled' WHERE id=?`).run(id);
+    } else {
+      db.prepare(
+        `UPDATE insight_tasks SET status='canceled', completed_at=? WHERE id=?`,
+      ).run(Date.now(), id);
+    }
     active.abort.abort();
-    logEvent({ level: 'info', event: 'translate_canceled', taskId: id, reason: 'shutdown' });
+    logEvent({ level: 'info', event: 'llm_canceled', kind, taskId: id, reason: 'shutdown' });
     await active.donePromise;
   }
 }
 
 export const llmQueue = new LLMQueue();
+
+class TranslateQueueFacade {
+  ensureTask(videoSha: string, lang: string, model?: string): TranslateTaskSummary {
+    return llmQueue.ensureTask(videoSha, lang, model);
+  }
+  bumpPriority(taskId: string): void {
+    llmQueue.bumpPriority(taskId);
+  }
+  cancel(taskId: string): boolean {
+    return llmQueue.cancel(taskId);
+  }
+  async tryStartNext(): Promise<void> {
+    return llmQueue.tryStartNext();
+  }
+  attach(taskId: string) {
+    return llmQueue.attach(taskId);
+  }
+  async cancelActive(): Promise<void> {
+    return llmQueue.cancelActive();
+  }
+}
+
+export const translateQueue = new TranslateQueueFacade();
