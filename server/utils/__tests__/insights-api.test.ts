@@ -102,6 +102,7 @@ describe('/api/insights SSE', () => {
     const kinds = events.map((e) => e.event);
     expect(kinds[0]).toBe('start');
     expect(kinds[kinds.length - 1]).toBe('done');
+    expect(kinds.filter((k) => k === 'token').length).toBeGreaterThan(0);
 
     const done = JSON.parse(events[events.length - 1]!.data);
     expect(done.insights.summary).toContain('Mock summary');

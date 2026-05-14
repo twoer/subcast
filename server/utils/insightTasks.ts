@@ -44,6 +44,7 @@ export async function runInsightWorker(
   const backend = llmBackend();
 
   while (attempt < TEMPS.length) {
+    active.insightRaw = '';
     raw = '';
     try {
       const stream = backend.chatStream({
@@ -55,7 +56,10 @@ export async function runInsightWorker(
       for await (const chunk of stream) {
         if (chunk.delta) {
           raw += chunk.delta;
-          if (attempt === 0) emit({ event: 'token', data: { text: chunk.delta } });
+          if (attempt === 0) {
+            active.insightRaw = raw;
+            emit({ event: 'token', data: { text: chunk.delta } });
+          }
         }
         if (chunk.finishReason === 'cancel') break;
       }

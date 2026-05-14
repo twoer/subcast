@@ -622,9 +622,14 @@ export interface ActiveLLMTask {
   // translate-specific live state (used by runTranslateWorker only).
   // TODO(slice-3): convert ActiveLLMTask to discriminated union by `kind`
   // once both runTranslateWorker and runInsightWorker are in place.
+  // insightRaw joins the optional-fields family; all will be cleaned up
+  // when the discriminated union is introduced.
   doneCues?: Cue[];
   lang?: string;
   model?: string;
+  // insight-specific: accumulated raw token stream for late-subscriber replay.
+  // Append-only inside runInsightWorker; read-only in attachInsight.
+  insightRaw?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1284,6 +1289,14 @@ class LLMQueue {
     };
     live.emitter.on('frame', onFrame);
     live.emitter.once('end', onEnd);
+
+    // Late-subscriber token replay: emit accumulated tokens as a single frame
+    // so reconnects and concurrent subscribers don't miss tokens emitted before
+    // the listener was registered.
+    if (live.insightRaw) {
+      yield { event: 'token', data: { text: live.insightRaw } };
+    }
+
     try {
       while (true) {
         while (buffer.length > 0) yield buffer.shift()!;
