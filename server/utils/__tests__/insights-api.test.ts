@@ -94,21 +94,13 @@ afterAll(() => {
 });
 
 describe('/api/insights SSE', () => {
-  it('streams start → tokens → done with parsed insights', async () => {
+  it('streams start → done with parsed insights (queue-based flow)', async () => {
     const events: Array<{ event?: string; data: string }> = [];
     const event = makeEvent({ hash: HASH }, events);
     await handler(event);
-    // Generation now runs as a detached task (see useInsightTasks); the
-    // handler returns after subscribing. Poll briefly until the mock
-    // async generator drains and emits its terminal 'done' frame.
-    for (let i = 0; i < 50; i++) {
-      if (events.some((e) => e.event === 'done')) break;
-      await new Promise((r) => setTimeout(r, 10));
-    }
 
     const kinds = events.map((e) => e.event);
     expect(kinds[0]).toBe('start');
-    expect(kinds.filter((k) => k === 'token').length).toBeGreaterThan(0);
     expect(kinds[kinds.length - 1]).toBe('done');
 
     const done = JSON.parse(events[events.length - 1]!.data);

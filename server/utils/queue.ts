@@ -15,6 +15,8 @@ import type { TranscribeOptions } from './whisper';
 import { extractWav, probeDurationS, transcribeChunk } from './whisper';
 import type { SseFrame } from './sse';
 import { parseVtt, serializeVtt, type Cue } from './vtt';
+import { buildInsightMessages } from './insights';
+import { runInsightWorker, type InsightWorkerParams } from './insightTasks';
 import type {
   ChunkRow,
   InsightTaskRow,
@@ -610,7 +612,7 @@ export type InsightTaskSummary = Pick<
 
 type LLMTaskKind = 'translate' | 'insight';
 
-interface ActiveLLMTask {
+export interface ActiveLLMTask {
   taskId: string;
   kind: LLMTaskKind;
   videoSha: string;
@@ -750,40 +752,77 @@ class LLMQueue {
 
   cancel(taskId: string): boolean {
     const db = getDb();
-    const row = db
-      .prepare(`SELECT status FROM translate_tasks WHERE id = ?`)
+    const tRow = db
+      .prepare(`SELECT status FROM translate_tasks WHERE id=?`)
       .get(taskId) as Pick<TranslateTaskRow, 'status'> | undefined;
-    if (!row) return false;
-    if (row.status === 'completed' || row.status === 'failed' || row.status === 'canceled') {
-      return false;
+    if (tRow) {
+      if (tRow.status === 'completed' || tRow.status === 'failed' || tRow.status === 'canceled') {
+        return false;
+      }
+      db.prepare(`UPDATE translate_tasks SET status='canceled' WHERE id=?`).run(taskId);
+      if (this.active?.taskId === taskId) this.active.abort.abort();
+      logEvent({ level: 'info', event: 'translate_canceled', taskId });
+      return true;
     }
-    db.prepare(`UPDATE translate_tasks SET status='canceled' WHERE id=?`).run(taskId);
-    if (this.active?.taskId === taskId) this.active.abort.abort();
-    logEvent({ level: 'info', event: 'translate_canceled', taskId });
-    return true;
+    const iRow = db
+      .prepare(`SELECT status FROM insight_tasks WHERE id=?`)
+      .get(taskId) as Pick<InsightTaskRow, 'status'> | undefined;
+    if (iRow) {
+      if (iRow.status === 'done' || iRow.status === 'error' || iRow.status === 'canceled') {
+        return false;
+      }
+      db.prepare(
+        `UPDATE insight_tasks SET status='canceled', completed_at=? WHERE id=?`,
+      ).run(Date.now(), taskId);
+      if (this.active?.taskId === taskId) this.active.abort.abort();
+      logEvent({ level: 'info', event: 'insight_canceled', taskId });
+      return true;
+    }
+    return false;
   }
 
   async tryStartNext(): Promise<void> {
     if (this.active) return;
     const db = getDb();
-    // Translate-only for now; insight added in Slice 3.
     const next = db
       .prepare(
-        `SELECT id, video_sha, target_lang AS lang, model
-         FROM translate_tasks
-         WHERE status = 'queued'
-         ORDER BY priority DESC, created_at ASC
+        `SELECT id, kind, video_sha, created_at FROM (
+           SELECT id, 'translate' AS kind, video_sha, created_at,
+                  priority AS sort_priority
+           FROM translate_tasks WHERE status='queued'
+           UNION ALL
+           SELECT id, 'insight' AS kind, video_sha, created_at,
+                  0 AS sort_priority
+           FROM insight_tasks WHERE status='queued'
+         )
+         ORDER BY sort_priority DESC, created_at ASC
          LIMIT 1`,
       )
-      .get() as { id: string; video_sha: string; lang: string; model: string } | undefined;
+      .get() as { id: string; kind: LLMTaskKind; video_sha: string; created_at: number } | undefined;
     if (!next) return;
-    db.prepare(`UPDATE translate_tasks SET status='running' WHERE id=?`).run(next.id);
+
+    if (next.kind === 'translate') {
+      return this.startTranslate(next.id);
+    } else {
+      return this.startInsight(next.id);
+    }
+  }
+
+  private async startTranslate(taskId: string): Promise<void> {
+    const db = getDb();
+    const row = db
+      .prepare(
+        `SELECT id, video_sha, target_lang, model
+         FROM translate_tasks WHERE id = ?`,
+      )
+      .get(taskId) as { id: string; video_sha: string; target_lang: string; model: string };
+    db.prepare(`UPDATE translate_tasks SET status='running' WHERE id=?`).run(taskId);
     this.active = {
-      taskId: next.id,
+      taskId,
       kind: 'translate',
-      videoSha: next.video_sha,
-      lang: next.lang,
-      model: next.model,
+      videoSha: row.video_sha,
+      lang: row.target_lang,
+      model: row.model,
       emitter: new EventEmitter(),
       abort: new AbortController(),
       doneCues: [],
@@ -796,7 +835,76 @@ class LLMQueue {
         level: 'error',
         event: 'llm_worker_crashed',
         kind: 'translate',
-        taskId: next.id,
+        taskId,
+        msg: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+    });
+  }
+
+  private async startInsight(taskId: string): Promise<void> {
+    const db = getDb();
+    const row = db
+      .prepare(
+        `SELECT id, video_sha, model, ui_language
+         FROM insight_tasks WHERE id = ?`,
+      )
+      .get(taskId) as {
+        id: string;
+        video_sha: string;
+        model: string;
+        ui_language: 'zh-CN' | 'en';
+      };
+    const origPath = join(SUBCAST_PATHS.cache, row.video_sha, 'original.vtt');
+    if (!existsSync(origPath)) {
+      db.prepare(
+        `UPDATE insight_tasks SET status='error', error_msg=?, completed_at=? WHERE id=?`,
+      ).run('ORIGINAL_NOT_READY', Date.now(), taskId);
+      return this.tryStartNext();
+    }
+    const transcript = readFileSync(origPath, 'utf-8');
+    const cues = parseVtt(transcript);
+    const messages = buildInsightMessages(transcript, row.ui_language);
+
+    db.prepare(`UPDATE insight_tasks SET status='running' WHERE id=?`).run(taskId);
+    this.active = {
+      taskId,
+      kind: 'insight',
+      videoSha: row.video_sha,
+      model: row.model,
+      emitter: new EventEmitter(),
+      abort: new AbortController(),
+      donePromise: Promise.resolve(),
+    };
+    const params: InsightWorkerParams = {
+      videoSha: row.video_sha,
+      model: row.model,
+      uiLanguage: row.ui_language,
+      messages,
+      cues,
+    };
+    const wp = (async () => {
+      try {
+        await runInsightWorker(this.active!, params);
+      } finally {
+        this.active!.emitter.emit('end');
+        this.active = null;
+        this.tryStartNext().catch((err) => {
+          logEvent({
+            level: 'error',
+            event: 'llm_trystartnext_failed',
+            msg: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }
+    })();
+    this.active.donePromise = wp.catch(() => {});
+    wp.catch((err) => {
+      logEvent({
+        level: 'error',
+        event: 'llm_worker_crashed',
+        kind: 'insight',
+        taskId,
         msg: err instanceof Error ? err.message : String(err),
         stack: err instanceof Error ? err.stack : undefined,
       });
@@ -938,6 +1046,28 @@ class LLMQueue {
 
   async *attach(taskId: string): AsyncIterable<SseFrame> {
     const db = getDb();
+    const tRow = db
+      .prepare(`SELECT 1 FROM translate_tasks WHERE id=?`)
+      .get(taskId);
+    if (tRow) {
+      yield* this.attachTranslate(taskId);
+      return;
+    }
+    const iRow = db
+      .prepare(`SELECT 1 FROM insight_tasks WHERE id=?`)
+      .get(taskId);
+    if (iRow) {
+      yield* this.attachInsight(taskId);
+      return;
+    }
+    yield {
+      event: 'error',
+      data: { taskId, code: 'TASK_NOT_FOUND', msg: 'task row missing' },
+    };
+  }
+
+  private async *attachTranslate(taskId: string): AsyncIterable<SseFrame> {
+    const db = getDb();
     const task = db
       .prepare(
         `SELECT id, video_sha, target_lang, status, model, progress_pct, priority, error_msg
@@ -1039,6 +1169,102 @@ class LLMQueue {
       };
     }
 
+    const buffer: SseFrame[] = [];
+    let resolveNext: (() => void) | null = null;
+    let finished = false;
+    const onFrame = (f: SseFrame) => {
+      buffer.push(f);
+      if (resolveNext) {
+        resolveNext();
+        resolveNext = null;
+      }
+    };
+    const onEnd = () => {
+      finished = true;
+      if (resolveNext) {
+        resolveNext();
+        resolveNext = null;
+      }
+    };
+    live.emitter.on('frame', onFrame);
+    live.emitter.once('end', onEnd);
+    try {
+      while (true) {
+        while (buffer.length > 0) yield buffer.shift()!;
+        if (finished) break;
+        await new Promise<void>((r) => {
+          resolveNext = r;
+        });
+      }
+    } finally {
+      live.emitter.off('frame', onFrame);
+      live.emitter.off('end', onEnd);
+    }
+  }
+
+  private async *attachInsight(taskId: string): AsyncIterable<SseFrame> {
+    const db = getDb();
+    const task = db
+      .prepare(
+        `SELECT id, video_sha, status, model, ui_language, error_msg
+         FROM insight_tasks WHERE id=?`,
+      )
+      .get(taskId) as InsightTaskSummary | undefined;
+    if (!task) {
+      yield {
+        event: 'error',
+        data: { taskId, code: 'TASK_NOT_FOUND', msg: 'insight task missing' },
+      };
+      return;
+    }
+
+    yield {
+      event: 'start',
+      data: {
+        taskId,
+        model: task.model,
+        uiLanguage: task.ui_language,
+        status: task.status,
+      },
+    };
+
+    if (task.status === 'done') {
+      const path = join(SUBCAST_PATHS.cache, task.video_sha, 'insights.json');
+      if (existsSync(path)) {
+        const obj = JSON.parse(readFileSync(path, 'utf-8'));
+        yield { event: 'done', data: { insights: obj, fromCache: true } };
+        return;
+      }
+      yield {
+        event: 'error',
+        data: { taskId, code: 'CACHE_MISSING', msg: 'insights.json missing' },
+      };
+      return;
+    }
+    if (task.status === 'error') {
+      yield {
+        event: 'error',
+        data: { taskId, code: 'PARSE_FAILED', message: task.error_msg ?? 'previous run failed' },
+      };
+      return;
+    }
+    if (task.status === 'canceled') {
+      yield { event: 'error', data: { taskId, code: 'CANCELED' } };
+      return;
+    }
+
+    // queued / running
+    yield { event: 'status', data: { taskId, status: task.status } };
+
+    if (!this.active || this.active.taskId !== taskId) {
+      await this.tryStartNext();
+    }
+    if (!this.active || this.active.taskId !== taskId) {
+      // Another task is active; client must reconnect after current finishes.
+      return;
+    }
+
+    const live = this.active;
     const buffer: SseFrame[] = [];
     let resolveNext: (() => void) | null = null;
     let finished = false;

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { llmQueue } from '../queue';
+import { llmQueue, translateQueue } from '../queue';
 import { getDb, closeDb } from '../db';
 
 const HASH_A = 'a'.repeat(64);
@@ -87,6 +87,29 @@ describe('LLMQueue', () => {
       const r = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen2.5:7b');
       expect(r.id).toBe(t.id);
       expect(r.status).toBe('done');
+    });
+  });
+
+  describe('cross-kind FIFO dequeue', () => {
+    it('dequeues by created_at across translate and insight tables', async () => {
+      const t1 = translateQueue.ensureTask(HASH_A, 'zh-CN');
+      await new Promise((r) => setTimeout(r, 5));
+      llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen2.5:7b');
+      const next = getDb()
+        .prepare(
+          `SELECT id, kind FROM (
+             SELECT id, 'translate' AS kind, created_at, priority AS sort_priority
+             FROM translate_tasks WHERE status='queued'
+             UNION ALL
+             SELECT id, 'insight' AS kind, created_at, 0 AS sort_priority
+             FROM insight_tasks WHERE status='queued'
+           )
+           ORDER BY sort_priority DESC, created_at ASC
+           LIMIT 1`,
+        )
+        .get() as { id: string; kind: string };
+      expect(next.kind).toBe('translate');
+      expect(next.id).toBe(t1.id);
     });
   });
 });
