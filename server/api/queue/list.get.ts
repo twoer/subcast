@@ -1,4 +1,6 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
+// Aggregated queue snapshot for the index page panel. Returns active +
+// recent (last 24h) tasks across transcribe, translate, and insight queues.
 import { getDb } from '../../utils/db';
 import type {
   InsightTaskRow,
@@ -6,6 +8,8 @@ import type {
   TranslateTaskRow,
 } from '../../types/db';
 
+// LEFT JOIN on videos: the video may have been deleted, so the joined
+// columns are nullable even though the underlying VideoRow types aren't.
 type VideoJoinFields = {
   original_name: string | null;
   display_name: string | null;
@@ -123,6 +127,7 @@ export default defineEventHandler(() => {
       errorMsg: t.error_msg,
     });
   }
+  // Active (queued/running) first, then recent finished
   const order = (s: string) =>
     s === 'running' ? 0 : s === 'queued' ? 1 : 2;
   items.sort((a, b) => {
