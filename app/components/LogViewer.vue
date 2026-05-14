@@ -103,7 +103,7 @@ async function loadContent(): Promise<void> {
 
 const parsedLines = computed<ParsedLine[]>(() => {
   if (!content.value?.body) return [];
-  return content.value.body.split('\n').map<ParsedLine>((raw) => {
+  const lines = content.value.body.split('\n').map<ParsedLine>((raw) => {
     try {
       const obj = JSON.parse(raw) as { level?: string; ts?: number; event?: string };
       const level: ParsedLine['level'] =
@@ -115,6 +115,7 @@ const parsedLines = computed<ParsedLine[]>(() => {
       return { raw, level: 'unknown' };
     }
   });
+  return lines.reverse();
 });
 
 function levelClass(l: ParsedLine['level']): string {
