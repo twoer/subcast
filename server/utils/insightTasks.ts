@@ -118,12 +118,3 @@ export async function runInsightWorker(
   }
 }
 
-// TODO(slice-7): stub retained for callers not yet migrated (cache/list, cache/delete, transcribe/retry)
-export function getTaskByHash(_hash: string): undefined {
-  return undefined;
-}
-
-// TODO(slice-7): stub retained for callers not yet migrated (cache/delete, transcribe/retry)
-export function abortTask(_taskId: string): false {
-  return false;
-}
