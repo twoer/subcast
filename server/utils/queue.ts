@@ -637,6 +637,11 @@ export interface ActiveLLMTask {
 
 class LLMQueue {
   private active: ActiveLLMTask | null = null;
+  private queueEvents = new EventEmitter();
+
+  constructor() {
+    this.queueEvents.setMaxListeners(100);
+  }
 
   /**
    * Returns the canonical translate task row for `(videoSha, lang)`, creating
@@ -833,6 +838,7 @@ class LLMQueue {
       donePromise: Promise.resolve(),
     };
     this.active = activeSlot;
+    this.queueEvents.emit('active-changed');
     const wp = this.runTranslateWorker(activeSlot);
     activeSlot.donePromise = wp.catch(() => {});
     wp.catch((err) => {
@@ -881,6 +887,7 @@ class LLMQueue {
       abort: new AbortController(),
       donePromise: Promise.resolve(),
     };
+    this.queueEvents.emit('active-changed');
     const params: InsightWorkerParams = {
       videoSha: row.video_sha,
       model: row.model,
@@ -898,6 +905,7 @@ class LLMQueue {
       } finally {
         this.active!.emitter.emit('end');
         this.active = null;
+        this.queueEvents.emit('active-changed');
         this.tryStartNext().catch((err) => {
           logEvent({
             level: 'error',
@@ -918,6 +926,49 @@ class LLMQueue {
         stack: err instanceof Error ? err.stack : undefined,
       });
     });
+  }
+
+  /**
+   * Block until `this.active.taskId === taskId` becomes true, the task row's
+   * status becomes terminal, or the `signal` aborts. Returns the new state so
+   * the caller can decide what to do next.
+   */
+  private async waitForSlot(
+    taskId: string,
+    getStatus: () => string | undefined,
+    signal: AbortSignal,
+  ): Promise<'active' | 'terminal' | 'aborted'> {
+    while (true) {
+      if (signal.aborted) return 'aborted';
+      if (this.active?.taskId === taskId) return 'active';
+      const status = getStatus();
+      if (
+        !status ||
+        status === 'canceled' ||
+        status === 'failed' ||
+        status === 'error' ||
+        status === 'completed' ||
+        status === 'done'
+      ) {
+        return 'terminal';
+      }
+      await new Promise<void>((resolve) => {
+        const onChange = () => {
+          cleanup();
+          resolve();
+        };
+        const onAbort = () => {
+          cleanup();
+          resolve();
+        };
+        const cleanup = () => {
+          this.queueEvents.off('active-changed', onChange);
+          signal.removeEventListener('abort', onAbort);
+        };
+        this.queueEvents.once('active-changed', onChange);
+        signal.addEventListener('abort', onAbort, { once: true });
+      });
+    }
   }
 
   private async runTranslateWorker(active: ActiveLLMTask): Promise<void> {
@@ -1040,6 +1091,7 @@ class LLMQueue {
     } finally {
       active.emitter.emit('end');
       this.active = null;
+      this.queueEvents.emit('active-changed');
       // The llama-server backend auto-unloads on idle (see llmServer.ts),
       // so the queue no longer needs to send an explicit unload signal.
       this.tryStartNext().catch((err) => {
@@ -1167,13 +1219,44 @@ class LLMQueue {
       await this.tryStartNext();
     }
     if (!this.active || this.active.taskId !== taskId) {
-      // Another task is currently running; this one will pick up later.
-      // For Slice 6 simplicity, return without live tail; client reconnects.
-      return;
+      // Another task is currently running; wait until our slot opens.
+      const waitAbort = new AbortController();
+      const result = await this.waitForSlot(
+        taskId,
+        () =>
+          (
+            getDb()
+              .prepare(`SELECT status FROM translate_tasks WHERE id=?`)
+              .get(taskId) as { status?: string } | undefined
+          )?.status,
+        waitAbort.signal,
+      );
+      if (result === 'terminal') {
+        const fresh = getDb()
+          .prepare(`SELECT status, error_msg FROM translate_tasks WHERE id=?`)
+          .get(taskId) as { status: string; error_msg: string | null } | undefined;
+        if (fresh?.status === 'completed') {
+          yield* this.attachTranslate(taskId);
+        } else if (fresh?.status === 'canceled') {
+          yield { event: 'status', data: { taskId, status: 'canceled' } };
+        } else {
+          yield {
+            event: 'error',
+            data: {
+              taskId,
+              code: 'FATAL_UNKNOWN',
+              msg: fresh?.error_msg ?? 'previous run failed',
+            },
+          };
+        }
+        return;
+      }
+      if (result === 'aborted') return;
+      // result === 'active': fall through to live tail
     }
 
     // Live tail
-    const live = this.active;
+    const live = this.active!;
     if (task.progress_pct > 0) {
       yield {
         event: 'batch-progress',
@@ -1294,11 +1377,43 @@ class LLMQueue {
       await this.tryStartNext();
     }
     if (!this.active || this.active.taskId !== taskId) {
-      // Another task is active; client must reconnect after current finishes.
-      return;
+      // Another task is currently running; wait until our slot opens.
+      const waitAbort = new AbortController();
+      const result = await this.waitForSlot(
+        taskId,
+        () =>
+          (
+            getDb()
+              .prepare(`SELECT status FROM insight_tasks WHERE id=?`)
+              .get(taskId) as { status?: string } | undefined
+          )?.status,
+        waitAbort.signal,
+      );
+      if (result === 'terminal') {
+        const fresh = getDb()
+          .prepare(`SELECT status, error_msg FROM insight_tasks WHERE id=?`)
+          .get(taskId) as { status: string; error_msg: string | null } | undefined;
+        if (fresh?.status === 'done') {
+          yield* this.attachInsight(taskId);
+        } else if (fresh?.status === 'canceled') {
+          yield { event: 'error', data: { taskId, code: 'CANCELED' } };
+        } else {
+          yield {
+            event: 'error',
+            data: {
+              taskId,
+              code: 'PARSE_FAILED',
+              message: fresh?.error_msg ?? 'previous run failed',
+            },
+          };
+        }
+        return;
+      }
+      if (result === 'aborted') return;
+      // result === 'active': fall through to live tail
     }
 
-    const live = this.active;
+    const live = this.active!;
     const buffer: SseFrame[] = [];
     let resolveNext: (() => void) | null = null;
     let finished = false;

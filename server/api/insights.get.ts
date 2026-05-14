@@ -52,13 +52,6 @@ export default defineEventHandler(async (event) => {
   const uiLanguage = pickUiLang(event);
   const model = getModel();
 
-  const transcript = readFileSync(origPath, 'utf-8');
-  const messages = buildInsightMessages(transcript, uiLanguage);
-  const promptChars = messages.reduce((n, m) => n + m.content.length, 0);
-  if (promptChars > MAX_PROMPT_CHARS) {
-    throw createError({ statusCode: 413, statusMessage: 'VIDEO_TOO_LONG' });
-  }
-
   setResponseHeaders(event, {
     'Content-Type': 'text/event-stream; charset=utf-8',
     'Cache-Control': 'no-cache, no-transform',
@@ -66,6 +59,32 @@ export default defineEventHandler(async (event) => {
     'X-Accel-Buffering': 'no',
   });
   const res = event.node.res;
+
+  // Cache-first short-circuit: if a previous successful run wrote insights.json,
+  // serve it immediately without re-reading the transcript or doing prompt work.
+  const cachePath = join(SUBCAST_PATHS.cache, hash, 'insights.json');
+  if (existsSync(cachePath)) {
+    try {
+      const obj = JSON.parse(readFileSync(cachePath, 'utf-8'));
+      res.write(`event: start\ndata: ${JSON.stringify({ taskId: 'cached', model, uiLanguage })}\n\n`);
+      res.write(`event: done\ndata: ${JSON.stringify({ insights: obj, fromCache: true })}\n\n`);
+      res.end();
+      return;
+    } catch {
+      // Parse failure — fall through to regenerate
+    }
+  }
+
+  // Check prompt length and emit SSE error frame instead of HTTP 413
+  // so EventSource clients can read the error code.
+  const transcript = readFileSync(origPath, 'utf-8');
+  const messages = buildInsightMessages(transcript, uiLanguage);
+  const promptChars = messages.reduce((n, m) => n + m.content.length, 0);
+  if (promptChars > MAX_PROMPT_CHARS) {
+    res.write(`event: error\ndata: ${JSON.stringify({ code: 'VIDEO_TOO_LONG', message: 'Video too long for AI insights' })}\n\n`);
+    res.end();
+    return;
+  }
 
   const task = llmQueue.ensureInsightTask(hash, uiLanguage, model);
   await llmQueue.tryStartNext();
