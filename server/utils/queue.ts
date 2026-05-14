@@ -625,33 +625,43 @@ interface ActiveLLMTask {
   model?: string;
 }
 
-interface ActiveTranslateTask {
-  taskId: string;
-  videoSha: string;
-  lang: string;
-  model: string;
-  emitter: EventEmitter;
-  abort: AbortController;
-  doneCues: Cue[]; // cues already emitted/persisted; for late-subscriber replay
-  /** Resolves when `runWorker` exits. See ActiveTask.donePromise. */
-  donePromise: Promise<void>;
+class TranslateQueueFacade {
+  ensureTask(videoSha: string, lang: string, model?: string): TranslateTaskSummary {
+    return llmQueue.ensureTask(videoSha, lang, model);
+  }
+  bumpPriority(taskId: string): void {
+    llmQueue.bumpPriority(taskId);
+  }
+  cancel(taskId: string): boolean {
+    return llmQueue.cancel(taskId);
+  }
+  async tryStartNext(): Promise<void> {
+    return llmQueue.tryStartNext();
+  }
+  attach(taskId: string) {
+    return llmQueue.attach(taskId);
+  }
+  async cancelActive(): Promise<void> {
+    return llmQueue.cancelActive();
+  }
 }
 
-class TranslateQueue {
-  private active: ActiveTranslateTask | null = null;
+export const translateQueue = new TranslateQueueFacade();
+
+// ─────────────────────────────────────────────────────────────────────
+// LLMQueue — single-concurrent worker for translate + insight tasks.
+// ─────────────────────────────────────────────────────────────────────
+
+class LLMQueue {
+  private active: ActiveLLMTask | null = null;
 
   /**
-   * Returns the canonical task row for `(videoSha, lang)`, creating one
-   * if none exists. Idempotent for non-terminal states. See
-   * `TranscribeQueue.ensureTask` for the full resurrection contract —
-   * the rules here are identical, with one practical note: translation
-   * does NOT persist per-batch progress, so a resurrected task restarts
-   * from batch 0. Cheap when the LLM is already loaded, but the user
-   * pays the inference cost again.
+   * Returns the canonical translate task row for `(videoSha, lang)`, creating
+   * one if none exists. Idempotent for non-terminal states.
    *
-   * The `model` column on `translate_tasks` is purely informational now
-   * that the LLM backend exposes a single active model — we record
-   * `'llm'` so legacy queries still see a non-null value.
+   * The `model` column on `translate_tasks` is purely informational now that
+   * the LLM backend exposes a single active model — we record `'llm'` so
+   * legacy queries still see a non-null value.
    */
   ensureTask(videoSha: string, lang: string, model?: string): TranslateTaskSummary {
     const effectiveModel = model ?? 'llm';
@@ -698,8 +708,57 @@ class TranslateQueue {
   }
 
   /**
-   * Bump task to top of pending queue per F4 priority insert. The currently
-   * running task is NOT preempted; this only affects the next dequeue.
+   * Returns the canonical insight task row for `(videoSha, uiLanguage)`,
+   * creating one if none exists. Mirrors `ensureTask`'s resurrection pattern
+   * but uses the insight status vocabulary: `'error'`/`'canceled'` flip back
+   * to `'queued'`. (Translate uses `'failed'`/`'canceled'` — do not conflate.)
+   */
+  ensureInsightTask(
+    videoSha: string,
+    uiLanguage: 'zh-CN' | 'en',
+    model: string,
+  ): InsightTaskSummary {
+    const db = getDb();
+    const existing = db
+      .prepare(
+        `SELECT id, video_sha, status, model, ui_language, error_msg
+         FROM insight_tasks WHERE video_sha = ? AND ui_language = ?`,
+      )
+      .get(videoSha, uiLanguage) as InsightTaskSummary | undefined;
+    if (existing) {
+      if (existing.status === 'error' || existing.status === 'canceled') {
+        db.prepare(
+          `UPDATE insight_tasks SET status='queued', error_msg=NULL WHERE id=?`,
+        ).run(existing.id);
+        logEvent({
+          level: 'info',
+          event: 'insight_resurrected',
+          taskId: existing.id,
+          fromStatus: existing.status,
+        });
+        existing.status = 'queued';
+        existing.error_msg = null;
+      }
+      return existing;
+    }
+    const id = randomUUID();
+    db.prepare(
+      `INSERT INTO insight_tasks (id, video_sha, status, model, ui_language, created_at)
+       VALUES (?, ?, 'queued', ?, ?, ?)`,
+    ).run(id, videoSha, model, uiLanguage, Date.now());
+    return {
+      id,
+      video_sha: videoSha,
+      status: 'queued',
+      model,
+      ui_language: uiLanguage,
+      error_msg: null,
+    };
+  }
+
+  /**
+   * Bump translate task to top of pending queue per F4 priority insert. The
+   * currently running task is NOT preempted; this only affects the next dequeue.
    */
   bumpPriority(taskId: string): void {
     const db = getDb();
@@ -722,9 +781,7 @@ class TranslateQueue {
       return false;
     }
     db.prepare(`UPDATE translate_tasks SET status='canceled' WHERE id=?`).run(taskId);
-    if (this.active?.taskId === taskId) {
-      this.active.abort.abort();
-    }
+    if (this.active?.taskId === taskId) this.active.abort.abort();
     logEvent({ level: 'info', event: 'translate_canceled', taskId });
     return true;
   }
@@ -732,35 +789,36 @@ class TranslateQueue {
   async tryStartNext(): Promise<void> {
     if (this.active) return;
     const db = getDb();
+    // Translate-only for now; insight added in Slice 3.
     const next = db
       .prepare(
-        `SELECT id, video_sha, target_lang, model
+        `SELECT id, video_sha, target_lang AS lang, model
          FROM translate_tasks
          WHERE status = 'queued'
          ORDER BY priority DESC, created_at ASC
          LIMIT 1`,
       )
-      .get() as
-      | { id: string; video_sha: string; target_lang: string; model: string }
-      | undefined;
+      .get() as { id: string; video_sha: string; lang: string; model: string } | undefined;
     if (!next) return;
     db.prepare(`UPDATE translate_tasks SET status='running' WHERE id=?`).run(next.id);
     this.active = {
       taskId: next.id,
+      kind: 'translate',
       videoSha: next.video_sha,
-      lang: next.target_lang,
+      lang: next.lang,
       model: next.model,
       emitter: new EventEmitter(),
       abort: new AbortController(),
       doneCues: [],
       donePromise: Promise.resolve(),
     };
-    const workerPromise = this.runWorker(this.active);
-    this.active.donePromise = workerPromise.catch(() => {});
-    workerPromise.catch((err) => {
+    const wp = this.runTranslateWorker(this.active);
+    this.active.donePromise = wp.catch(() => {});
+    wp.catch((err) => {
       logEvent({
         level: 'error',
-        event: 'translate_worker_crashed',
+        event: 'llm_worker_crashed',
+        kind: 'translate',
         taskId: next.id,
         msg: err instanceof Error ? err.message : String(err),
         stack: err instanceof Error ? err.stack : undefined,
@@ -768,8 +826,11 @@ class TranslateQueue {
     });
   }
 
-  private async runWorker(active: ActiveTranslateTask): Promise<void> {
-    const { taskId, videoSha, lang, model } = active;
+  private async runTranslateWorker(active: ActiveLLMTask): Promise<void> {
+    const taskId = active.taskId;
+    const videoSha = active.videoSha;
+    const lang = active.lang!;
+    const model = active.model!;
     const db = getDb();
     const emit = (frame: SseFrame) => active.emitter.emit('frame', frame);
 
@@ -800,7 +861,7 @@ class TranslateQueue {
           });
         },
         onSuperBatchDone: (info) => {
-          active.doneCues.push(...info.cues);
+          active.doneCues!.push(...info.cues);
           emit({
             event: 'cue-translated',
             data: {
@@ -986,7 +1047,7 @@ class TranslateQueue {
         data: { taskId, progressPct: task.progress_pct },
       };
     }
-    if (live.doneCues.length > 0) {
+    if (live.doneCues && live.doneCues.length > 0) {
       yield {
         event: 'cue-translated',
         data: {
@@ -1035,10 +1096,9 @@ class TranslateQueue {
   }
 
   /**
-   * Cancel the currently-running translation, if any, and wait for the
-   * worker to exit. Mirrors `TranscribeQueue.cancelActive` — used by the
-   * Electron `before-quit` hook so the DB doesn't carry a 'running' row
-   * across launches.
+   * Cancel the currently-running LLM task, if any, and wait for the worker
+   * to exit. Used by the Electron `before-quit` hook so the DB doesn't carry
+   * a 'running' row across launches.
    */
   async cancelActive(): Promise<void> {
     const active = this.active;
@@ -1049,69 +1109,6 @@ class TranslateQueue {
     logEvent({ level: 'info', event: 'translate_canceled', taskId: id, reason: 'shutdown' });
     await active.donePromise;
   }
-}
-
-export const translateQueue = new TranslateQueue();
-
-// ─────────────────────────────────────────────────────────────────────
-// LLMQueue — single-concurrent worker for translate + insight tasks.
-// ─────────────────────────────────────────────────────────────────────
-
-class LLMQueue {
-  private active: ActiveLLMTask | null = null;
-
-  /**
-   * Returns the canonical insight task row for `(videoSha, uiLanguage)`,
-   * creating one if none exists. Mirrors `TranslateQueue.ensureTask`'s
-   * resurrection pattern but uses the insight status vocabulary:
-   * `'error'`/`'canceled'` flip back to `'queued'`. (Translate uses
-   * `'failed'`/`'canceled'` — do not paste that check here.)
-   */
-  ensureInsightTask(
-    videoSha: string,
-    uiLanguage: 'zh-CN' | 'en',
-    model: string,
-  ): InsightTaskSummary {
-    const db = getDb();
-    const existing = db
-      .prepare(
-        `SELECT id, video_sha, status, model, ui_language, error_msg
-         FROM insight_tasks WHERE video_sha = ? AND ui_language = ?`,
-      )
-      .get(videoSha, uiLanguage) as InsightTaskSummary | undefined;
-    if (existing) {
-      if (existing.status === 'error' || existing.status === 'canceled') {
-        db.prepare(
-          `UPDATE insight_tasks SET status='queued', error_msg=NULL WHERE id=?`,
-        ).run(existing.id);
-        logEvent({
-          level: 'info',
-          event: 'insight_resurrected',
-          taskId: existing.id,
-          fromStatus: existing.status,
-        });
-        existing.status = 'queued';
-        existing.error_msg = null;
-      }
-      return existing;
-    }
-    const id = randomUUID();
-    db.prepare(
-      `INSERT INTO insight_tasks (id, video_sha, status, model, ui_language, created_at)
-       VALUES (?, ?, 'queued', ?, ?, ?)`,
-    ).run(id, videoSha, model, uiLanguage, Date.now());
-    return {
-      id,
-      video_sha: videoSha,
-      status: 'queued',
-      model,
-      ui_language: uiLanguage,
-      error_msg: null,
-    };
-  }
-
-  // tryStartNext / runTranslateWorker / runInsightWorker / attach / cancel /
-  // cancelActive — added in subsequent slices.
 }
 
 export const llmQueue = new LLMQueue();
