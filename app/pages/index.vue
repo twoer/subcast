@@ -6,7 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip
 import { getFileStatus } from '~/utils/fileStatus';
 
 interface QueueItem {
-  kind: 'transcribe' | 'translate';
+  kind: 'transcribe' | 'translate' | 'insight';
   id: string;
   videoSha: string;
   videoName: string;
@@ -16,6 +16,7 @@ interface QueueItem {
   totalChunks?: number | null;
   doneChunks?: number;
   targetLang?: string;
+  uiLanguage?: 'zh-CN' | 'en';
   createdAt: number;
   errorMsg?: string | null;
 }
@@ -320,8 +321,17 @@ onBeforeUnmount(() => {
   window.removeEventListener('subcast:open-file', onOsOpenFileEvent);
 });
 
+// i18n TODO: extract insight labels (insightLabel zh/en) into locale files
+function insightLabel(lang: string | undefined): string {
+  return lang === 'zh-CN' ? 'AI 总结 (中文)' : 'AI Summary (en)';
+}
+
 function fmtKindLabel(item: QueueItem): string {
   const active = item.status === 'queued' || item.status === 'running';
+  if (item.kind === 'insight') {
+    const prefix = active ? insightLabel(item.uiLanguage) : t('index.status.completed');
+    return `${prefix} · ${item.model}`;
+  }
   const prefix = item.kind === 'transcribe'
     ? active ? t('index.transcribing') : t('index.status.completed')
     : active ? t('index.translating') : t('index.status.completed');
