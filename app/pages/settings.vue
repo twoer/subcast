@@ -62,12 +62,7 @@ const errMsg = ref<string | null>(null);
 
 const { px: cueFontPx, load: loadCueFontSize, save: saveCueFontSize, MIN_PX: CUE_MIN, MAX_PX: CUE_MAX } = useCueListFontSize();
 
-function fmtBytes(n: number): string {
-  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)} GB`;
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(0)} MB`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)} KB`;
-  return `${n} B`;
-}
+import { fmtBytes } from '~/utils/format';
 
 // All tab ids, plus a computed visible list that hides desktop-only tabs
 // in the web build. `models` is the only desktop-gated tab today.

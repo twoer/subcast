@@ -59,6 +59,8 @@
     "translating": "Translating",
     "kindTranscribe": "Transcribe",
     "kindTranslate": "Translate",
+    "kindInsightZh": "AI Summary (Chinese)",
+    "kindInsightEn": "AI Summary (English)",
     "noVideo": "No video or audio file in the drop",
     "status": {
       "queued": "Queued",

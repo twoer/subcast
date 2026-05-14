@@ -2,7 +2,9 @@
 <script setup lang="ts">
 import { Trash2, AlertTriangle, Database, Pencil } from 'lucide-vue-next';
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip';
-import { getFileStatus, type QueueItemLike } from '~/utils/fileStatus';
+import { getFileStatus } from '~/utils/fileStatus';
+import { useQueueList } from '~/composables/useQueueList';
+import { fmtBytes } from '~/utils/format';
 
 interface CacheItem {
   sha256: string;
@@ -28,21 +30,13 @@ interface SettingsResp {
 const { t } = useI18n();
 const { count: libraryCount } = useLibraryCount();
 
-function fmtBytes(n: number): string {
-  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)} GB`;
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} MB`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)} KB`;
-  return `${n} B`;
-}
-
 const cache = ref<CacheResp | null>(null);
 const cacheLimitGB = ref<number>(20);
 const errMsg = ref<string | null>(null);
 const pendingDelete = ref<CacheItem | null>(null);
 const showClearAll = ref(false);
 
-const queueItems = ref<QueueItemLike[]>([]);
-let queuePoll: ReturnType<typeof setInterval> | null = null;
+const { items: queueItems } = useQueueList();
 
 const renameItem = ref<CacheItem | null>(null);
 const renameValue = ref('');
@@ -55,15 +49,6 @@ async function refreshCache(): Promise<void> {
     libraryCount.value = res.totals.count;
   } catch (e) {
     errMsg.value = e instanceof Error ? e.message : 'failed to load';
-  }
-}
-
-async function refreshQueue(): Promise<void> {
-  try {
-    const res = await $fetch<{ items: QueueItemLike[] }>('/api/queue/list');
-    queueItems.value = res.items;
-  } catch {
-    /* transient — keep last snapshot */
   }
 }
 
@@ -141,12 +126,9 @@ const usageRatio = computed(() => {
 });
 const overThreshold = computed(() => usageRatio.value >= 0.9);
 
+// useQueueList() handles the queue poll lifecycle internally.
 onMounted(async () => {
-  await Promise.all([refreshCache(), loadCacheLimit(), refreshQueue()]);
-  queuePoll = setInterval(() => void refreshQueue(), 2_000);
-});
-onBeforeUnmount(() => {
-  if (queuePoll) clearInterval(queuePoll);
+  await Promise.all([refreshCache(), loadCacheLimit()]);
 });
 </script>
 

@@ -59,6 +59,8 @@
     "translating": "翻译中",
     "kindTranscribe": "转写",
     "kindTranslate": "翻译",
+    "kindInsightZh": "AI 总结 (中文)",
+    "kindInsightEn": "AI 总结 (英文)",
     "noVideo": "拖入的内容里没有视频或音频文件",
     "status": {
       "queued": "排队中",

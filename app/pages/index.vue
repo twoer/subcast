@@ -5,23 +5,7 @@ import { AlertCircle, Check, Upload, ListVideo, X, Film, FileText, History, Arro
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip';
 import { getFileStatus } from '~/utils/fileStatus';
 import { isTaskErrorCode } from '#shared/errorCodes';
-
-interface QueueItem {
-  kind: 'transcribe' | 'translate' | 'insight';
-  id: string;
-  videoSha: string;
-  videoName: string;
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'canceled' | 'done' | 'error';
-  model: string;
-  progressPct: number;
-  totalChunks?: number | null;
-  doneChunks?: number;
-  targetLang?: string;
-  uiLanguage?: 'zh-CN' | 'en';
-  createdAt: number;
-  errorMsg?: string | null;
-  errorCode?: string | null;
-}
+import { useQueueList, type QueueItem } from '~/composables/useQueueList';
 
 interface HealthFix {
   id: string;
@@ -58,12 +42,8 @@ interface CacheEntry {
 
 const cachedVideos = ref<CacheEntry[]>([]);
 
-const queueItems = ref<QueueItem[]>([]);
-// Distinguishes "not yet loaded" from "loaded, no tasks" so the panel
-// doesn't flash "no tasks" during the first poll after mount / remount.
-const queueLoaded = ref(false);
+const { items: queueItems, loaded: queueLoaded, refresh: refreshQueue } = useQueueList();
 const healthData = ref<HealthResp | null>(null);
-let pollHandle: ReturnType<typeof setInterval> | null = null;
 let healthHandle: ReturnType<typeof setInterval> | null = null;
 
 /**
@@ -134,16 +114,6 @@ async function copyToClipboard(id: string, text: string) {
   setTimeout(() => { if (copiedId.value === id) copiedId.value = null; }, 2000);
 }
 
-async function refreshQueue() {
-  try {
-    const res = await $fetch<{ items: QueueItem[] }>('/api/queue/list');
-    queueItems.value = res.items;
-    queueLoaded.value = true;
-  } catch {
-    /* network blip; ignore — keep last snapshot + loaded flag */
-  }
-}
-
 const { count: libraryCount } = useLibraryCount();
 
 async function refreshLibrary() {
@@ -164,12 +134,7 @@ function fmtTimeAgo(epochMs: number): string {
   return t('index.library.daysAgo', { n: Math.floor(diffSec / 86400) });
 }
 
-function fmtBytes(n: number): string {
-  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)} GB`;
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} MB`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)} KB`;
-  return `${n} B`;
-}
+import { fmtBytes } from '~/utils/format';
 
 async function uploadVideoOnly(file: File) {
   error.value = null;
@@ -312,24 +277,22 @@ function onOsOpenFileEvent(e: Event): void {
   }
 }
 
+// useQueueList() handles the queue poll lifecycle internally.
 onMounted(() => {
-  void refreshQueue();
   void refreshHealth();
   void refreshLibrary();
   void refreshDesktopSetup();
-  pollHandle = setInterval(refreshQueue, 2_000);
   healthHandle = setInterval(refreshHealth, 10_000);
   window.addEventListener('subcast:open-file', onOsOpenFileEvent);
 });
 onBeforeUnmount(() => {
-  if (pollHandle) clearInterval(pollHandle);
   if (healthHandle) clearInterval(healthHandle);
   window.removeEventListener('subcast:open-file', onOsOpenFileEvent);
 });
 
-// i18n TODO: extract insight labels (insightLabel zh/en) into locale files
+// Returns "<kind> (<insight content language>)" — both halves localized.
 function insightLabel(lang: string | undefined): string {
-  return lang === 'zh-CN' ? 'AI 总结 (中文)' : 'AI Summary (en)';
+  return lang === 'zh-CN' ? t('index.kindInsightZh') : t('index.kindInsightEn');
 }
 
 // Render a structured error code via i18n; fall back to the raw message
