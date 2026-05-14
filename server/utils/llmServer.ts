@@ -143,8 +143,19 @@ export class LlmServer {
   }
 
   private realSpawn = async (): Promise<SpawnResult> => {
-    if (!this.opts.binaryPath) {
-      throw new Error('LlmServer: binaryPath must be set before spawn');
+    // Re-read env at spawn time, not just at construction. dev:desktop:hot
+    // may set SUBCAST_LLM_BINARY_PATH after the singleton was first
+    // touched (e.g. by an early /api/desktop/llm/status probe), and we
+    // don't want the singleton latched into a permanently-broken state
+    // when the env eventually shows up.
+    const binaryPath = this.opts.binaryPath ?? process.env.SUBCAST_LLM_BINARY_PATH;
+    if (!binaryPath) {
+      throw new Error(
+        'LLM_BINARY_MISSING: llama-server binary path is not configured. ' +
+        'In dev:desktop:hot mode, install via `brew install llama.cpp` or ' +
+        'run `node scripts/fetch-llama-server.mjs`. In production builds, ' +
+        'this should never happen — reinstall Subcast.',
+      );
     }
     // Resolve `modelPath` at spawn time (not at construction) so the user
     // can switch tiers in Settings and have the next spawn pick up the new
@@ -158,7 +169,7 @@ export class LlmServer {
       }
       modelPath = llmModelPath(llmModel);
     }
-    const proc = spawn(this.opts.binaryPath, [
+    const proc = spawn(binaryPath, [
       '--model', modelPath,
       '--host', '127.0.0.1',
       '--port', String(this.opts.preferredPort ?? 0),
