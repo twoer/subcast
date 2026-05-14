@@ -91,7 +91,7 @@ export default defineEventHandler(async (event) => {
   db.prepare(
     `INSERT INTO videos (sha256, original_name, ext, size_bytes, created_at, last_opened_at)
      VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT(sha256) DO UPDATE SET last_opened_at = excluded.last_opened_at`,
+     ON CONFLICT(sha256) DO UPDATE SET last_opened_at = excluded.last_opened_at, deleted_at = NULL`,
   ).run(sha, originalName, ext, stats.size, now, now);
 
   return { hash: sha };

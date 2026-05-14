@@ -39,7 +39,7 @@ export default defineEventHandler(() => {
   const rows = db
     .prepare(
       `SELECT sha256, original_name, display_name, ext, size_bytes, created_at, last_opened_at
-       FROM videos ORDER BY last_opened_at DESC`,
+       FROM videos WHERE deleted_at IS NULL ORDER BY last_opened_at DESC`,
     )
     .all() as Array<Pick<
       VideoRow,

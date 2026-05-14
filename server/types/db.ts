@@ -23,6 +23,7 @@ export interface VideoRow {
   duration_s: number | null;
   created_at: number;
   last_opened_at: number;
+  deleted_at: number | null;
 }
 
 export interface SubtitleRow {

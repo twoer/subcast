@@ -131,6 +131,15 @@ function migrate(db: Database.Database): void {
     `);
     db.pragma('user_version = 7');
   }
+  if (version < 8) {
+    // Soft-delete column on videos so cache delete preserves task history
+    // for the home tasks panel. Re-upload of the same hash un-deletes the row.
+    db.exec(`
+      ALTER TABLE videos ADD COLUMN deleted_at INTEGER DEFAULT NULL;
+      CREATE INDEX IF NOT EXISTS idx_videos_deleted_at ON videos(deleted_at);
+    `);
+    db.pragma('user_version = 8');
+  }
 }
 
 /**
