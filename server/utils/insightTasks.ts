@@ -14,13 +14,6 @@ import type { Cue } from './vtt';
 import type { ActiveLLMTask } from './queue';
 import type { SseFrame } from './sse';
 
-export type TaskStatus = 'running' | 'done' | 'error' | 'canceled';
-
-export interface InsightTaskError {
-  code: string;
-  message?: string;
-}
-
 export const TEMPS = [0.3, 0.0] as const;
 
 export interface InsightWorkerParams {

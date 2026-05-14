@@ -620,10 +620,9 @@ export interface ActiveLLMTask {
   abort: AbortController;
   donePromise: Promise<void>;
   // translate-specific live state (used by runTranslateWorker only).
-  // TODO(slice-3): convert ActiveLLMTask to discriminated union by `kind`
-  // once both runTranslateWorker and runInsightWorker are in place.
-  // insightRaw joins the optional-fields family; all will be cleaned up
-  // when the discriminated union is introduced.
+  // TODO(post-slice-9): convert ActiveLLMTask to a discriminated union by `kind`.
+  // Optional fields cover both worker types in the interim. Deferred so the
+  // integration slices stay focused on plumbing.
   doneCues?: Cue[];
   lang?: string;
   model?: string;
@@ -888,6 +887,10 @@ class LLMQueue {
       messages,
       cues,
     };
+    // IIFE owns the queue lifecycle (emit 'end', clear active slot, nudge next)
+    // so runInsightWorker stays decoupled from LLMQueue internals. Translate's
+    // equivalent lives inside runTranslateWorker because that worker pre-dates
+    // the LLMQueue split and was moved wholesale.
     const wp = (async () => {
       try {
         await runInsightWorker(this.active!, params);
@@ -1218,7 +1221,7 @@ class LLMQueue {
     if (!task) {
       yield {
         event: 'error',
-        data: { taskId, code: 'TASK_NOT_FOUND', msg: 'insight task missing' },
+        data: { taskId, code: 'TASK_NOT_FOUND', message: 'insight task missing' },
       };
       return;
     }
@@ -1242,7 +1245,7 @@ class LLMQueue {
       }
       yield {
         event: 'error',
-        data: { taskId, code: 'CACHE_MISSING', msg: 'insights.json missing' },
+        data: { taskId, code: 'CACHE_MISSING', message: 'insights.json missing' },
       };
       return;
     }
@@ -1258,9 +1261,7 @@ class LLMQueue {
       return;
     }
 
-    // queued / running
-    yield { event: 'status', data: { taskId, status: task.status } };
-
+    // queued / running — status already included in the 'start' frame above.
     if (!this.active || this.active.taskId !== taskId) {
       await this.tryStartNext();
     }
