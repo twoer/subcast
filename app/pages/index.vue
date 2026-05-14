@@ -330,18 +330,17 @@ function insightLabel(lang: string | undefined): string {
   return lang === 'zh-CN' ? 'AI 总结 (中文)' : 'AI Summary (en)';
 }
 
+// Kind label: noun form regardless of status. The status badge already
+// conveys queued/running/done/failed via colour, so the line just names
+// the task ("what was/is being done") plus its parameters.
 function fmtKindLabel(item: QueueItem): string {
-  const active = item.status === 'queued' || item.status === 'running';
   if (item.kind === 'insight') {
-    const prefix = active ? insightLabel(item.uiLanguage) : t(`index.status.${item.status}`);
-    return `${prefix} · ${item.model}`;
+    return `${insightLabel(item.uiLanguage)} · ${item.model}`;
   }
-  const prefix = item.kind === 'transcribe'
-    ? active ? t('index.transcribing') : t('index.status.completed')
-    : active ? t('index.translating') : t('index.status.completed');
-  return item.kind === 'transcribe'
-    ? `${prefix} · whisper:${item.model}`
-    : `${prefix} · ${item.targetLang} · ${item.model}`;
+  if (item.kind === 'transcribe') {
+    return `${t('index.kindTranscribe')} · whisper:${item.model}`;
+  }
+  return `${t('index.kindTranslate')} ${item.targetLang} · ${item.model}`;
 }
 
 function statusBadgeClass(s: QueueItem['status']) {

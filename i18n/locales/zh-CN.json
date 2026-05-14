@@ -57,6 +57,8 @@
     "cancel": "取消",
     "transcribing": "转写中",
     "translating": "翻译中",
+    "kindTranscribe": "转写",
+    "kindTranslate": "翻译",
     "noVideo": "拖入的内容里没有视频文件",
     "status": {
       "queued": "排队中",

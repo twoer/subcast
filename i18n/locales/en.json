@@ -57,6 +57,8 @@
     "cancel": "Cancel",
     "transcribing": "Transcribing",
     "translating": "Translating",
+    "kindTranscribe": "Transcribe",
+    "kindTranslate": "Translate",
     "noVideo": "No video file in the drop",
     "status": {
       "queued": "Queued",
