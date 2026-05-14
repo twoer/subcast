@@ -53,6 +53,7 @@
     "queue": "Queue",
     "queueMeta": "{active} active / {total} recent",
     "queueEmpty": "No recent tasks",
+    "queueLoading": "Loading…",
     "cancel": "Cancel",
     "transcribing": "Transcribing",
     "translating": "Translating",

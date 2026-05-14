@@ -57,6 +57,9 @@ interface CacheEntry {
 const cachedVideos = ref<CacheEntry[]>([]);
 
 const queueItems = ref<QueueItem[]>([]);
+// Distinguishes "not yet loaded" from "loaded, no tasks" so the panel
+// doesn't flash "no tasks" during the first poll after mount / remount.
+const queueLoaded = ref(false);
 const healthData = ref<HealthResp | null>(null);
 let pollHandle: ReturnType<typeof setInterval> | null = null;
 let healthHandle: ReturnType<typeof setInterval> | null = null;
@@ -133,8 +136,9 @@ async function refreshQueue() {
   try {
     const res = await $fetch<{ items: QueueItem[] }>('/api/queue/list');
     queueItems.value = res.items;
+    queueLoaded.value = true;
   } catch {
-    /* network blip; ignore */
+    /* network blip; ignore — keep last snapshot + loaded flag */
   }
 }
 
@@ -512,7 +516,13 @@ function statusBadgeClass(s: QueueItem['status']) {
           </span>
         </div>
         <div class="card-list">
-          <ul v-if="queueItems.length > 0" class="space-y-1">
+          <p
+            v-if="!queueLoaded"
+            class="px-3 py-4 text-sm text-muted-foreground"
+          >
+            {{ t('index.queueLoading') }}
+          </p>
+          <ul v-else-if="queueItems.length > 0" class="space-y-1">
             <li
               v-for="item in queueItems"
               :key="`${item.kind}:${item.id}`"
@@ -568,6 +578,8 @@ function statusBadgeClass(s: QueueItem['status']) {
           <p v-else class="px-3 py-4 text-sm text-muted-foreground">
             {{ t('index.queueEmpty') }}
           </p>
+          <!-- v-else above is queueLoaded && items.length === 0 -->
+
         </div>
       </section>
     </div>
