@@ -176,19 +176,30 @@ export class LlmServer {
       '--keep', '-1',
       '--n-gpu-layers', '999',
     ]);
-    const port = await this.waitForListeningPort(proc, 10_000);
+    const port = await this.waitForListeningPort(proc, 30_000);
     return { proc, port };
   };
 
   /**
    * Resolve with the TCP port llama-server announces on stdout/stderr.
-   * Matches lines like `HTTP server listening on 127.0.0.1:51302` (also
-   * tolerates IPv6 bracketed forms). Rejects after `timeoutMs` if no
-   * announcement is seen — caller should treat that as a spawn failure.
+   * Upstream llama.cpp prints two listening lines per spawn — we match
+   * the first one to fire:
+   *
+   *   `main: HTTP server is listening, hostname: 127.0.0.1, port: 52157, ...`
+   *   `srv  update_slots: server is listening on http://127.0.0.1:52157 - ...`
+   *
+   * The bind happens AFTER model load (which dominates the spawn latency
+   * for 7B+ Q4), so a 30s budget is generous on cold mmap of a 4-9 GB
+   * weights file. Rejects after `timeoutMs` — caller treats that as a
+   * spawn failure.
    */
   private waitForListeningPort(proc: ChildProcess, timeoutMs: number): Promise<number> {
     return new Promise((resolve, reject) => {
-      const re = /listening on (?:[0-9.]+|\[?[0-9a-f:]+\]?):(\d+)/i;
+      // Two formats accepted: `listening, ... port: 52157` and
+      // `listening on http://127.0.0.1:52157`. The `.*?` is non-greedy so
+      // the port capture is the first numeric port-like token after
+      // `listening`, not some unrelated number elsewhere in the line.
+      const re = /listening[^\n]*?(?:port[:\s]+|:\/\/[^:]+:|[0-9.]+:)(\d{2,5})/i;
       const timer = setTimeout(() => {
         cleanup();
         reject(new Error(`llama-server did not announce listening port within ${timeoutMs}ms`));
