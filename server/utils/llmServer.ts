@@ -177,8 +177,33 @@ export class LlmServer {
       '--n-gpu-layers', '999',
     ]);
     const port = await this.waitForListeningPort(proc, 30_000);
+    // The "listening" log line fires the moment the HTTP socket binds —
+    // but llama-server is still loading model weights at that point and
+    // every request comes back `503 {"status":"loading model"}` until
+    // load completes. Block here on `/health` so callers don't have to
+    // retry mid-stream. 60s budget covers 14B Q4 cold mmap on slower
+    // disks; smaller tiers usually clear in 1-3s.
+    await this.waitForHealthy(port, 60_000);
     return { proc, port };
   };
+
+  private async waitForHealthy(port: number, timeoutMs: number): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    let lastErr = '';
+    while (Date.now() < deadline) {
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/health`, {
+          signal: AbortSignal.timeout(2_000),
+        });
+        if (res.ok) return;
+        lastErr = `HTTP ${res.status}`;
+      } catch (err) {
+        lastErr = err instanceof Error ? err.message : String(err);
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    throw new Error(`llama-server /health never returned OK within ${timeoutMs}ms (last: ${lastErr})`);
+  }
 
   /**
    * Resolve with the TCP port llama-server announces on stdout/stderr.
