@@ -38,10 +38,12 @@ function recentLogs(debug: boolean): Record<string, string> {
 export default defineEventHandler(async (event) => {
   const settings = loadSettings();
   const hardware = detectHardware();
-  const health = await detectHealth({
-    whisperModel: settings.whisperModel,
-    ollamaModel: settings.ollamaModel,
-  });
+  // 0.2: Ollama is gone; the health probe only covers whisper-cli +
+  // whisper model presence. LLM readiness is reported separately by
+  // `/api/desktop/llm/status` and isn't bundled into the diagnostic
+  // zip yet — keep this file scope-focused (logs + settings + hardware
+  // + whisper inventory).
+  const health = await detectHealth({ whisperModel: settings.whisperModel });
 
   const zip = new JSZip();
   // Hardware + settings + installed models — no paths, no video content
@@ -82,10 +84,6 @@ export default defineEventHandler(async (event) => {
     'models.json',
     JSON.stringify(
       {
-        ollama: {
-          running: health.ollama.running,
-          installed: health.ollama.models,
-        },
         whisper: {
           binaryPresent: health.whisper.binaryPresent,
           installed: health.whisper.models,

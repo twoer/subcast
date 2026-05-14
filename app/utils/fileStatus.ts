@@ -15,9 +15,9 @@ export interface CacheItemLike {
 }
 
 export interface QueueItemLike {
-  kind: 'transcribe' | 'translate';
+  kind: 'transcribe' | 'translate' | 'insight';
   videoSha: string;
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'canceled';
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'canceled' | 'done' | 'error';
   progressPct: number;
   targetLang?: string;
   errorMsg?: string | null;

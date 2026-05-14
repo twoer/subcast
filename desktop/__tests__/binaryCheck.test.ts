@@ -29,18 +29,20 @@ function makeBinary(name: string, mode = 0o755): void {
 }
 
 describe('checkBundledBinaries', () => {
-  it('returns ok=true when all three binaries exist and are executable', () => {
+  it('returns ok=true when all required binaries exist and are executable', () => {
     makeBinary('whisper-cli');
     makeBinary('ffmpeg');
     makeBinary('ffprobe');
+    makeBinary('llama-server');
     const r = checkBundledBinaries(dir);
     expect(r.ok).toBe(true);
     expect(r.missing).toHaveLength(0);
-    expect(r.statuses).toHaveLength(3);
+    expect(r.statuses).toHaveLength(4);
   });
 
   it('flags individual binaries when missing from disk', () => {
     makeBinary('whisper-cli');
+    makeBinary('llama-server');
     // ffmpeg + ffprobe absent
     const r = checkBundledBinaries(dir);
     expect(r.ok).toBe(false);
@@ -48,10 +50,10 @@ describe('checkBundledBinaries', () => {
     expect(r.missing.every((m) => !m.exists)).toBe(true);
   });
 
-  it('returns all three missing when resources path is empty', () => {
+  it('returns all required missing when resources path is empty', () => {
     const r = checkBundledBinaries(dir);
     expect(r.ok).toBe(false);
-    expect(r.missing).toHaveLength(3);
+    expect(r.missing).toHaveLength(4);
   });
 
   it.skipIf(IS_WIN)(
@@ -60,6 +62,7 @@ describe('checkBundledBinaries', () => {
       makeBinary('whisper-cli', 0o644); // -rw-r--r-- → not executable
       makeBinary('ffmpeg');
       makeBinary('ffprobe');
+      makeBinary('llama-server');
       const r = checkBundledBinaries(dir);
       expect(r.ok).toBe(false);
       expect(r.missing).toHaveLength(1);

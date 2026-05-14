@@ -888,7 +888,7 @@ git commit -m "feat(llm): mark model unusable after 3 consecutive crashes"
 - Create: `desktop/__tests__/orphanCleanup.test.ts`
 - Modify: `desktop/main.ts`
 
-- [ ] **Step 1: Write test for `findOrphans()` using mocked `ps`**
+- [x] **Step 1: Write test for `findOrphans()` using mocked `ps`**
 
 ```ts
 import { describe, it, expect, vi } from 'vitest';
@@ -905,9 +905,9 @@ describe('findOrphans', () => {
 });
 ```
 
-- [ ] **Step 2: Run, expect fail**
+- [x] **Step 2: Run, expect fail**
 
-- [ ] **Step 3: Implement `desktop/orphanCleanup.ts`**
+- [x] **Step 3: Implement `desktop/orphanCleanup.ts`**
 
 ```ts
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
@@ -958,9 +958,9 @@ export async function killOrphans(names: readonly string[]): Promise<number> {
 }
 ```
 
-- [ ] **Step 4: Run test, expect pass**
+- [x] **Step 4: Run test, expect pass**
 
-- [ ] **Step 5: Call `killOrphans(['llama-server', 'whisper-cli'])` early in `desktop/main.ts bootstrap()`**
+- [x] **Step 5: Call `killOrphans(['llama-server', 'whisper-cli'])` early in `desktop/main.ts bootstrap()`**
 
 Place it right after `app.whenReady()` and before the binary check.
 
@@ -975,7 +975,7 @@ async function bootstrap(): Promise<void> {
 }
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add desktop/orphanCleanup.ts desktop/__tests__/orphanCleanup.test.ts desktop/main.ts

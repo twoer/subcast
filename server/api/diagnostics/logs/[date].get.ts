@@ -7,9 +7,12 @@
  * `tail=500`, capped at 5000 so a slow client can't OOM the server by
  * asking for the full file.
  *
- * Response body is JSONL text (one JSON event per line), already
- * filtered through `sanitizeLine` so secrets / file paths follow the
- * same redaction policy as the diagnostic ZIP export.
+ * Response body is a JSON envelope `{ date, sizeBytes, lineCount,
+ * truncated, body }` where `body` is the newline-joined JSONL text
+ * already filtered through `sanitizeLine` (same redaction policy as
+ * the diagnostic ZIP export). The wrapper carries `sizeBytes` /
+ * `truncated` so the UI can show "5 KB · 200 of 482 lines" without a
+ * second metadata roundtrip.
  *
  * 404 when the file doesn't exist. 400 when `:date` doesn't match
  * `YYYY-MM-DD` — the filename is built from it directly, so a
@@ -22,7 +25,6 @@ import {
   defineEventHandler,
   getQuery,
   getRouterParam,
-  setResponseHeader,
 } from 'h3';
 import { logFilePath } from '../../../utils/log';
 import { loadSettings } from '../../../utils/settings';
@@ -53,8 +55,6 @@ export default defineEventHandler(async (event) => {
   const lines = await tailLines(path, tail);
   const body = lines.map((l) => sanitizeLine(l, debugMode)).join('\n');
 
-  setResponseHeader(event, 'content-type', 'text/plain; charset=utf-8');
-  setResponseHeader(event, 'cache-control', 'no-store');
   return {
     date,
     sizeBytes: statSync(path).size,

@@ -23,7 +23,7 @@ interface Insights {
 const props = defineProps<{
   hash: string;
   cueCount: number;
-  currentOllamaModel: string;
+  currentLlmModel: string;
 }>();
 
 const emit = defineEmits<{
@@ -43,7 +43,7 @@ let currentTaskId: string | null = null;
 const isOutdated = computed(() => {
   const m = insights.value?._meta;
   if (!m) return false;
-  return m.ollamaModel !== props.currentOllamaModel || m.originalCueCount !== props.cueCount;
+  return m.ollamaModel !== props.currentLlmModel || m.originalCueCount !== props.cueCount;
 });
 
 // Normalize between server tag ('zh-CN' / 'en') and Nuxt i18n locale ('zh' / 'en').
@@ -331,7 +331,7 @@ const generatingLabel = computed(() => {
           <Sparkles class="mr-1.5 h-4 w-4" />
           {{ t('player.insights.generate') }}
         </Button>
-        <p class="text-xs text-muted-foreground/70">{{ t('player.insights.estimate', { model: currentOllamaModel }) }}</p>
+        <p class="text-xs text-muted-foreground/70">{{ t('player.insights.estimate', { model: currentLlmModel }) }}</p>
       </div>
     </div>
 
@@ -400,7 +400,7 @@ const generatingLabel = computed(() => {
 
       <!-- sticky footer: cancel (mirrors ready-state footer with regenerate/clear) -->
       <div class="shrink-0 flex items-center justify-between gap-2 border-t border-border/40 px-1 pt-3 text-xs text-muted-foreground">
-        <span class="min-w-0 truncate">{{ currentOllamaModel }}</span>
+        <span class="min-w-0 truncate">{{ currentLlmModel }}</span>
         <Button size="sm" variant="outline" @click="cancel">
           <XIcon class="mr-1 h-3.5 w-3.5" />
           {{ t('player.insights.cancel') }}
@@ -468,7 +468,7 @@ const generatingLabel = computed(() => {
       <!-- sticky footer -->
       <div class="shrink-0 flex items-center justify-between gap-2 border-t border-border/40 px-1 pt-3 text-xs text-muted-foreground">
         <span class="min-w-0 truncate">
-          {{ insights._meta?.ollamaModel ?? currentOllamaModel }} ·
+          {{ insights._meta?.ollamaModel ?? currentLlmModel }} ·
           {{ relativeTime(insights._meta?.generatedAt ?? Date.now()) }}
           <span v-if="insightLang"> · {{ langLabel(insightLang) }}</span>
         </span>

@@ -70,12 +70,42 @@ if (!existsSync(resourcesDir)) {
   );
 }
 
+// llama-server location for AI features. Packaged builds ship it under
+// extraResources (same dir as whisper-cli), but in hot dev mode the
+// developer may not have run `scripts/fetch-llama-server.mjs` yet — so
+// we also probe a couple of common system locations as a fallback. The
+// search order is: (1) repo-local CI artifact, (2) homebrew arm64,
+// (3) homebrew x86_64 / /usr/local, (4) PATH.
+const llamaExt = process.platform === 'win32' ? '.exe' : '';
+const llamaServerCandidates = [
+  join(resourcesDir, `llama-server${llamaExt}`),
+  `/opt/homebrew/bin/llama-server${llamaExt}`,
+  `/usr/local/bin/llama-server${llamaExt}`,
+];
+let llamaServerPath = '';
+for (const c of llamaServerCandidates) {
+  if (existsSync(c)) { llamaServerPath = c; break; }
+}
+if (!llamaServerPath) {
+  console.warn(
+    `[hot] llama-server not found in any of: ${llamaServerCandidates.join(', ')}.\n` +
+    `       AI features (translation / insights) will throw \`binaryPath must be set\` ` +
+    `until you either:\n` +
+    `       (a) brew install llama.cpp  (macOS, easiest), or\n` +
+    `       (b) build llama-server yourself and place it at ${llamaServerCandidates[0]}\n` +
+    `       UI/HMR + Whisper transcription work regardless.`,
+  );
+} else {
+  console.log(`[hot] llama-server resolved to ${llamaServerPath}`);
+}
+
 const env = {
   ...process.env,
   SUBCAST_DESKTOP: 'true',
   SUBCAST_API_TOKEN: randomUUID(),
   SUBCAST_HOME: userDataDir,
   SUBCAST_RESOURCES_PATH: resourcesDir,
+  ...(llamaServerPath ? { SUBCAST_LLM_BINARY_PATH: llamaServerPath } : {}),
   SUBCAST_DEV_URL: DEV_URL,
   // Nuxt's default dev host is 0.0.0.0:3000 (see nuxt.config.ts). Pin
   // the host explicitly so a stray $HOST env doesn't repoint it.

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 
 /**
- * Pre-flight check for sidecar binaries (whisper-cli, ffmpeg, ffprobe).
+ * Pre-flight check for sidecar binaries (whisper-cli, ffmpeg, ffprobe, llama-server).
  *
  * The packaged app ships these via electron-builder's extraResources.
  * If one is missing (build pipeline glitch, partial copy on install,
@@ -23,7 +23,7 @@ const EXE_SUFFIX = process.platform === 'win32' ? '.exe' : '';
 const IS_WIN = process.platform === 'win32';
 
 /** Set of binaries the packaged app cannot function without. */
-const REQUIRED_BINARIES = ['whisper-cli', 'ffmpeg', 'ffprobe'] as const;
+const REQUIRED_BINARIES = ['whisper-cli', 'ffmpeg', 'ffprobe', 'llama-server'] as const;
 export type BinaryName = (typeof REQUIRED_BINARIES)[number];
 
 export interface BinaryStatus {

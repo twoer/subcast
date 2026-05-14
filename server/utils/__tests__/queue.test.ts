@@ -150,7 +150,7 @@ describe('translateQueue.ensureTask + bumpPriority', () => {
     const db = getDb();
     const t = translateQueue.ensureTask(HASH_A, 'zh-CN');
     db.prepare(
-      `UPDATE translate_tasks SET status='failed', error_msg='ollama died', progress_pct=42 WHERE id=?`,
+      `UPDATE translate_tasks SET status='failed', error_msg='llm crashed', progress_pct=42 WHERE id=?`,
     ).run(t.id);
 
     const r = translateQueue.ensureTask(HASH_A, 'zh-CN');

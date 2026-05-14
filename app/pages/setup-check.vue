@@ -19,8 +19,9 @@ import { Button } from '~/components/ui/button';
 
 interface SetupStatus {
   hasWhisperModel: boolean;
-  ollamaRunning: boolean;
-  hasQwen: boolean;
+}
+interface LlmStatusResp {
+  installed: Array<{ name: string }>;
 }
 
 const { t } = useI18n();
@@ -31,8 +32,15 @@ async function check(): Promise<void> {
   error.value = null;
   probing.value = true;
   try {
-    const status = await $fetch<SetupStatus>('/api/desktop/setup-status');
-    const ready = status.hasWhisperModel && status.ollamaRunning && status.hasQwen;
+    // Two probes, in parallel: Whisper readiness (unchanged) and LLM
+    // installed-count (replaces the old `hasQwen` flag from setup-status).
+    // The wizard's own resume logic uses the same llm/status response, so
+    // the user lands on the right step either way.
+    const [status, llmStatus] = await Promise.all([
+      $fetch<SetupStatus>('/api/desktop/setup-status'),
+      $fetch<LlmStatusResp>('/api/desktop/llm/status'),
+    ]);
+    const ready = status.hasWhisperModel && llmStatus.installed.length > 0;
     await navigateTo(ready ? '/' : '/setup-wizard', { replace: true });
   } catch (e) {
     const err = e as { statusCode?: number; message?: string };

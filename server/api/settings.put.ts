@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 import { isWhisperModelName } from '#shared/whisperModels';
+import type { LlmModelId } from '../../desktop/modelManager/llmConfig';
 import { saveSettings, type SubcastSettings } from '../utils/settings';
+
+const LLM_MODEL_IDS: ReadonlySet<LlmModelId> = new Set(['3b', '7b', '14b']);
 
 export default defineEventHandler(async (event) => {
   const body = (await readBody(event)) as Partial<SubcastSettings>;
@@ -12,8 +15,15 @@ export default defineEventHandler(async (event) => {
     }
     patch.whisperModel = body.whisperModel;
   }
-  if (typeof body.ollamaModel === 'string' && body.ollamaModel.length > 0) {
-    patch.ollamaModel = body.ollamaModel;
+  if (body.llmModel !== undefined) {
+    // Accept either a valid tier id or `null` (=> clear the active model).
+    if (body.llmModel === null) {
+      patch.llmModel = undefined;
+    } else if (typeof body.llmModel === 'string' && LLM_MODEL_IDS.has(body.llmModel as LlmModelId)) {
+      patch.llmModel = body.llmModel as LlmModelId;
+    } else {
+      throw createError({ statusCode: 400, statusMessage: 'BAD_LLM_MODEL' });
+    }
   }
   if (typeof body.cacheLimitGB === 'number' && body.cacheLimitGB > 0) {
     patch.cacheLimitGB = body.cacheLimitGB;

@@ -11,7 +11,8 @@
     "modelsActive": "当前激活的转录与 AI 模型",
     "manageModels": "管理模型",
     "modelNotInstalled": "未安装：{name}",
-    "ollamaNotRunning": "Ollama 未运行"
+    "llmNotInstalled": "AI 模型未安装",
+    "llmLabel": "AI 模型"
   },
   "fileStatus": {
     "transcribing": "转写中 {pct}%",
@@ -60,7 +61,9 @@
       "running": "运行中",
       "completed": "已完成",
       "failed": "失败",
-      "canceled": "已取消"
+      "canceled": "已取消",
+      "done": "已完成",
+      "error": "出错"
     },
     "library": {
       "title": "最近视频",
@@ -134,7 +137,7 @@
       "esc": "关闭对话框"
     },
     "errors": {
-      "disconnected": "与翻译服务的连接已断开，请确认 Ollama 正在运行。",
+      "disconnected": "与翻译服务的连接已断开。",
       "FATAL_UNKNOWN": "翻译时出现意外错误，请稍后重试。",
       "TASK_NOT_FOUND": "此翻译任务已失效，请重新切换语言。",
       "fallback": "翻译失败，请重试。",
@@ -189,8 +192,6 @@
       "langZh": "中文",
       "langEn": "英文",
       "errors": {
-        "OLLAMA_UNREACHABLE": "Ollama 未运行，请确认本地服务已启动。",
-        "MODEL_NOT_PULLED": "Ollama 模型尚未拉取。",
         "VIDEO_TOO_LONG": "视频太长，当前模型无法生成 AI 总结。",
         "PARSE_FAILED": "AI 输出无法解析，请重试。",
         "NETWORK": "生成期间网络中断。",
@@ -216,15 +217,17 @@
       "activeTitle": "当前激活模型",
       "notInstalledWarn": "{name} 未完整安装，转写会失败。请「下载更多」或在下方列表切换到已安装的模型。",
       "whisper": "Whisper 转录模型",
-      "ollama": "Ollama AI 模型",
+      "llm": "AI 模型 (Qwen 2.5)",
       "size": "{size}",
       "active": "当前激活",
+      "activeFile": "当前激活：{name}",
+      "notConfigured": "未配置 — 请通过 setup wizard 配置 AI 模型。",
       "switch": "切换",
       "delete": "删除",
       "downloadMore": "下载更多",
       "loading": "加载中…",
       "empty": "暂无已安装模型，点击右上角下载",
-      "ollamaOffline": "Ollama 未运行 — 请启动 Ollama 应用后刷新",
+      "emptyLlm": "暂无已安装 AI 模型，点击右上角下载",
       "refresh": "刷新",
       "deleteTitle": "删除该模型？",
       "deleteDesc": "「{name}」（{size}）将从本地移除，下次使用前需要重新下载。",
@@ -245,8 +248,8 @@
     "section": "偏好设置",
     "whisperModel": "Whisper 模型",
     "whisperHint": "越大越精准但越慢。更改对新转写任务生效。",
-    "ollamaModel": "Ollama 模型",
-    "ollamaHint": "使用 `ollama list` 显示的完整 tag。推荐：{model}。",
+    "llmModel": "AI 模型",
+    "llmHint": "由进程内 llama-server 提供的本地 Qwen 2.5 量化模型。推荐：{model}。",
     "cacheLimit": "缓存大小上限",
     "silenceThreshold": "静音阈值",
     "silenceHint": "字幕间隔 ≥ 此时长会在列表插入「── 无语音 ──」分隔符。",
@@ -311,13 +314,12 @@
       "welcome": "首次设置",
       "manageTitle": "管理模型",
       "stepLabel1": "Whisper 转录",
-      "stepLabel2": "Ollama 运行时",
-      "stepLabel3": "Qwen AI 模型",
+      "stepLabel2": "AI 模型",
       "subtitleStep1": "选择转录模型 (Whisper)",
-      "subtitleStep2": "安装 Ollama 本地运行时",
-      "subtitleStep3": "选择 AI 翻译模型 (Qwen)",
+      "subtitleStep2": "选择 AI 模型（翻译 & 摘要）",
       "recommended": "推荐",
       "foundAt": "已在本机检测到：",
+      "scanFound": "已在 {source} 找到",
       "actionSymlink": "软链接（不占额外空间）",
       "actionCopy": "复制到 Subcast 数据目录",
       "actionIgnore": "忽略，从网络下载新的",
@@ -341,36 +343,20 @@
       "checkingEvery5s": "每 5 秒自动检查一次 — 请保持本窗口开启。",
       "installedAt": "{name} 已安装在"
     },
-    "ollama": {
-      "running": "Ollama 正在运行",
-      "versionLabel": "版本 {version}",
-      "installedNotRunning": "已安装但未运行",
-      "installedNotRunningDetail": "检测到 {path}。打开 Ollama 应用（或运行 `ollama serve`），我们会自动识别。",
-      "needsInstall": "未检测到 Ollama",
-      "needsInstallBody": "Subcast 使用 Ollama 作为本地 AI 运行时 — 全部数据留在你的电脑上。安装一次即可，从菜单栏 / 任务栏运行。",
-      "openOllamaCom": "前往 ollama.com",
-      "iveInstalled": "我已安装",
-      "rechecking": "正在重新检测…"
-    },
-    "qwen": {
+    "llm": {
+      "selectModel": "选择 AI 模型",
       "alreadyInstalled": "已安装",
-      "ready": "{tag} 已就绪",
-      "pull": "拉取 {tag}",
-      "pullingStarting": "启动中",
-      "pullingPrefix": "正在拉取 {tag} — {status}",
-      "pullFailed": "拉取失败：{error}",
-      "fixKey": "修复 Ollama 身份密钥",
-      "fixKeyHint": "Ollama 的身份密钥文件缺失（这是 Ollama 自身的常见问题）。点击修复后即可重试拉取。",
-      "fixKeyWorking": "正在生成密钥…",
-      "fixKeyDone": "密钥已生成，请重新点击「拉取」",
-      "fixKeyFailed": "修复失败：{error}"
+      "foundIn": "已在 {source} 找到",
+      "lowMemoryWarning": "你的机器内存不足 8 GB，运行 AI 模型可能影响系统响应。可以跳过此步，AI 功能稍后再在设置里配置。",
+      "installing": "正在下载 {name}…",
+      "ready": "{name} 已就绪",
+      "installFailed": "下载失败：{error}"
     },
     "home": {
       "setupIncomplete": "首次设置未完成：",
       "openSetupWizard": "打开设置向导",
       "gapWhisper": "转录模型",
-      "gapOllama": "Ollama 运行时",
-      "gapQwen": "AI 模型",
+      "gapLlm": "AI 模型",
       "openFileFailed": "打开文件失败"
     },
     "about": {
@@ -398,14 +384,12 @@
       },
       "faq": {
         "title": "常见问题",
-        "ollamaTitle": "向导显示未检测到 Ollama",
-        "ollamaBody": "Ollama 是独立的菜单栏 / 任务栏程序。确认它的图标显示「正在运行」，回到向导点「我已安装」重检即可。",
         "mirrorTitle": "Whisper 下载很慢",
         "mirrorBody": "在 Step 1 勾选「使用 hf-mirror.com」。已经下载的字节会在镜像上继续 —— 无需重头开始。",
         "macGatekeeperTitle": "macOS 15+ 阻止 Subcast 运行",
         "macGatekeeperBody": "系统设置 → 隐私与安全性 → 下拉到底部找「仍要打开」按钮。",
         "zombieTitle": "崩溃后翻译没继续",
-        "zombieBody": "翻译会被标记为「上次未完成」，而不是偷偷重新调用 Ollama 浪费 token。在主页点「重试」即可。"
+        "zombieBody": "翻译会被标记为「上次未完成」，而不是偷偷重新调用模型浪费计算。在主页点「重试」即可。"
       },
       "links": {
         "docs": "查看文档",

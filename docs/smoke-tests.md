@@ -167,6 +167,23 @@ Defer until v0.1.1 ships — needs two consecutive releases to verify.
 
 ---
 
+## LLM 切换 (0.2)
+- [ ] `node scripts/reset-for-first-run.mjs` → setup wizard step 2 displays the three Qwen tiers
+- [ ] Hardware tier recommendation matches RAM (16GB Mac shows 7B as recommended)
+- [ ] LM Studio Qwen 7B installed → scanned + symlink option offered → symlink succeeds
+- [ ] Default hf-mirror.com download of 3B model completes
+- [ ] Skip wizard step 2 → main UI AI buttons greyed + AppHeader chip shows amber dot
+- [ ] After transcription → click AI Insights → first request takes ~3s (model load) → subsequent are instant
+- [ ] No AI activity for 5 minutes → llama-server auto-stops (verify via Activity Monitor: RAM drops)
+- [ ] Next AI request after auto-stop spawns server fresh
+- [ ] Settings → switch active model to 14B → old server stops, new model loads on next request
+- [ ] Settings → delete active model → API returns 409
+- [ ] Settings → delete non-active model → succeeds
+- [ ] Cmd+Q → llama-server process disappears within 5s (verify `ps aux | grep llama-server`)
+- [ ] `kill -9 <subcast pid>` while running → next Subcast launch cleans up orphan llama-server
+
+---
+
 ## Sign-off
 
 - [ ] All applicable sections passed

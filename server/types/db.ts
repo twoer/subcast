@@ -79,7 +79,7 @@ export interface InsightTaskRow {
   video_sha: string;
   status: InsightStatus;
   model: string;
-  ui_language: string;
+  ui_language: 'zh-CN' | 'en';
   error_msg: string | null;
   created_at: number;
   completed_at: number | null;

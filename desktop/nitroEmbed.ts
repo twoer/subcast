@@ -92,6 +92,13 @@ export async function startNitro(): Promise<NitroHandle> {
   // ggml model binaries) land here. Shared resolver so the binary check
   // in main.ts and the Nitro embed agree on the location.
   process.env.SUBCAST_RESOURCES_PATH = resolveResourcesPath();
+  // llama-server binary path — read by `server/utils/llmServer.ts` (which
+  // can't `import { app }` from electron). The Nitro-side LlmServer lazy-
+  // singleton reads this at first ensure() to spawn the sidecar.
+  process.env.SUBCAST_LLM_BINARY_PATH = join(
+    resolveResourcesPath(),
+    'llama-server' + (process.platform === 'win32' ? '.exe' : ''),
+  );
 
   // Locate .output/server/index.mjs relative to the compiled main.js.
   // In dev: desktop-dist/main.js → ../.output/server/index.mjs (from repo root).

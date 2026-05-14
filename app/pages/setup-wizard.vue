@@ -5,10 +5,9 @@
  *
  *   Step 1 — Whisper transcription model: pick a tier and install
  *            (symlink existing file / copy / download from HF).
- *   Step 2 — Ollama runtime: detect; if missing, open ollama.com in the
- *            user's browser, then poll until they've installed and
- *            started it (we deliberately do NOT spawn or manage Ollama).
- *   Step 3 — Qwen language model (Phase 2.7).
+ *   Step 2 — Local LLM (Qwen 2.5 GGUF) for AI translation / insights:
+ *            pick a tier, mirror, and install (symlink / copy / download
+ *            from the same three mirror options Whisper offers).
  *
  * On mount the wizard inspects existing state and jumps to the earliest
  * unmet step so returning users aren't forced through completed work.
@@ -22,22 +21,23 @@ import {
   ChevronLeft,
   ChevronRight,
   AlertCircle,
-  ExternalLink,
   Loader2,
   X as XIcon,
   Check,
 } from 'lucide-vue-next';
+import type { LlmModelId, LlmMirror } from '../../desktop/modelManager/llmConfig';
+import { LLM_MODELS } from '../../desktop/modelManager/llmConfig';
+// The setup-wizard's Whisper choices are a curated subset of
+// WHISPER_MODEL_NAMES (the wizard intentionally omits large-v3 in favor
+// of large-v3-turbo as the high-end pick). The type still uses the
+// canonical union so a future addition to WHISPER_MODEL_NAMES surfaces
+// here as a type error if the wizard should adopt it.
+import type { WhisperModelName as CanonicalWhisperModelName } from '#shared/whisperModels';
 
 const { t } = useI18n();
 
 // --- Types ----------------------------------------------------------------
 
-// The setup-wizard's choices are a curated subset of WHISPER_MODEL_NAMES
-// (the wizard intentionally omits large-v3 in favor of large-v3-turbo as
-// the high-end pick). The type still uses the canonical union so a future
-// addition to WHISPER_MODEL_NAMES surfaces here as a type error if the
-// wizard should adopt it.
-import type { WhisperModelName as CanonicalWhisperModelName } from '#shared/whisperModels';
 type WhisperModelName = Extract<
   CanonicalWhisperModelName,
   'tiny' | 'base' | 'small' | 'medium' | 'large-v3-turbo'
@@ -46,9 +46,6 @@ type WhisperMirror = 'huggingface' | 'hf-mirror';
 type InstallKind = 'symlink' | 'copy' | 'download';
 type InstallState = 'running' | 'success' | 'error' | 'canceled';
 type ScanAction = 'symlink' | 'copy' | 'ignore';
-type OllamaState = 'running' | 'installed-not-running' | 'needs-install';
-type QwenVariant = '3b' | '7b' | '14b';
-type QwenPullState = 'running' | 'success' | 'error';
 
 interface ScannedModel {
   name: WhisperModelName;
@@ -66,10 +63,6 @@ interface SetupStatus {
    * Overview instead of a hard-coded `base`.
    */
   recommendedWhisperModel: WhisperModelName;
-  recommendedOllamaModel: string;
-  ollamaRunning: boolean;
-  hasQwen: boolean;
-  qwenModels: string[];
 }
 interface DownloadProgress {
   bytesDownloaded: number;
@@ -87,23 +80,36 @@ interface InstallSnapshot {
   destPath?: string;
   error?: string;
 }
-interface OllamaSnapshot {
-  state: OllamaState;
-  version?: string;
-  binaryPath?: string;
+
+interface LlmInstalledHit {
+  name: LlmModelId;
+  path: string;
+  sizeBytes: number;
 }
-interface QwenPullProgress {
-  status: string;
-  digest?: string;
-  completed?: number;
-  total?: number;
+interface LlmScannedHit {
+  name: LlmModelId;
+  path: string;
+  source: string;
+  sizeBytes: number;
 }
-interface QwenPullSnapshot {
+interface LlmStatusResp {
+  active: LlmModelId | undefined;
+  recommended: LlmModelId;
+  /** Surfaced for the 8 GB low-memory warning banner. */
+  totalMemoryGB: number;
+  /** One-shot hint from `settings.ts` migration (deleted on read). */
+  migrationHint: LlmModelId | undefined;
+  installed: LlmInstalledHit[];
+  scanned: LlmScannedHit[];
+}
+interface LlmInstallSnapshot {
   id: number;
-  variant: QwenVariant;
-  tag: string;
-  state: QwenPullState;
-  progress?: QwenPullProgress;
+  kind: InstallKind;
+  model: LlmModelId;
+  mirror?: LlmMirror;
+  state: InstallState;
+  progress?: DownloadProgress;
+  destPath?: string;
   error?: string;
 }
 
@@ -121,16 +127,20 @@ const MODELS: Array<{ id: WhisperModelName; sizeLabel: string }> = [
   { id: 'large-v3-turbo', sizeLabel: '1.6 GB' },
 ];
 
-const QWEN_VARIANTS: Array<{ id: QwenVariant; tag: string; sizeLabel: string; recommended?: boolean }> = [
-  { id: '3b', tag: 'qwen2.5:3b', sizeLabel: '1.9 GB' },
-  { id: '7b', tag: 'qwen2.5:7b', sizeLabel: '4.7 GB', recommended: true },
-  { id: '14b', tag: 'qwen2.5:14b', sizeLabel: '9.0 GB' },
+// Iteration order for the LLM tier cards. Kept as a constant rather than
+// `Object.keys(LLM_MODELS)` so the small → large render order is
+// deterministic (object iteration order on string keys happens to be
+// insertion order, but spelling it out keeps the UI immune to a future
+// reorder in the catalog).
+const LLM_TIERS: ReadonlyArray<{ id: LlmModelId }> = [
+  { id: '3b' },
+  { id: '7b' },
+  { id: '14b' },
 ];
-
 
 // --- State ----------------------------------------------------------------
 
-const currentStep = ref<1 | 2 | 3>(1);
+const currentStep = ref<1 | 2>(1);
 const status = ref<SetupStatus | null>(null);
 const statusError = ref<string | null>(null);
 
@@ -142,32 +152,14 @@ const task = ref<InstallSnapshot | null>(null);
 const actionError = ref<string | null>(null);
 let whisperPollTimer: ReturnType<typeof setInterval> | null = null;
 
-// Step 2
-const ollama = ref<OllamaSnapshot | null>(null);
-const ollamaProbing = ref(false);
-const ollamaWaiting = ref(false); // true after "I've installed it" until we see 'running'
-let ollamaPollTimer: ReturnType<typeof setInterval> | null = null;
-
-// Step 3
-const selectedQwen = ref<QwenVariant>('7b');
-const qwenTask = ref<QwenPullSnapshot | null>(null);
-const qwenActionError = ref<string | null>(null);
-let qwenPollTimer: ReturnType<typeof setInterval> | null = null;
-
-// Fix-key flow state. Tri-state ('idle' | 'working' | 'done') so the
-// UI can show a spinner while ssh-keygen runs and a confirmation
-// nudge afterwards.
-const fixKeyState = ref<'idle' | 'working' | 'done'>('idle');
-const fixKeyError = ref<string | null>(null);
-
-// Match the well-known Ollama identity-key error in either the inline
-// pull-task error or the synchronous start-pull error. Anything
-// containing `id_ed25519` is the missing-key bug — there's no other
-// legitimate error path Ollama emits with that filename.
-const missingOllamaKey = computed<boolean>(() => {
-  const haystack = `${qwenTask.value?.error ?? ''} ${qwenActionError.value ?? ''}`;
-  return haystack.includes('id_ed25519');
-});
+// Step 2 (LLM)
+const llmStatus = ref<LlmStatusResp | null>(null);
+const selectedLlm = ref<LlmModelId>('7b');
+const llmMirror = ref<LlmMirror>('huggingface');
+const llmScanAction = ref<ScanAction>('symlink');
+const llmTask = ref<LlmInstallSnapshot | null>(null);
+const llmActionError = ref<string | null>(null);
+let llmPollTimer: ReturnType<typeof setInterval> | null = null;
 
 // --- Status fetch ---------------------------------------------------------
 
@@ -176,6 +168,16 @@ async function loadStatus(): Promise<void> {
   try {
     status.value = await $fetch<SetupStatus>('/api/desktop/setup-status');
   } catch (e) {
+    statusError.value = e instanceof Error ? e.message : t('desktop.setupCheck.probeFailed');
+  }
+}
+
+async function loadLlmStatus(): Promise<void> {
+  try {
+    llmStatus.value = await $fetch<LlmStatusResp>('/api/desktop/llm/status');
+  } catch (e) {
+    // Surface in the same banner as the Whisper probe error — the wizard
+    // can't make decisions without it.
     statusError.value = e instanceof Error ? e.message : t('desktop.setupCheck.probeFailed');
   }
 }
@@ -297,172 +299,135 @@ async function cancelInstall(): Promise<void> {
   }
 }
 
-// --- Step 2 (Ollama) ------------------------------------------------------
+// --- Step 2 (LLM) ---------------------------------------------------------
 
-async function probeOllamaStatus(): Promise<void> {
-  ollamaProbing.value = true;
-  try {
-    ollama.value = await $fetch<OllamaSnapshot>('/api/desktop/ollama/status');
-  } catch {
-    /* keep last */
-  } finally {
-    ollamaProbing.value = false;
-  }
-  if (ollama.value?.state === 'running') {
-    ollamaWaiting.value = false;
-    stopOllamaPolling();
-  }
+/** Set of tier ids that already have a GGUF in the canonical install dir. */
+const installedLlmIds = computed<Set<LlmModelId>>(
+  () => new Set((llmStatus.value?.installed ?? []).map((m) => m.name)),
+);
+
+/**
+ * First scan hit (outside the canonical install dir) for a tier, or
+ * `null` if nothing was found. Drives the "扫描到 (LM Studio)" hint +
+ * the symlink/copy/ignore picker on the selected card. Returns `null`
+ * instead of `undefined` so v-if guards stay consistent across the
+ * template.
+ */
+function scannedLlmFor(id: LlmModelId): LlmScannedHit | null {
+  return (llmStatus.value?.scanned ?? []).find((m) => m.name === id) ?? null;
 }
 
-function startOllamaPolling(): void {
-  if (ollamaPollTimer !== null) return;
-  // 5s cadence: detection probe itself uses a 2s timeout, so back-to-back
-  // probes with a 3s gap give us a steady rhythm without hammering.
-  ollamaPollTimer = setInterval(() => void probeOllamaStatus(), 5_000);
-}
+/** Generation-aware guards — match the Whisper-side semantics. */
+const llmTaskOwnsSelection = computed<boolean>(
+  () => llmTask.value?.model === selectedLlm.value,
+);
+const llmInstallRunning = computed<boolean>(
+  () => llmTaskOwnsSelection.value && llmTask.value?.state === 'running',
+);
+const llmInstallSucceeded = computed<boolean>(
+  () => llmTaskOwnsSelection.value && llmTask.value?.state === 'success',
+);
+const llmInstallFailed = computed<boolean>(
+  () => llmTaskOwnsSelection.value && llmTask.value?.state === 'error',
+);
+const llmInstallCanceled = computed<boolean>(
+  () => llmTaskOwnsSelection.value && llmTask.value?.state === 'canceled',
+);
 
-function stopOllamaPolling(): void {
-  if (ollamaPollTimer !== null) {
-    clearInterval(ollamaPollTimer);
-    ollamaPollTimer = null;
-  }
-}
-
-function clickIveInstalled(): void {
-  ollamaWaiting.value = true;
-  void probeOllamaStatus();
-  startOllamaPolling();
-}
-
-// --- Step 3 (Qwen) --------------------------------------------------------
-
-const installedQwen = computed<Set<QwenVariant>>(() => {
-  const installed = new Set<QwenVariant>();
-  for (const tag of status.value?.qwenModels ?? []) {
-    for (const v of QWEN_VARIANTS) {
-      if (tag === v.tag) installed.add(v.id);
-    }
-  }
-  return installed;
+const llmProgressPercent = computed<number>(() => {
+  const p = llmTask.value?.progress;
+  if (!p || !p.bytesTotal) return 0;
+  return Math.min(100, Math.floor((p.bytesDownloaded / p.bytesTotal) * 100));
 });
 
-const qwenAlreadyInstalled = computed<boolean>(
-  () => installedQwen.value.has(selectedQwen.value),
+const lowMemoryWarning = computed<boolean>(
+  // Show the banner when we know memory is below 8 GB. Default to false
+  // (don't warn) when the status hasn't loaded yet to avoid a one-frame
+  // flash on a fast-loading status response.
+  () => (llmStatus.value?.totalMemoryGB ?? 999) < 8,
 );
 
-// Optional chaining so both `null` and `undefined` flunk the guard —
-// `$fetch` of `/api/desktop/qwen/pull` resolves to `undefined` when no
-// task has been started (h3 returns null → empty body → undefined).
-// A `!== null` check let undefined through and the next `.variant`
-// read threw, which interrupted v-model patching on the radios in
-// the v-for above (rendering all three as "selected").
-const qwenPullRunning = computed<boolean>(
-  () => qwenTask.value?.variant === selectedQwen.value
-    && qwenTask.value?.state === 'running',
-);
-
-const qwenPullFinished = computed<boolean>(
-  () => qwenTask.value?.variant === selectedQwen.value
-    && qwenTask.value?.state === 'success',
-);
-
-const qwenPullFailed = computed<boolean>(
-  () => qwenTask.value?.variant === selectedQwen.value
-    && qwenTask.value?.state === 'error',
-);
-
-const qwenProgressPercent = computed<number>(() => {
-  const p = qwenTask.value?.progress;
-  if (!p || !p.total) return 0;
-  return Math.min(100, Math.floor(((p.completed ?? 0) / p.total) * 100));
-});
-
-async function pollQwenTask(): Promise<void> {
+async function pollLlmTask(): Promise<void> {
   try {
-    const next = await $fetch<QwenPullSnapshot | null>('/api/desktop/qwen/pull');
-    qwenTask.value = next ?? null;
+    // Same `undefined`-normalisation rationale as `pollWhisperTask`.
+    const next = await $fetch<LlmInstallSnapshot | null>('/api/desktop/llm/install');
+    llmTask.value = next ?? null;
   } catch {
-    /* keep last */
+    /* keep last state */
   }
 }
 
-function startQwenPolling(): void {
-  if (qwenPollTimer !== null) return;
-  qwenPollTimer = setInterval(() => {
-    void pollQwenTask().then(() => {
-      if (qwenTask.value && qwenTask.value.state !== 'running') {
-        stopQwenPolling();
-        if (qwenTask.value.state === 'success') void loadStatus();
+function startLlmPolling(): void {
+  if (llmPollTimer !== null) return;
+  llmPollTimer = setInterval(() => {
+    void pollLlmTask().then(() => {
+      if (llmTask.value && llmTask.value.state !== 'running') {
+        stopLlmPolling();
+        if (llmTask.value.state === 'success') void loadLlmStatus();
       }
     });
   }, 500);
 }
 
-function stopQwenPolling(): void {
-  if (qwenPollTimer !== null) {
-    clearInterval(qwenPollTimer);
-    qwenPollTimer = null;
+function stopLlmPolling(): void {
+  if (llmPollTimer !== null) {
+    clearInterval(llmPollTimer);
+    llmPollTimer = null;
   }
 }
 
-async function startQwenPull(): Promise<void> {
-  qwenActionError.value = null;
+async function startLlmInstall(): Promise<void> {
+  llmActionError.value = null;
+  const scanned = scannedLlmFor(selectedLlm.value);
+  const useScanned = scanned !== null && llmScanAction.value !== 'ignore';
+  const kind: InstallKind = useScanned
+    ? (llmScanAction.value as 'symlink' | 'copy')
+    : 'download';
+
+  const body: Record<string, unknown> = { kind, model: selectedLlm.value };
+  if (useScanned) body.srcPath = scanned!.path;
+  else body.mirror = llmMirror.value;
+
   try {
-    qwenTask.value = await $fetch<QwenPullSnapshot>('/api/desktop/qwen/pull', {
+    llmTask.value = await $fetch<LlmInstallSnapshot>('/api/desktop/llm/install', {
       method: 'POST',
-      body: { variant: selectedQwen.value },
+      body,
     });
-    if (qwenTask.value.state === 'running') startQwenPolling();
-    if (qwenTask.value.state === 'success') void loadStatus();
+    if (llmTask.value.state === 'running') startLlmPolling();
+    if (llmTask.value.state === 'success') void loadLlmStatus();
   } catch (e) {
     const err = e as { statusMessage?: string; message?: string };
-    qwenActionError.value = err.statusMessage ?? err.message ?? 'Pull failed to start';
+    llmActionError.value = err.statusMessage ?? err.message ?? 'Install failed to start';
   }
 }
 
-async function cancelQwenPull(): Promise<void> {
+async function cancelLlmInstall(): Promise<void> {
   try {
-    await $fetch('/api/desktop/qwen/pull', { method: 'DELETE' });
+    await $fetch('/api/desktop/llm/install', { method: 'DELETE' });
   } catch {
     /* surface via next poll */
   }
 }
 
 /**
- * One-shot fix for the missing `~/.ollama/id_ed25519` Ollama bug.
- * Generates the key via the desktop endpoint, then clears the prior
- * pull-task state so the failed-task banner goes away and the user is
- * primed to click "Pull" again.
+ * Same idea as `pickWhisperDefault`: prefer the largest model already
+ * canonically installed → the largest available externally (so
+ * symlink/copy is one click away) → the migration-hint from the legacy
+ * `ollamaModel` field if present → finally the server's hardware-tier
+ * recommendation.
  */
-async function fixOllamaKey(): Promise<void> {
-  fixKeyState.value = 'working';
-  fixKeyError.value = null;
-  try {
-    await $fetch<{ ok: boolean }>('/api/desktop/ollama/fix-key', { method: 'POST' });
-    // Clear the previous error state so the "请重新点击拉取" hint
-    // takes the banner spot.
-    qwenTask.value = null;
-    qwenActionError.value = null;
-    fixKeyState.value = 'done';
-  } catch (e) {
-    const err = e as { statusMessage?: string; message?: string };
-    fixKeyError.value = err.statusMessage ?? err.message ?? 'fix-key failed';
-    fixKeyState.value = 'idle';
-  }
-}
-
-/** Default-select the largest installed variant; fall back to recommended. */
-function pickQwenDefault(): QwenVariant {
-  for (const v of ['14b', '7b', '3b'] as const) {
-    if (installedQwen.value.has(v)) return v;
-  }
-  return '7b';
+function pickLlmDefault(): LlmModelId {
+  const order: LlmModelId[] = ['14b', '7b', '3b'];
+  for (const id of order) if (installedLlmIds.value.has(id)) return id;
+  for (const id of order) if (scannedLlmFor(id) !== null) return id;
+  if (llmStatus.value?.migrationHint) return llmStatus.value.migrationHint;
+  return llmStatus.value?.recommended ?? '7b';
 }
 
 /**
- * Same idea as `pickQwenDefault`: prefer the largest model already
+ * Same idea as `pickLlmDefault`: prefer the largest model already
  * canonically installed, then the largest available externally (so
- * symlink/copy is one click away), then fall back to whatever the
+ * symlink/copy is one click away); finally fall back to whatever the
  * server's hardware-tier recommendation is (matches Settings →
  * Overview); finally `base` as an ultra-safe last resort.
  */
@@ -475,23 +440,15 @@ function pickWhisperDefault(): WhisperModelName {
 
 // --- Lifecycle ------------------------------------------------------------
 
-async function enterStep(step: 1 | 2 | 3): Promise<void> {
+async function enterStep(step: 1 | 2): Promise<void> {
   currentStep.value = step;
   if (step === 2) {
-    await probeOllamaStatus();
-    // If Ollama already running we just sit on the auto-detected "✓" state
-    // and let the user click Next. Otherwise keep polling — they may flip
-    // to ollama.com, install, and return without clicking "I've installed".
-    if (ollama.value?.state !== 'running') startOllamaPolling();
+    if (!llmStatus.value) await loadLlmStatus();
+    selectedLlm.value = pickLlmDefault();
+    await pollLlmTask();
+    if (llmTask.value?.state === 'running') startLlmPolling();
   } else {
-    stopOllamaPolling();
-  }
-  if (step === 3) {
-    selectedQwen.value = pickQwenDefault();
-    await pollQwenTask();
-    if (qwenTask.value?.state === 'running') startQwenPolling();
-  } else {
-    stopQwenPolling();
+    stopLlmPolling();
   }
 }
 
@@ -505,7 +462,7 @@ const route = useRoute();
  */
 const isManageEntry = computed<boolean>(() => {
   const s = Number(route.query.step);
-  return s === 1 || s === 2 || s === 3;
+  return s === 1 || s === 2;
 });
 
 const wizardTitle = computed<string>(() =>
@@ -513,40 +470,41 @@ const wizardTitle = computed<string>(() =>
 );
 
 onMounted(async () => {
-  await loadStatus();
+  await Promise.all([loadStatus(), loadLlmStatus()]);
   await pollWhisperTask();
   if (task.value?.state === 'running') startWhisperPolling();
 
   // Default to the most useful Whisper model based on what's already
   // on disk — largest installed → largest reusable → base.
   if (status.value) selectedModel.value = pickWhisperDefault();
+  if (llmStatus.value) selectedLlm.value = pickLlmDefault();
 
-  // `?step=1|2|3` from Settings → Models "Download more" buttons forces
+  // `?step=1|2` from Settings → Models "Download more" buttons forces
   // landing on that step even when first-run setup is fully complete —
   // otherwise the auto-redirect below would bounce the user home.
   const forcedStep = Number(route.query.step);
-  if (forcedStep === 1 || forcedStep === 2 || forcedStep === 3) {
+  if (forcedStep === 1 || forcedStep === 2) {
     await enterStep(forcedStep);
     return;
   }
 
   // First-run flow: resume from earliest unmet step, or fast-forward home
-  // if every dependency is already satisfied.
+  // if every dependency is already satisfied. The LLM-installed proxy for
+  // the old `hasQwen` flag is `llmStatus.installed.length > 0`.
   if (!status.value) return;
-  if (status.value.hasWhisperModel && status.value.ollamaRunning && status.value.hasQwen) {
+  const hasAnyLlm = (llmStatus.value?.installed.length ?? 0) > 0;
+  if (status.value.hasWhisperModel && hasAnyLlm) {
     await navigateTo('/', { replace: true });
     return;
   }
   if (status.value.hasWhisperModel) {
-    if (status.value.ollamaRunning) await enterStep(3);
-    else await enterStep(2);
+    await enterStep(2);
   }
 });
 
 onBeforeUnmount(() => {
   stopWhisperPolling();
-  stopOllamaPolling();
-  stopQwenPolling();
+  stopLlmPolling();
 });
 
 // --- Navigation -----------------------------------------------------------
@@ -558,14 +516,15 @@ const canAdvanceStep1 = computed<boolean>(() => {
   return installFinished.value;
 });
 
-const canAdvanceStep2 = computed<boolean>(() => ollama.value?.state === 'running');
-
 const canFinish = computed<boolean>(
-  () => qwenAlreadyInstalled.value || qwenPullFinished.value,
+  // Finish enabled when the selected LLM tier is reachable: either
+  // already installed in the canonical dir, or we just finished
+  // symlinking / copying / downloading it.
+  () => installedLlmIds.value.has(selectedLlm.value) || llmInstallSucceeded.value,
 );
 
 /**
- * Persist the currently-selected Whisper / Qwen model to user settings
+ * Persist the currently-selected Whisper / LLM model to user settings
  * when advancing past the relevant step. Without this, first-boot
  * defaults (set by hardware tier in `01.first-boot.ts`) win and the
  * transcribe handler later looks for a model the wizard never
@@ -583,15 +542,12 @@ async function persistWhisperChoice(): Promise<void> {
   }
 }
 
-async function persistQwenChoice(): Promise<void> {
+async function persistLlmChoice(): Promise<void> {
   try {
-    const tag = QWEN_VARIANTS.find((v) => v.id === selectedQwen.value)?.tag;
-    if (tag) {
-      await $fetch('/api/settings', {
-        method: 'PUT',
-        body: { ollamaModel: tag },
-      });
-    }
+    await $fetch('/api/settings', {
+      method: 'PUT',
+      body: { llmModel: selectedLlm.value },
+    });
   } catch { /* see persistWhisperChoice */ }
 }
 
@@ -599,17 +555,14 @@ async function goNextStep(): Promise<void> {
   if (currentStep.value === 1 && canAdvanceStep1.value) {
     await persistWhisperChoice();
     await enterStep(2);
-  } else if (currentStep.value === 2 && canAdvanceStep2.value) {
-    await enterStep(3);
-  } else if (currentStep.value === 3) {
-    await persistQwenChoice();
+  } else if (currentStep.value === 2) {
+    await persistLlmChoice();
     await navigateTo('/');
   }
 }
 
 async function goPrevStep(): Promise<void> {
   if (currentStep.value === 2) await enterStep(1);
-  else if (currentStep.value === 3) await enterStep(2);
 }
 
 // --- UI helpers -----------------------------------------------------------
@@ -643,7 +596,6 @@ function formatEta(s: number | null): string {
             v-for="(label, i) in [
               t('desktop.setupWizard.stepLabel1'),
               t('desktop.setupWizard.stepLabel2'),
-              t('desktop.setupWizard.stepLabel3'),
             ]"
             :key="i"
           >
@@ -670,7 +622,7 @@ function formatEta(s: number | null): string {
               >{{ label }}</span>
             </li>
             <li
-              v-if="i < 2"
+              v-if="i < 1"
               class="mx-1 mt-4 h-0.5 flex-1 rounded-full transition-colors"
               :class="currentStep > i + 1 ? 'bg-success' : 'bg-border'"
             />
@@ -679,8 +631,7 @@ function formatEta(s: number | null): string {
 
         <p class="text-sm text-muted-foreground">
           <template v-if="currentStep === 1">{{ t('desktop.setupWizard.subtitleStep1') }}</template>
-          <template v-else-if="currentStep === 2">{{ t('desktop.setupWizard.subtitleStep2') }}</template>
-          <template v-else>{{ t('desktop.setupWizard.subtitleStep3') }}</template>
+          <template v-else>{{ t('desktop.setupWizard.subtitleStep2') }}</template>
         </p>
       </header>
 
@@ -715,7 +666,7 @@ function formatEta(s: number | null): string {
                 class="inline-flex items-center gap-1 text-xs text-success"
               >
                 <CheckCircle2 class="h-3.5 w-3.5" />
-                {{ t('desktop.qwen.alreadyInstalled') }}
+                {{ t('desktop.llm.alreadyInstalled') }}
               </span>
               <span
                 v-else-if="statusForModel(m.id) === 'available'"
@@ -859,162 +810,176 @@ function formatEta(s: number | null): string {
         <div v-if="actionError" class="text-sm text-destructive">{{ actionError }}</div>
       </template>
 
-      <!-- ===== Step 2 — Ollama ===== -->
+      <!-- ===== Step 2 — LLM (Qwen 2.5 GGUF) ===== -->
       <template v-else-if="currentStep === 2">
-        <section class="space-y-4">
-          <div
-            v-if="ollama?.state === 'running'"
-            class="rounded-lg border border-success/30 bg-success/10 p-4 text-sm"
-          >
-            <p class="flex items-center gap-1.5 font-medium text-success">
-              <CheckCircle2 class="h-4 w-4" />
-              {{ t('desktop.ollama.running') }}
-            </p>
-            <p v-if="ollama.version" class="mt-1 pl-6 text-xs text-success">
-              {{ t('desktop.ollama.versionLabel', { version: ollama.version }) }}
-            </p>
-          </div>
-
-          <div
-            v-else-if="ollama?.state === 'installed-not-running'"
-            class="rounded-lg border border-warning/30 bg-warning/10 p-4 text-sm"
-          >
-            <p class="flex items-center gap-1.5 font-medium text-warning">
-              <AlertCircle class="h-4 w-4" />
-              {{ t('desktop.ollama.installedNotRunning') }}
-            </p>
-            <p class="mt-2 pl-6 text-xs text-warning/80">
-              {{ t('desktop.ollama.installedNotRunningDetail', { path: ollama.binaryPath ?? '' }) }}
-            </p>
-          </div>
-
-          <div
-            v-else
-            class="card-compact text-sm"
-          >
-            <p class="font-medium">{{ t('desktop.ollama.needsInstall') }}</p>
-            <p class="mt-2 text-xs text-muted-foreground">
-              {{ t('desktop.ollama.needsInstallBody') }}
-            </p>
-            <div class="mt-4 flex flex-wrap gap-2">
-              <a
-                href="https://ollama.com/download"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
-              >
-                <ExternalLink class="h-3.5 w-3.5 opacity-70" />
-                {{ t('desktop.ollama.openOllamaCom') }}
-              </a>
-              <Button
-                variant="outline"
-                size="sm"
-                :disabled="ollamaWaiting && ollamaProbing"
-                @click="clickIveInstalled"
-              >
-                {{ ollamaWaiting ? t('desktop.ollama.rechecking') : t('desktop.ollama.iveInstalled') }}
-              </Button>
-            </div>
-            <p v-if="ollamaWaiting" class="mt-3 text-xs text-muted-foreground">
-              {{ t('desktop.setupWizard.checkingEvery5s') }}
-            </p>
-          </div>
+        <section
+          v-if="lowMemoryWarning"
+          class="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning"
+        >
+          {{ t('desktop.llm.lowMemoryWarning') }}
         </section>
-      </template>
 
-      <!-- ===== Step 3 — Qwen ===== -->
-      <template v-else>
-        <section class="space-y-3">
+        <section v-if="llmStatus" class="space-y-3">
           <div
-            v-for="v in QWEN_VARIANTS"
-            :key="v.id"
+            v-for="m in LLM_TIERS"
+            :key="m.id"
             class="card-compact transition-colors"
-            :class="selectedQwen === v.id ? 'border-primary/50 bg-accent/30' : 'hover:bg-accent/20'"
+            :class="selectedLlm === m.id ? 'border-primary/50 bg-accent/30' : 'hover:bg-accent/20'"
           >
             <label class="flex cursor-pointer items-center gap-3">
               <input
-                v-model="selectedQwen"
+                v-model="selectedLlm"
                 type="radio"
-                :value="v.id"
-                :disabled="qwenPullRunning"
+                :value="m.id"
+                :disabled="llmInstallRunning"
                 class="h-4 w-4 cursor-pointer appearance-none rounded-full border-2 border-input bg-background ring-offset-background checked:border-[5px] checked:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
-              <span class="font-medium font-mono">{{ v.tag }}</span>
-              <Badge v-if="v.recommended" variant="secondary">{{ t('desktop.setupWizard.recommended') }}</Badge>
+              <span class="font-medium font-mono">{{ LLM_MODELS[m.id].filename }}</span>
+              <Badge v-if="llmStatus?.recommended === m.id" variant="secondary">{{ t('desktop.setupWizard.recommended') }}</Badge>
               <span
-                v-if="installedQwen.has(v.id)"
+                v-if="installedLlmIds.has(m.id)"
                 class="inline-flex items-center gap-1 text-xs text-success"
               >
                 <CheckCircle2 class="h-3.5 w-3.5" />
-                {{ t('desktop.qwen.alreadyInstalled') }}
+                {{ t('desktop.llm.alreadyInstalled') }}
               </span>
-              <span class="ml-auto text-sm text-muted-foreground">{{ v.sizeLabel }}</span>
+              <span
+                v-else-if="scannedLlmFor(m.id)"
+                class="inline-flex items-center gap-1 text-xs text-muted-foreground"
+              >
+                <Link2 class="h-3.5 w-3.5" />
+                {{ t('desktop.llm.foundIn', { source: scannedLlmFor(m.id)!.source }) }}
+              </span>
+              <span class="ml-auto text-sm text-muted-foreground">{{ formatBytes(LLM_MODELS[m.id].sizeBytes) }}</span>
             </label>
+
+            <div
+              v-if="selectedLlm === m.id && scannedLlmFor(m.id) && !installedLlmIds.has(m.id)"
+              class="mt-4 space-y-3 border-t border-border pt-3 pl-7"
+            >
+              <p class="flex items-start gap-1.5 text-sm text-success">
+                <CheckCircle2 class="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  {{ t('desktop.setupWizard.foundAt') }}
+                  <span class="font-mono text-xs">{{ scannedLlmFor(m.id)!.path }}</span>
+                  <span class="text-muted-foreground"> ({{ scannedLlmFor(m.id)!.source }})</span>
+                </span>
+              </p>
+              <div class="space-y-2 text-sm">
+                <label class="flex cursor-pointer items-center gap-2">
+                  <input
+                    v-model="llmScanAction"
+                    type="radio"
+                    value="symlink"
+                    :disabled="llmInstallRunning"
+                    class="h-3 w-3 cursor-pointer appearance-none rounded-full border-2 border-input bg-background ring-offset-background checked:border-[4px] checked:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                  <span>{{ t('desktop.setupWizard.actionSymlink') }}</span>
+                </label>
+                <label class="flex cursor-pointer items-center gap-2">
+                  <input
+                    v-model="llmScanAction"
+                    type="radio"
+                    value="copy"
+                    :disabled="llmInstallRunning"
+                    class="h-3 w-3 cursor-pointer appearance-none rounded-full border-2 border-input bg-background ring-offset-background checked:border-[4px] checked:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                  <span>{{ t('desktop.setupWizard.actionCopy') }}</span>
+                </label>
+                <label class="flex cursor-pointer items-center gap-2">
+                  <input
+                    v-model="llmScanAction"
+                    type="radio"
+                    value="ignore"
+                    :disabled="llmInstallRunning"
+                    class="h-3 w-3 cursor-pointer appearance-none rounded-full border-2 border-input bg-background ring-offset-background checked:border-[4px] checked:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                  <span>{{ t('desktop.setupWizard.actionIgnore') }}</span>
+                </label>
+              </div>
+            </div>
           </div>
         </section>
 
         <section
-          v-if="qwenTask && qwenPullRunning"
-          class="card-compact space-y-3"
+          v-if="!scannedLlmFor(selectedLlm) || llmScanAction === 'ignore'"
+          class="rounded-md border border-border/60 bg-muted/30 p-3"
         >
-          <p class="text-sm font-medium">
-            {{ t('desktop.qwen.pullingPrefix', { tag: qwenTask.tag, status: qwenTask.progress?.status ?? t('desktop.qwen.pullingStarting') }) }}
-          </p>
-          <Progress :model-value="qwenProgressPercent" />
-          <p v-if="qwenTask.progress?.total" class="text-xs text-muted-foreground">
-            {{ formatBytes(qwenTask.progress.completed ?? 0) }} /
-            {{ formatBytes(qwenTask.progress.total) }}
-          </p>
-          <Button variant="outline" size="sm" @click="cancelQwenPull">{{ t('desktop.setupWizard.cancel') }}</Button>
+          <label class="flex cursor-pointer items-center gap-3 text-sm">
+            <input
+              v-model="llmMirror"
+              type="checkbox"
+              :true-value="'hf-mirror'"
+              :false-value="'huggingface'"
+              :disabled="llmInstallRunning"
+              class="size-4 accent-primary"
+            >
+            <i18n-t keypath="desktop.setupWizard.mirrorToggle" tag="span">
+              <template #host><code class="font-mono">hf-mirror.com</code></template>
+            </i18n-t>
+          </label>
         </section>
 
         <section
-          v-if="qwenAlreadyInstalled || qwenPullFinished"
-          class="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success"
+          v-if="llmTask && llmTaskOwnsSelection && llmInstallRunning"
+          class="surface-1 space-y-3 rounded-lg border border-primary/30 bg-primary/[0.03] p-4"
         >
-          <CheckCircle2 class="h-4 w-4 shrink-0" />
-          {{ t('desktop.qwen.ready', { tag: QWEN_VARIANTS.find((v) => v.id === selectedQwen)?.tag ?? '' }) }}
+          <div class="flex items-center justify-between gap-3">
+            <p class="flex items-center gap-2 text-sm font-medium">
+              <Loader2 class="h-4 w-4 animate-spin text-primary" />
+              <span>
+                {{ llmTask.kind === 'download'
+                  ? t('desktop.setupWizard.downloading')
+                  : llmTask.kind === 'symlink'
+                    ? t('desktop.setupWizard.linking')
+                    : t('desktop.setupWizard.copying') }}
+                <span class="font-mono">{{ LLM_MODELS[llmTask.model].filename }}</span>
+              </span>
+            </p>
+            <span class="font-mono text-xs tabular-nums text-muted-foreground">
+              {{ llmProgressPercent }}%
+            </span>
+          </div>
+          <Progress :model-value="llmProgressPercent" />
+          <div class="flex items-center justify-between gap-3">
+            <p v-if="llmTask.progress" class="font-mono text-xs tabular-nums text-muted-foreground">
+              {{ formatBytes(llmTask.progress.bytesDownloaded) }} /
+              {{ formatBytes(llmTask.progress.bytesTotal) }} ·
+              {{ formatBytes(Math.round(llmTask.progress.bytesPerSecond)) }}{{ t('desktop.setupWizard.perSecond') }} ·
+              {{ formatEta(llmTask.progress.etaSeconds) }}
+            </p>
+            <span v-else />
+            <Button variant="outline" size="sm" class="shrink-0" @click="cancelLlmInstall">
+              <XIcon class="h-3.5 w-3.5" />
+              {{ t('desktop.setupWizard.cancel') }}
+            </Button>
+          </div>
         </section>
 
         <section
-          v-if="qwenPullFailed"
+          v-if="llmInstallSucceeded"
+          class="flex items-start gap-2 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success"
+        >
+          <CheckCircle2 class="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{{ t('desktop.llm.ready', { name: LLM_MODELS[selectedLlm].filename }) }}</span>
+        </section>
+
+        <section
+          v-if="llmInstallFailed"
           class="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
         >
           <AlertCircle class="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{{ t('desktop.qwen.pullFailed', { error: qwenTask!.error }) }}</span>
+          <span>{{ t('desktop.llm.installFailed', { error: llmTask!.error }) }}</span>
         </section>
 
-        <div v-if="qwenActionError" class="text-sm text-destructive">{{ qwenActionError }}</div>
-
-        <!-- Targeted recovery for the Ollama id_ed25519 bug. Shows only
-             when we matched the specific error signature, so users don't
-             see a misleading "fix" affordance for unrelated failures. -->
         <section
-          v-if="missingOllamaKey || fixKeyState !== 'idle'"
-          class="flex items-start gap-3 rounded-lg border border-warning/40 bg-warning/[0.08] p-3 text-sm"
+          v-if="llmInstallCanceled"
+          class="flex items-center gap-2 rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground"
         >
-          <AlertCircle class="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-          <div class="flex-1 space-y-2">
-            <p class="text-foreground">{{ t('desktop.qwen.fixKeyHint') }}</p>
-            <p v-if="fixKeyState === 'done'" class="text-success">
-              {{ t('desktop.qwen.fixKeyDone') }}
-            </p>
-            <p v-if="fixKeyError" class="text-destructive">
-              {{ t('desktop.qwen.fixKeyFailed', { error: fixKeyError }) }}
-            </p>
-          </div>
-          <Button
-            v-if="fixKeyState !== 'done'"
-            size="sm"
-            :disabled="fixKeyState === 'working'"
-            @click="fixOllamaKey"
-          >
-            <Loader2 v-if="fixKeyState === 'working'" class="h-3.5 w-3.5 animate-spin" />
-            {{ fixKeyState === 'working'
-              ? t('desktop.qwen.fixKeyWorking')
-              : t('desktop.qwen.fixKey') }}
-          </Button>
+          <span>{{ t('desktop.setupWizard.installCanceled') }}</span>
         </section>
+
+        <div v-if="llmActionError" class="text-sm text-destructive">{{ llmActionError }}</div>
       </template>
 
       <!-- ===== Footer ===== -->
@@ -1055,22 +1020,21 @@ function formatEta(s: number | null): string {
             {{ t('desktop.setupWizard.next') }}
             <ChevronRight class="h-4 w-4" />
           </Button>
+          <!-- Step 2 primary action — install only when the selected
+               tier isn't already installed and no install is in-flight. -->
           <Button
-            v-else-if="currentStep === 2"
-            :disabled="!canAdvanceStep2"
-            @click="goNextStep"
+            v-if="currentStep === 2 && !llmInstallSucceeded && !installedLlmIds.has(selectedLlm) && !llmInstallRunning"
+            :disabled="!llmStatus"
+            @click="startLlmInstall"
           >
-            {{ t('desktop.setupWizard.next') }}
-            <ChevronRight class="h-4 w-4" />
+            {{ scannedLlmFor(selectedLlm) && llmScanAction !== 'ignore'
+              ? (llmScanAction === 'symlink'
+                ? t('desktop.setupWizard.linkExisting')
+                : t('desktop.setupWizard.copyExisting'))
+              : t('desktop.setupWizard.download') }}
           </Button>
-          <!-- Step 3 primary action -->
           <Button
-            v-if="currentStep === 3 && !qwenAlreadyInstalled && !qwenPullFinished"
-            :disabled="qwenPullRunning"
-            @click="startQwenPull"
-          >{{ t('desktop.qwen.pull', { tag: QWEN_VARIANTS.find((v) => v.id === selectedQwen)?.tag ?? '' }) }}</Button>
-          <Button
-            v-if="currentStep === 3"
+            v-if="currentStep === 2"
             :disabled="!canFinish"
             @click="goNextStep"
           >{{ t('desktop.setupWizard.finish') }}</Button>

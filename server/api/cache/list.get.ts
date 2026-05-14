@@ -2,7 +2,6 @@
 import { existsSync, statSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { getDb, SUBCAST_PATHS } from '../../utils/db';
-import { getTaskByHash } from '../../utils/insightTasks';
 import type { VideoRow } from '../../types/db';
 
 interface CacheEntry {
@@ -57,6 +56,12 @@ export default defineEventHandler(() => {
     .all() as Array<{ video_sha: string; langs: string }>;
   const langsBySha = new Map(subRows.map((r) => [r.video_sha, r.langs.split(',')]));
 
+  const hasRunningInsightStmt = db.prepare(
+    `SELECT EXISTS(
+       SELECT 1 FROM insight_tasks WHERE video_sha = ? AND status IN ('queued','running')
+     ) AS has_running`,
+  );
+
   const items: CacheEntry[] = [];
   let totalBytes = 0;
   let totalVideoBytes = 0;
@@ -67,7 +72,9 @@ export default defineEventHandler(() => {
     const cacheBytes = dirSize(cacheDir);
     const langs = langsBySha.get(r.sha256) ?? [];
     const hasInsights = existsSync(join(SUBCAST_PATHS.cache, r.sha256, 'insights.json'));
-    const hasRunningInsight = getTaskByHash(r.sha256)?.status === 'running';
+    const hasRunningInsight = (
+      hasRunningInsightStmt.get(r.sha256) as { has_running: number }
+    ).has_running === 1;
     items.push({
       sha256: r.sha256,
       originalName: r.original_name,
