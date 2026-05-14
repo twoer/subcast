@@ -3,15 +3,28 @@ import type { LLMBackend, LLMChatOptions, LLMChunk } from './llmClient';
 import { getLlmServer } from './llmServer';
 
 /**
- * Dynamic-timeout knobs per spec §4: 30 s baseline + 50 ms / estimated
- * input token. Keeps long-prompt jobs (e.g. translating a full transcript)
- * from tripping the default AbortSignal.timeout while still failing fast
- * on a wedged server. Both values are exported for tests / tuning.
+ * Dynamic-timeout knobs.
+ *
+ * Inference cost is dominated by the *output* token count (~30-50 tok/s
+ * on M-series 7B Q4), not input — but a long prompt also has a non-
+ * trivial prefill cost. We budget for the larger of `input_tokens` and
+ * `maxTokens`, plus a 30 s baseline for spawn warmup / KV cache prep.
+ *
+ * For a typical AI Insights call (~5 k input chars ≈ 1.25 k tokens,
+ * `maxTokens=4096`) this comes to 30 s + 4096 × 50 ms ≈ 235 s — a
+ * generous-but-bounded cap that won't trip on legitimate long generations
+ * yet still fails fast on a wedged server.
+ *
+ * Values are constants (not env-driven) intentionally — getting these
+ * wrong is rare enough that a code change + redeploy is the right
+ * cadence for tuning.
  */
 const DEFAULT_TIMEOUT_BASE_MS = 30_000;
-const TIMEOUT_PER_INPUT_TOKEN_MS = 50;
+const TIMEOUT_PER_TOKEN_MS = 50;
 /** Approximation: 4 chars/token (cl100k-style); good enough for budgeting. */
 const CHARS_PER_TOKEN = 4;
+/** Fallback for callers that don't pass maxTokens — matches our chat() default. */
+const DEFAULT_MAX_TOKENS = 2048;
 
 function estimateInputTokens(opts: LLMChatOptions): number {
   const chars = opts.messages.reduce((n, m) => n + m.content.length, 0);
@@ -19,7 +32,11 @@ function estimateInputTokens(opts: LLMChatOptions): number {
 }
 
 function dynamicTimeoutMs(opts: LLMChatOptions): number {
-  return DEFAULT_TIMEOUT_BASE_MS + estimateInputTokens(opts) * TIMEOUT_PER_INPUT_TOKEN_MS;
+  const inputTokens = estimateInputTokens(opts);
+  const outputBudget = opts.maxTokens ?? DEFAULT_MAX_TOKENS;
+  // Use whichever of {prefill, generation} dominates wall time.
+  const dominantTokens = Math.max(inputTokens, outputBudget);
+  return DEFAULT_TIMEOUT_BASE_MS + dominantTokens * TIMEOUT_PER_TOKEN_MS;
 }
 
 /**

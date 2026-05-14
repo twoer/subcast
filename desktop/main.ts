@@ -451,13 +451,17 @@ app.on('second-instance', (_event, argv) => {
 async function shutdownNitro(): Promise<void> {
   if (!nitroApiToken || !nitroApiPort) return;
   try {
-    // The shutdown handler awaits child-process reap (SIGTERM → SIGKILL,
-    // ~2s ceiling per child). Allow enough headroom so a wedged whisper
-    // doesn't make us abandon the call before it's actually been killed.
+    // Internal teardown budget: queue cancel (~2 s per running task) +
+    // LlmServer.stop (SIGTERM grace 5 s + SIGKILL). Cap this fetch at 10 s
+    // so a slow llama-server shutdown finishes BEFORE we app.exit(0) and
+    // orphans the child. If we tied this to the same 5 s as the SIGKILL
+    // grace, both timers raced and llama-server occasionally survived as
+    // a launchd-reparented orphan that orphanCleanup had to mop up on
+    // next boot.
     await fetch(`http://127.0.0.1:${nitroApiPort}/api/desktop/shutdown`, {
       method: 'POST',
       headers: { 'x-subcast-token': nitroApiToken },
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.timeout(10_000),
     });
   } catch (err) {
     console.warn('[subcast] shutdown POST failed:', err instanceof Error ? err.message : err);
