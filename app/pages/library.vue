@@ -73,6 +73,16 @@ function openRename(item: CacheItem): void {
   renameSaving.value = false;
 }
 
+// IME composition (e.g. Chinese pinyin) commits the in-progress character on
+// Enter. Without this guard, that Enter also fires confirmRename — running
+// before v-model receives the committed character, so the last keystroke is
+// lost. `isComposing` is the W3C signal; `keyCode === 229` is the older
+// fallback some browsers use during IME composition.
+function onRenameEnter(e: KeyboardEvent): void {
+  if (e.isComposing || e.keyCode === 229) return;
+  void confirmRename();
+}
+
 async function confirmRename(): Promise<void> {
   const item = renameItem.value;
   if (!item) return;
@@ -332,7 +342,7 @@ onBeforeUnmount(() => {
           type="text"
           class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           :placeholder="renameItem?.originalName"
-          @keydown.enter="confirmRename"
+          @keydown.enter="onRenameEnter"
         >
         <DialogFooter>
           <Button variant="secondary" @click="renameItem = null">
