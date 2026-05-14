@@ -617,7 +617,9 @@ interface ActiveLLMTask {
   emitter: EventEmitter;
   abort: AbortController;
   donePromise: Promise<void>;
-  // translate-specific live state (used by runTranslateWorker only)
+  // translate-specific live state (used by runTranslateWorker only).
+  // TODO(slice-3): convert ActiveLLMTask to discriminated union by `kind`
+  // once both runTranslateWorker and runInsightWorker are in place.
   doneCues?: Cue[];
   lang?: string;
   model?: string;
@@ -1060,8 +1062,10 @@ class LLMQueue {
 
   /**
    * Returns the canonical insight task row for `(videoSha, uiLanguage)`,
-   * creating one if none exists. Symmetric resurrection contract with
-   * TranslateQueue.ensureTask: error/canceled rows flip back to queued.
+   * creating one if none exists. Mirrors `TranslateQueue.ensureTask`'s
+   * resurrection pattern but uses the insight status vocabulary:
+   * `'error'`/`'canceled'` flip back to `'queued'`. (Translate uses
+   * `'failed'`/`'canceled'` — do not paste that check here.)
    */
   ensureInsightTask(
     videoSha: string,

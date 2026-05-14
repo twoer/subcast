@@ -133,6 +133,11 @@ function migrate(db: Database.Database): void {
   }
 }
 
+/**
+ * Test-only: closes and clears the singleton DB handle. Do not call from
+ * production code — any cached prepared statement held by other modules
+ * will throw `SQLITE_MISUSE` on next use after this runs.
+ */
 export function closeDb(): void {
   if (_db) {
     _db.close();
