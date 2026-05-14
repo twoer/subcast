@@ -140,9 +140,11 @@
     },
     "errors": {
       "disconnected": "与服务的连接已断开。",
-      "FATAL_UNKNOWN": "翻译时出现意外错误，请稍后重试。",
-      "TASK_NOT_FOUND": "此翻译任务已失效，请重新切换语言。",
-      "fallback": "翻译失败，请重试。",
+      "FATAL_UNKNOWN": "出现意外错误，请稍后重试。",
+      "TASK_NOT_FOUND": "任务已失效，请重新触发。",
+      "MODEL_NOT_CONFIGURED": "AI 模型未配置或不可用，请到 设置 → 模型 中安装/选择一个。",
+      "WHISPER_NOT_CONFIGURED": "Whisper 转录组件未就绪，请到 设置 → 模型 中下载语音模型。",
+      "fallback": "操作失败，请重试。",
       "retry": "重试"
     },
     "cancelTranslation": "取消翻译",

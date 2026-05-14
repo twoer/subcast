@@ -408,12 +408,20 @@ class TranscribeQueue {
         emit({ event: 'status', data: { taskId, status: 'canceled' } });
       } else {
         const msg = err instanceof Error ? err.message : String(err);
+        // Distinguish whisper configuration errors from generic failures so
+        // the UI can direct the user to fix the install instead of saying
+        // "unexpected error, retry" — same pattern as the LLM workers.
+        const code =
+          msg.includes('whisper-cli not built') ||
+          msg.includes('Model not downloaded')
+            ? 'WHISPER_NOT_CONFIGURED'
+            : 'FATAL_UNKNOWN';
         db.prepare(
           `UPDATE transcribe_tasks SET status='failed', error_msg = ? WHERE id = ?`,
         ).run(msg, taskId);
         emit({
           event: 'error',
-          data: { taskId, code: 'FATAL_UNKNOWN', msg },
+          data: { taskId, code, msg },
         });
       }
     } finally {

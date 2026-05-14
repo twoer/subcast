@@ -140,9 +140,11 @@
     },
     "errors": {
       "disconnected": "Lost connection to the server.",
-      "FATAL_UNKNOWN": "Translation failed unexpectedly. Please try again.",
-      "TASK_NOT_FOUND": "This translation task has expired. Try switching the language again.",
-      "fallback": "Translation failed. Please try again.",
+      "FATAL_UNKNOWN": "Unexpected error. Please try again.",
+      "TASK_NOT_FOUND": "This task has expired. Please retry.",
+      "MODEL_NOT_CONFIGURED": "No AI model is configured or available. Open Settings → Models to install one.",
+      "WHISPER_NOT_CONFIGURED": "Whisper transcription is not ready. Open Settings → Models to download a voice model.",
+      "fallback": "Operation failed. Please try again.",
       "retry": "Retry"
     },
     "cancelTranslation": "Cancel translation",
