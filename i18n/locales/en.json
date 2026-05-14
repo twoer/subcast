@@ -61,7 +61,9 @@
       "running": "Running",
       "completed": "Completed",
       "failed": "Failed",
-      "canceled": "Canceled"
+      "canceled": "Canceled",
+      "done": "Done",
+      "error": "Error"
     },
     "library": {
       "title": "Recent videos",

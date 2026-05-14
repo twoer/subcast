@@ -61,7 +61,9 @@
       "running": "运行中",
       "completed": "已完成",
       "failed": "失败",
-      "canceled": "已取消"
+      "canceled": "已取消",
+      "done": "已完成",
+      "error": "出错"
     },
     "library": {
       "title": "最近视频",

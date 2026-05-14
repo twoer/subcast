@@ -10,7 +10,7 @@ interface QueueItem {
   id: string;
   videoSha: string;
   videoName: string;
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'canceled';
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'canceled' | 'done' | 'error';
   model: string;
   progressPct: number;
   totalChunks?: number | null;
@@ -329,7 +329,7 @@ function insightLabel(lang: string | undefined): string {
 function fmtKindLabel(item: QueueItem): string {
   const active = item.status === 'queued' || item.status === 'running';
   if (item.kind === 'insight') {
-    const prefix = active ? insightLabel(item.uiLanguage) : t('index.status.completed');
+    const prefix = active ? insightLabel(item.uiLanguage) : t(`index.status.${item.status}`);
     return `${prefix} · ${item.model}`;
   }
   const prefix = item.kind === 'transcribe'
@@ -345,8 +345,10 @@ function statusBadgeClass(s: QueueItem['status']) {
     case 'running':
       return 'bg-primary/10 text-primary border-transparent hover:bg-primary/15';
     case 'completed':
+    case 'done':
       return 'border-success/40 bg-success/10 text-success';
     case 'failed':
+    case 'error':
       return 'border-destructive/40 bg-destructive/10 text-destructive';
     case 'canceled':
       return 'border-border bg-muted text-muted-foreground';
