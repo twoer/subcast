@@ -13,6 +13,7 @@ import { logEvent } from './log';
 import type { Cue } from './vtt';
 import type { ActiveLLMTask } from './queue';
 import type { SseFrame } from './sse';
+import { isLlmConfigError } from '#shared/errorCodes';
 
 export const TEMPS = [0.3, 0.0] as const;
 
@@ -98,11 +99,7 @@ export async function runInsightWorker(
       // direct the user to Settings instead of saying "AI output couldn't
       // be parsed, retry."
       const errMsg = err instanceof Error ? err.message : String(err);
-      if (
-        errMsg.includes('LLM_MODEL_NOT_CONFIGURED') ||
-        errMsg.includes('LLM_BINARY_MISSING') ||
-        errMsg.includes('MODEL_UNUSABLE')
-      ) {
+      if (isLlmConfigError(errMsg)) {
         db.prepare(
           `UPDATE insight_tasks SET status='error', error_msg=?, error_code='MODEL_NOT_CONFIGURED', completed_at=? WHERE id=?`,
         ).run(errMsg, Date.now(), taskId);

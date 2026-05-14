@@ -4,6 +4,7 @@
 import { AlertCircle, Check, Upload, ListVideo, X, Film, FileText, History, ArrowRight } from 'lucide-vue-next';
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip';
 import { getFileStatus } from '~/utils/fileStatus';
+import { isTaskErrorCode } from '#shared/errorCodes';
 
 interface QueueItem {
   kind: 'transcribe' | 'translate' | 'insight';
@@ -21,17 +22,6 @@ interface QueueItem {
   errorMsg?: string | null;
   errorCode?: string | null;
 }
-
-// Known error codes the workers emit. Anything outside this set falls
-// back to showing the raw error_msg (still useful for debugging).
-const KNOWN_ERROR_CODES = new Set([
-  'WHISPER_NOT_CONFIGURED',
-  'MODEL_NOT_CONFIGURED',
-  'ORIGINAL_NOT_READY',
-  'BATCH_RETRY_EXHAUSTED',
-  'PARSE_FAILED',
-  'FATAL_UNKNOWN',
-]);
 
 interface HealthFix {
   id: string;
@@ -346,7 +336,7 @@ function insightLabel(lang: string | undefined): string {
 // when the code is unknown (worker emitted a code we don't have a key
 // for, or the row predates the error_code column).
 function friendlyTaskError(item: QueueItem): string {
-  if (item.errorCode && KNOWN_ERROR_CODES.has(item.errorCode)) {
+  if (isTaskErrorCode(item.errorCode)) {
     return t(`player.errors.${item.errorCode}`);
   }
   return item.errorMsg ?? '';

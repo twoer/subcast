@@ -17,6 +17,7 @@ import type { SseFrame } from './sse';
 import { parseVtt, serializeVtt, type Cue } from './vtt';
 import { buildInsightMessages } from './insights';
 import { runInsightWorker, type InsightWorkerParams } from './insightTasks';
+import { isLlmConfigError, type TaskErrorCode } from '#shared/errorCodes';
 import type {
   ChunkRow,
   InsightTaskRow,
@@ -411,7 +412,7 @@ class TranscribeQueue {
         // Distinguish whisper configuration errors from generic failures so
         // the UI can direct the user to fix the install instead of saying
         // "unexpected error, retry" — same pattern as the LLM workers.
-        const code =
+        const code: TaskErrorCode =
           msg.includes('whisper-cli not built') ||
           msg.includes('Model not downloaded')
             ? 'WHISPER_NOT_CONFIGURED'
@@ -1108,16 +1109,14 @@ class LLMQueue {
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      const code =
+      const code: TaskErrorCode | 'CANCELED' =
         msg === 'CANCELED' || active.abort.signal.aborted
           ? 'CANCELED'
           : msg.startsWith('BATCH_RETRY_EXHAUSTED')
             ? 'BATCH_RETRY_EXHAUSTED'
             : msg === 'ORIGINAL_NOT_READY'
               ? 'ORIGINAL_NOT_READY'
-              : msg.includes('LLM_MODEL_NOT_CONFIGURED') ||
-                  msg.includes('LLM_BINARY_MISSING') ||
-                  msg.includes('MODEL_UNUSABLE')
+              : isLlmConfigError(msg)
                 ? 'MODEL_NOT_CONFIGURED'
                 : 'FATAL_UNKNOWN';
       if (code === 'CANCELED') {
