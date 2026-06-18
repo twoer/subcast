@@ -1,0 +1,573 @@
+{
+  "app": {
+    "title": "Subcast",
+    "lan": "LAN",
+    "settings": "設定",
+    "back": "戻る",
+    "language": "言語",
+    "home": "ホーム",
+    "library": "ライブラリ",
+    "models": "モデル",
+    "modelsActive": "現在使用中の文字起こし & AI モデル",
+    "modelBusy": "タスク実行中 — モデル使用中",
+    "manageModels": "モデルを管理",
+    "modelNotInstalled": "未インストール：{name}",
+    "llmNotInstalled": "AI モデルが未インストールです",
+    "llmLabel": "AI"
+  },
+  "fileStatus": {
+    "transcribing": "文字起こし中 {pct}%",
+    "transcribeQueued": "待機中",
+    "transcribeFailed": "文字起こしに失敗しました",
+    "transcribed": "文字起こし完了",
+    "translating": "翻訳中 {lang} {pct}%",
+    "translateQueued": "翻訳待機中：{lang}",
+    "translateFailed": "翻訳に失敗しました",
+    "translatedCount": "+{n} 翻訳済み",
+    "aiRunning": "AI 要約中",
+    "aiReady": "AI 要約"
+  },
+  "library": {
+    "title": "ライブラリ",
+    "subtitle": "ローカルに保存されたメディアと字幕。クリックでプレーヤーを開く、またはここで削除できます。",
+    "loading": "読み込み中…",
+    "totals": "{count} 件のファイル · {size}",
+    "noSubtitles": "字幕なし",
+    "deleteOne": "削除",
+    "deleteOneTitle": "このファイルを削除しますか？",
+    "deleteOneDesc": "「{name}」とそのキャッシュ字幕が削除されます。この操作は取り消せません。",
+    "clearAll": "すべて削除",
+    "clearAllTitle": "すべてのキャッシュを削除しますか？",
+    "clearAllDesc": "キャッシュされたすべてのメディアファイルと字幕が削除されます。この操作は取り消せません。",
+    "cancel": "キャンセル",
+    "confirm": "削除",
+    "rename": "名前を変更",
+    "renameDesc": "空のままにすると元のファイル名に戻ります。",
+    "renameConfirm": "保存",
+    "empty": {
+      "title": "ライブラリは空です",
+      "description": "ホームページにメディアファイルをドラッグするとここに表示されます。"
+    }
+  },
+  "index": {
+    "drop": "1 つまたは複数の動画 / 音声ファイルをドロップ（単一ファイルなら .srt/.vtt/.ass 字幕も同梱可）または",
+    "choose": "ファイルを選択",
+    "uploading": "アップロード中…",
+    "queue": "タスクキュー",
+    "queueMeta": "{active} 実行中 / {total} 最近",
+    "queueEmpty": "タスクはありません",
+    "queueLoading": "読み込み中…",
+    "cancel": "キャンセル",
+    "cancelTaskTitle": "このタスクをキャンセルしますか？",
+    "cancelTaskDesc": "「{name}」の現在のタスクを停止します。完了済みのデータは可能な限り保持されます。",
+    "cancelTaskConfirm": "キャンセルする",
+    "chunkTooltip": "{total} 個の音声チャンク（各 ≤30 秒、音楽 / 無音は VAD で除外済み）",
+    "transcribing": "文字起こし中",
+    "translating": "翻訳中",
+    "kindTranscribe": "文字起こし",
+    "kindTranslate": "翻訳",
+    "kindInsightZh": "AI 要約（中国語）",
+    "kindInsightEn": "AI 要約（英語）",
+    "kindDiarize": "話者識別",
+    "noVideo": "ドロップされた中に動画 / 音声ファイルがありません",
+    "status": {
+      "queued": "待機中",
+      "running": "実行中",
+      "completed": "完了",
+      "failed": "失敗",
+      "canceled": "キャンセル済み",
+      "done": "完了",
+      "error": "エラー"
+    },
+    "library": {
+      "title": "最近のファイル",
+      "noSubs": "字幕なし",
+      "viewAll": "設定ですべて表示",
+      "more": "もっと見る",
+      "rename": "名前を変更",
+      "renameDesc": "空のままにすると元のファイル名に戻ります。",
+      "renameConfirm": "保存",
+      "cancel": "キャンセル",
+      "justNow": "たった今",
+      "minutesAgo": "{n} 分前",
+      "hoursAgo": "{n} 時間前",
+      "daysAgo": "{n} 日前"
+    }
+  },
+  "health": {
+    "missing": "必要な依存が不足しています",
+    "recheck": "再チェック",
+    "copy": "コピー",
+    "copied": "コピーしました"
+  },
+  "companion": {
+    "title": "付随字幕を検出しました",
+    "body": "メディアファイルの横に字幕ファイルが見つかりました：",
+    "useExisting": "既存の字幕を使用",
+    "ignore": "無視して再度文字起こし"
+  },
+  "player": {
+    "subtitles": "字幕",
+    "indexTitle": "字幕インデックス",
+    "indexSubtitle": "検索・移動・校正用 · メイン画面の字幕の代替ではありません",
+    "meta": {
+      "transcribing": "文字起こし中",
+      "transcribed": "文字起こし完了",
+      "translating": "翻訳中",
+      "translated": "翻訳完了",
+      "failed": "失敗"
+    },
+    "retranscribe": {
+      "button": "再文字起こし",
+      "title": "このファイルを再文字起こししますか？",
+      "desc": "元の字幕・{n} 件の翻訳・AI 要約をクリアし、現在の Whisper モデルで文字起こしをやり直します。この操作は取り消せません。",
+      "confirm": "再文字起こし"
+    },
+    "original": "原音声",
+    "cues": "{n} 件",
+    "suspect": "{n} 件の疑わしい字幕",
+    "suspectTitle": "Whisper がこれらのチャンクを低信頼度と判定しました",
+    "suspectCueTitle": "文字起こしの品質に問題がある可能性があります（2 回再試行済み）",
+    "noAudio": "── 無音 {n}s ──",
+    "firstCueDelay": "文字起こし中…最初の字幕は 30〜60 秒後に表示されます",
+    "translatingShort": "翻訳中…",
+    "shortcuts": "キーボードショートカット",
+    "subtitleStyle": "字幕スタイル",
+    "fontSize": "文字サイズ",
+    "color": "色",
+    "customColor": "カスタム色",
+    "bgOpacity": "背景の透明度",
+    "reset": "既定に戻す",
+    "translateProgress": "翻訳中 {pct}%",
+    "translateRetrying": "分割して再試行中",
+    "cache": "キャッシュ",
+    "status": {
+      "idle": "待機",
+      "running": "実行中",
+      "done": "完了",
+      "error": "エラー"
+    },
+    "shortcutDescriptions": {
+      "playPause": "再生 / 一時停止",
+      "seek5": "5 秒戻る / 進む",
+      "seek10": "10 秒戻る / 進む（YouTube 風）",
+      "volume": "音量 ±10%",
+      "speed": "再生速度 ±1 段階",
+      "mute": "ミュート切り替え",
+      "fullscreen": "全画面切り替え",
+      "subs": "字幕の表示切り替え",
+      "jumpPct": "再生位置を 10%〜90% にジャンプ",
+      "help": "このヘルプを表示",
+      "esc": "ダイアログを閉じる"
+    },
+    "errors": {
+      "disconnected": "サーバーとの接続が切れました。",
+      "FATAL_UNKNOWN": "予期しないエラーが発生しました。後ほどお試しください。",
+      "TASK_NOT_FOUND": "タスクの有効期限が切れました。再度実行してください。",
+      "MODEL_NOT_CONFIGURED": "AI モデルが設定されていないか利用できません。設定 → モデル からインストール / 選択してください。",
+      "WHISPER_NOT_CONFIGURED": "Whisper 文字起こしの準備ができていません。設定 → モデル から音声モデルをダウンロードしてください。",
+      "CANCELED": "タスクがキャンセルされました。",
+      "ORIGINAL_NOT_READY": "原文の文字起こしがまだ準備できていません。先に文字起こしを完了してください。",
+      "BATCH_RETRY_EXHAUSTED": "翻訳を複数回再試行しましたが失敗しました。後ほど試すか、モデルを切り替えてください。",
+      "PARSE_FAILED": "AI の出力を解析できませんでした。再度お試しください。",
+      "fallback": "操作に失敗しました。再度お試しください。",
+      "retry": "再試行"
+    },
+    "cancelTranslation": "翻訳をキャンセル",
+    "cancelTranslationTitle": "現在の翻訳をキャンセルしますか？",
+    "cancelTranslationDesc": "翻訳済みの字幕は保持されます。次回この言語に切り替えたときに続きから翻訳できます。",
+    "cancelTranslationConfirm": "翻訳を停止",
+    "cancel": "キャンセル",
+    "export": {
+      "title": "字幕をエクスポート",
+      "languages": "言語",
+      "format": "形式",
+      "download": "ダウンロード",
+      "includeSpeakers": "話者ラベルを含める（識別済みの場合）",
+      "hintAtLeastOne": "少なくとも 1 つの言語を選択してください。",
+      "hintExactly2": "バイリンガル字幕には言語を 2 つ選択してください。"
+    },
+    "search": {
+      "placeholder": "字幕を検索...",
+      "next": "次の一致",
+      "prev": "前の一致",
+      "clear": "検索をクリア"
+    },
+    "diarize": {
+      "viewToggle": {
+        "aria": "字幕表示",
+        "list": "リスト表示",
+        "grouped": "話者別表示"
+      },
+      "unknownSpeaker": "不明",
+      "speakerDefault": "話者 {letter}",
+      "singleSpeakerBadge": "単独話者",
+      "diarizing": "話者を識別中…",
+      "failed": "話者識別に失敗しました",
+      "renamePlaceholder": "話者 {letter}",
+      "renameDialogTitle": "{current} の名前を変更",
+      "renameDialogDesc": "空のままにすると既定の名前に戻ります。",
+      "renameCancel": "キャンセル",
+      "renameConfirm": "保存",
+      "clickToRename": "クリックして名前を変更",
+      "headerMenu": "話者オプション",
+      "rename": "名前を変更",
+      "changeTopK": "話者数を変更",
+      "topKOption": "{k} 名の話者",
+      "unknownWarning": "{percent}（{duration}）の内容を話者に確信を持って割り当てられませんでした。",
+      "unknownDurationShort": "{s} 秒",
+      "unknownDurationLong": "{m} 分 {s} 秒",
+      "tryMoreSpeakers": "{k} 名で試す",
+      "runButton": "話者を識別",
+      "retryButton": "識別を再試行",
+      "runHint": "この動画の話者を識別します（ローカル実行、1 時間あたり約 5〜7 分）",
+      "singleSpeakerHint": "話者は 1 名のみです — グループ化は不要です。",
+      "doneBadge": "{n} 名の話者",
+      "doneHint": "話者識別が完了しました。字幕パネル右上でリスト / 話者表示を切り替えできます。"
+    },
+    "insights": {
+      "tabLabel": "AI 要約",
+      "emptyTitle": "AI 要約",
+      "emptyHint": "文字起こしから要約と章を生成します",
+      "feature1": "全体要約 + 3〜5 件の要点",
+      "feature2": "3〜8 個のクリック可能な章マーカー",
+      "feature3": "完全ローカル · プライバシー優先",
+      "estimate": "{model} · 約 30〜60 秒",
+      "waitForTranscript": "文字起こし完了後に生成できます",
+      "generate": "AI 要約を生成",
+      "generating": "生成中...",
+      "generatingReading": "文字起こしを読み込み中...",
+      "generatingSummary": "要約を生成中...",
+      "generatingChapters": "章を生成中...",
+      "cancel": "キャンセル",
+      "regenerate": "再生成",
+      "copy": "コピー",
+      "copied": "コピーしました",
+      "retry": "もう一度試す",
+      "clear": "クリア",
+      "clearTitle": "AI 要約をクリアしますか？",
+      "clearDesc": "キャッシュされた要約と章が削除されます。後で再生成できます。この操作は取り消せません。",
+      "clearConfirm": "クリア",
+      "summarySection": "全体要約",
+      "chaptersSection": "章",
+      "outdatedHint": "要約は変更された設定で生成されたものです（モデルまたは文字起こしが変更されています）。",
+      "langMismatch": "この AI 要約は{lang}で生成されました。",
+      "regenerateInLang": "{lang}で再生成",
+      "langZh": "中国語",
+      "langEn": "英語",
+      "errors": {
+        "VIDEO_TOO_LONG": "メディアが長すぎるため、現在のモデルでは AI 要約を生成できません。",
+        "PARSE_FAILED": "AI の出力を解析できませんでした。再度お試しください。",
+        "MODEL_NOT_CONFIGURED": "AI モデルが設定されていないか利用できません。設定 → モデル からインストール / 選択してください。",
+        "NETWORK": "生成中にネットワーク接続が切れました。",
+        "fallback": "生成に失敗しました。再度お試しください。"
+      }
+    }
+  },
+  "batch": {
+    "defaultName": "バッチ処理 · {count} 件のファイル",
+    "uploadProgress": "アップロード {done}/{total}",
+    "summary": "{done} 完了 · {failed} 失敗 · 合計 {total}",
+    "retryFailed": "失敗した項目を再試行",
+    "create": {
+      "title": "{count} 件のファイルをバッチ処理",
+      "desc": "プリセットを選んで開始できます。結果はライブラリに保存されます。",
+      "targetLangs": "翻訳言語",
+      "noTranslate": "このプリセットには翻訳が含まれていません。言語選択は不要です。",
+      "previewTitle": "バッチ計画",
+      "allReadyTitle": "処理する項目はありません",
+      "previewLoading": "既存の結果を確認中…",
+      "uploadOnStart": "開始すると {count} 件のファイルがインポートされ、バッチタスクが作成されます。",
+      "readyToCreate": "{count} 件のファイルでバッチタスクを作成します。",
+      "partialReady": "{ready} 件のファイルは再利用可能な結果があります；{queued} 件のファイルがバッチに追加されます。",
+      "libraryReused": "{library} 件のファイルは既にライブラリにあります；{queued} 件のファイルがバッチに追加されます。",
+      "libraryAndPartialReady": "{library} 件のファイルは既にライブラリにあります；{ready} 件のファイルには必要な結果があります；{queued} 件のファイルがバッチに追加されます。",
+      "allReady": "選択した {count} 件のファイルには必要な結果がすべて揃っているため、バッチタスクは不要です。",
+      "noWork": "処理する項目はありません",
+      "start": "バッチ処理を開始"
+    },
+    "presets": {
+      "transcribe": "文字起こしのみ",
+      "transcribe_translate": "文字起こし+翻訳",
+      "transcribe_insights": "文字起こし+要約",
+      "transcribe_translate_insights": "文字起こし+翻訳+要約",
+      "full": "すべてのステップ"
+    },
+    "presetDescriptions": {
+      "transcribe": "実行内容：文字起こし。",
+      "transcribe_translate": "実行内容：文字起こし、翻訳。",
+      "transcribe_insights": "実行内容：文字起こし、AI 要約。",
+      "transcribe_translate_insights": "実行内容：文字起こし、翻訳、AI 要約。",
+      "full": "実行内容：文字起こし、翻訳、AI 要約、話者識別。"
+    },
+    "errors": {
+      "allUploadsFailed": "すべてのファイルのアップロードに失敗しました。再度お試しください。",
+      "partialStageFailed": "{count} 件のファイルの事前チェックに失敗しました。残りのファイルはバッチタスクを作成できます。",
+      "partialUploadFailed": "{count} 件のファイルのアップロードに失敗しました。残りのファイルでバッチタスクを作成しました。"
+    },
+    "info": {
+      "reused": "{reused} 件のファイルは既にライブラリにあり、既存の結果を再利用します；{queued} 件のファイルがバッチタスクに追加されました。",
+      "allReady": "選択した {count} 件のファイルには必要な結果がすべて揃っているため、バッチタスクは作成されませんでした。"
+    }
+  },
+  "common": {
+    "cancel": "キャンセル"
+  },
+  "settings": {
+    "title": "設定",
+    "subtitle": "ユーザー設定とローカルキャッシュの管理。",
+    "tabs": {
+      "overview": "概要",
+      "preferences": "環境設定",
+      "models": "モデル"
+    },
+    "models": {
+      "activeTitle": "現在使用中のモデル",
+      "notInstalledWarn": "{name} は完全にインストールされていないため、文字起こしは失敗します。「もっとダウンロード」をクリックするか、下のリストからインストール済みのモデルに切り替えてください。",
+      "whisper": "Whisper 文字起こしモデル",
+      "llm": "AI モデル (Qwen 2.5)",
+      "size": "{size}",
+      "active": "使用中",
+      "activeFile": "使用中：{name}",
+      "notConfigured": "未設定 — セットアップウィザードから AI モデルを設定してください。",
+      "switch": "切り替え",
+      "delete": "削除",
+      "downloadMore": "もっとダウンロード",
+      "loading": "読み込み中…",
+      "empty": "インストール済みモデルがありません。右上からダウンロードしてください",
+      "emptyLlm": "インストール済みの AI モデルがありません。右上からダウンロードしてください",
+      "refresh": "更新",
+      "deleteTitle": "このモデルを削除しますか？",
+      "deleteDesc": "「{name}」（{size}）がこの端末から削除されます。次回使用時に再ダウンロードが必要です。",
+      "cancel": "キャンセル",
+      "confirm": "削除",
+      "switchFailed": "切り替えに失敗しました：{error}",
+      "deleteFailed": "削除に失敗しました：{error}"
+    },
+    "hardware": "ハードウェア",
+    "tier": "ティア",
+    "ram": "メモリ",
+    "cpu": "CPU",
+    "gpu": "GPU",
+    "platform": "プラットフォーム",
+    "recommended": "推奨",
+    "applyRecommended": "推奨設定を下書きに適用",
+    "preferences": "環境設定",
+    "section": "環境設定",
+    "whisperModel": "Whisper モデル",
+    "whisperHint": "大きいほど精度が高く、遅くなります。変更は新しい文字起こしタスクに適用されます。",
+    "llmModel": "AI モデル",
+    "llmHint": "プロセス内 llama-server が提供するローカル Qwen 2.5 量子化モデル。推奨：{model}。",
+    "cacheLimit": "キャッシュサイズ上限",
+    "silenceThreshold": "無音しきい値",
+    "chunkingStrategy": {
+      "title": "音声分割方式",
+      "hint": "Subcast が文字起こしに渡す前に音声をどう分割するか。",
+      "vad": "発話を自動検出（推奨）",
+      "vadHint": "Silero VAD で音楽 / 無音区間をスキップ。ハルシネーションが減り、長い動画では高速化されます。",
+      "fixed": "30 秒固定分割",
+      "fixedHint": "内容に関係なく 30 秒ごとに分割します。お使いの環境で自動検出が失敗する場合のみ選択してください。"
+    },
+    "silenceHint": "字幕間隔がこの長さ以上になるとリストに「── 無音 ──」区切りが挿入されます。",
+    "cueFontSize": "字幕リストの文字サイズ",
+    "cueFontSizeHint": "字幕リストパネルのみに影響します。プレーヤー内の字幕スタイルはプレーヤー側で個別設定します。",
+    "debugTitle": "デバッグモード",
+    "debugDescription": "JSONL ログに元のパスとファイル名を保持します。",
+    "debugMode": "デバッグモード（JSONL ログに元のパス / ファイル名を保持）",
+    "save": "保存",
+    "saved": "保存しました",
+    "saving": "保存中…",
+    "resetDraft": "取り消し",
+    "lastSaved": "最終保存 {time}",
+    "loading": "ハードウェア情報を読み込み中…",
+    "tierLabels": {
+      "entry": "エントリー",
+      "standard": "スタンダード",
+      "recommended": "推奨",
+      "high": "ハイエンド"
+    },
+    "cache": {
+      "title": "キャッシュ",
+      "totals": "{count} 件のファイル · {size}",
+      "noVideos": "キャッシュはありません",
+      "noVideosDesc": "ホームページにメディアファイルをドラッグするとここに表示されます。",
+      "noSubtitles": "字幕なし",
+      "deleteOne": "削除",
+      "deleteOneTitle": "このファイルを削除しますか？",
+      "deleteOneDesc": "「{name}」とそのキャッシュ字幕が削除されます。この操作は取り消せません。",
+      "clearAll": "すべて削除",
+      "clearAllTitle": "すべてのキャッシュを削除しますか？",
+      "clearAllDesc": "キャッシュされたすべてのメディアファイルと字幕が削除されます。この操作は取り消せません。",
+      "cancel": "キャンセル",
+      "confirm": "削除"
+    },
+    "diagnostic": {
+      "title": "診断パッケージ",
+      "body": "サニタイズ済みの JSONL ログ（過去 7 日）、設定、ハードウェア情報、インストール済みモデルを含む ZIP をエクスポートします。メディア内容や字幕テキストは含まれません。",
+      "export": "ZIP をエクスポート"
+    },
+    "logViewer": {
+      "title": "ログビューア",
+      "body": "最近の構造化イベント。デバッグモードがオフの場合、path / name フィールドはハッシュ化されます。",
+      "selectFile": "日付",
+      "tailLabel": "行数",
+      "refresh": "更新",
+      "noFiles": "ログファイルがありません — 最初の文字起こしなどのイベント後にここに表示されます。",
+      "loading": "読み込み中…",
+      "loadFailed": "ログの読み込みに失敗しました",
+      "showing": "最近の {count} / {total} 行を表示中",
+      "truncatedNote": "さらに古い行があります。行数を増やすか、完全な ZIP をエクスポートしてください。",
+      "writerUnhealthy": "ログ書き込みが継続的に失敗しています — 最近のイベントがディスクに保存されていない可能性があります。"
+    }
+  },
+  "help": {
+    "title": "ヘルプ",
+    "subtitle": "使い方、バージョン情報、更新履歴。",
+    "tabs": {
+      "help": "ヘルプ",
+      "about": "概要",
+      "changelog": "更新履歴"
+    },
+    "changelog": {
+      "title": "更新履歴",
+      "body": "最近のバージョンでの重要な変更。コミット全履歴はリポジトリを参照してください。",
+      "v040": {
+        "multiLocale": "UI に繁体字中国語、日本語、スペイン語を追加（既存の簡体字中国語 / 英語は継続提供）。言語切り替えは 2 択トグルから複数言語対応のドロップダウンに刷新し、ボタンには各言語のネイティブ文字を表示します。",
+        "windowPause": "デスクトップウィンドウが非表示 / 最小化されたときに再生を自動的に一時停止し、バックグラウンドで音が鳴り続けないようにします。",
+        "playerToolbar": "プレーヤーのツールバーは操作ボタンのみを保持し、キャッシュ / 文字起こし / 翻訳の進捗などの情報は動画名の下のステータス行に移動しました。右側パネルは「字幕」から「インデックス」に名称変更し、検索 / 校正用であることを明確にしました。",
+        "polish": "短い動画の波形再生進捗がよりスムーズに；バッチステージングとキャッシュクリアの処理がより安定しました。"
+      },
+      "v039": {
+        "batch": "バッチ処理を追加：複数の音声 / 動画ファイルを一度に選択し、設定後に自動的にキュー実行します。",
+        "workflow": "文字起こし、翻訳、AI 要約、話者識別を組み合わせ可能なバッチプリセットを追加。",
+        "queue": "タスクキューにバッチ進捗カードを追加し、全体進捗、失敗数の確認と失敗項目の再試行が可能になりました。"
+      },
+      "v037": {
+        "diarize": "文字起こし後に話者識別を実行し、字幕表示に話者ラベルを付けられるようになりました。",
+        "speakerUi": "話者ラベル、グループ化字幕表示、話者名変更機能を追加。インタビュー、ポッドキャスト、会議に最適です。",
+        "packaging": "macOS パッケージ環境での話者識別のネイティブ依存読み込みの問題を修正しました。"
+      },
+      "v035": {
+        "downloads": "モデルダウンロードの信頼性を向上し、初回設定時にネットワーク不安定で失敗するケースを削減。",
+        "mirrors": "Hugging Face とミラーホストの間で自動的に速度テストと選択を行います。",
+        "resume": "レジューム機能とキャンセル後の復帰を強化し、大規模モデルダウンロードを最初からやり直さないようにしました。"
+      },
+      "v030": {
+        "llama": "AI エンジンを Ollama から同梱の llama.cpp/llama-server に切り替え、外部ランタイムへの依存を削減。",
+        "localAi": "翻訳と AI 要約を Subcast 管理のローカル LLM モデルに移行し、設定経路を統一しました。",
+        "settings": "設定にモデル管理機能を追加し、ローカルモデルの表示、切り替え、ダウンロード、削除が可能になりました。"
+      },
+      "v020": {
+        "macApp": "初の macOS デスクトップアプリ体験を追加。",
+        "packaging": "文字起こしサイドカーと実行リソースを同梱し、ローカルサーバー設定の手間を削減。",
+        "diagnostics": "診断エクスポート、トレイ統合、基本的なデスクトップメニューを追加し、テストと問題報告を容易にしました。"
+      },
+      "v010": {
+        "web": "初版リリース、ローカル実行の Web アプリのみ対応。",
+        "transcribe": "ローカル音声 / 動画のインポートと Whisper による文字起こしに対応。",
+        "translate": "文字起こし結果から翻訳字幕を生成し、コアワークフローを検証。"
+      }
+    }
+  },
+  "desktop": {
+    "setupCheck": {
+      "checking": "セットアップを確認中…",
+      "retry": "再試行",
+      "probeFailed": "セットアップステータスの確認に失敗しました"
+    },
+    "setupWizard": {
+      "welcome": "初回セットアップ",
+      "manageTitle": "モデルを管理",
+      "stepLabel1": "Whisper",
+      "stepLabel2": "AI モデル",
+      "subtitleStep1": "文字起こしモデル (Whisper) を選択",
+      "subtitleStep2": "AI モデル（翻訳 & 要約）を選択",
+      "recommended": "推奨",
+      "foundAt": "既存のファイルが見つかりました：",
+      "scanFound": "{source} で見つかりました",
+      "actionSymlink": "シンボリックリンク（追加の容量を使いません）",
+      "actionCopy": "Subcast データディレクトリにコピー",
+      "actionIgnore": "無視して新規ダウンロード",
+      "mirrorToggle": "{host} を強制使用（自動検出をスキップ）",
+      "mirrorAutoNote": "自動検出：huggingface.co と hf-mirror.com を 4 秒間並行プローブし、より高速な方からダウンロードします。両方失敗した場合は自動的に hf-mirror.com にフォールバックします。",
+      "downloading": "ダウンロード中",
+      "linking": "リンク作成中",
+      "copying": "コピー中",
+      "installFailed": "インストールに失敗しました：{error}",
+      "installStartFailed": "インストールを開始できませんでした",
+      "pollFailed": "インストール状態の更新が停止しました。接続を確認して再試行してください。",
+      "installCanceled": "ダウンロードがキャンセルされました。モデルを選んで再度「ダウンロード」をクリックすると続行できます。",
+      "skip": "セットアップをスキップ",
+      "back": "戻る",
+      "next": "次へ",
+      "finish": "完了",
+      "linkExisting": "既存ファイルへのシンボリックリンク",
+      "copyExisting": "既存ファイルをコピー",
+      "download": "ダウンロード",
+      "cancel": "キャンセル",
+      "remainingSecs": "残り {n} 秒",
+      "remainingMins": "残り {m} 分 {s} 秒",
+      "perSecond": "/秒",
+      "checkingEvery5s": "5 秒ごとに自動チェックします — このウィンドウを開いたままにしてください。",
+      "installedAt": "{name} のインストール先："
+    },
+    "llm": {
+      "selectModel": "AI モデルを選択",
+      "alreadyInstalled": "インストール済み",
+      "foundIn": "{source} で見つかりました",
+      "lowMemoryWarning": "この端末のメモリは 8 GB 未満です。AI モデルを実行するとシステム応答が遅くなる可能性があります。このステップをスキップして、後で設定から AI 機能を構成できます。",
+      "installing": "{name} をダウンロード中…",
+      "ready": "{name} の準備が完了しました",
+      "installFailed": "ダウンロードに失敗しました：{error}"
+    },
+    "home": {
+      "setupIncomplete": "初回セットアップが未完了：",
+      "openSetupWizard": "セットアップウィザードを開く",
+      "gapWhisper": "文字起こしモデル",
+      "gapLlm": "AI モデル",
+      "openFileFailed": "ファイルを開けませんでした"
+    },
+    "about": {
+      "subtitle": "無料 · オフライン · LLM — 音声 / 動画の文字起こしと翻訳",
+      "fullyLocal": "100% ローカル実行 · データ外部送信ゼロ",
+      "versionLabel": "現在のバージョン",
+      "privacyLabel": "プライバシーモード",
+      "licenseLabel": "ライセンス",
+      "depsHeader": "以下のオープンソースコンポーネントを使用",
+      "licenseLine": "© 2026 twoer ·",
+      "buttons": {
+        "repository": "リポジトリ",
+        "license": "ライセンス",
+        "reportIssue": "問題を報告"
+      }
+    },
+    "help": {
+      "title": "ヘルプ",
+      "introBody": "初回インストール時のよくある問題と、問題発生時の確認場所のクイックリファレンス。詳細なドキュメントはリポジトリの README にあります。",
+      "diagnostics": {
+        "title": "診断をエクスポート",
+        "body": "Help → Export Diagnostics…（トレイメニューにもあります）で、過去 7 日間の構造化ログと system.json を ZIP にまとめます。メディア内容、字幕テキスト、ファイル名は含まれません — issue 報告時に添付してください。",
+        "export": "ZIP をエクスポート"
+      },
+      "updates": {
+        "title": "更新",
+        "windowsBody": "Windows ではバックグラウンドで差分パッケージを自動ダウンロードし、次回起動時に自動適用します。",
+        "macBody": "macOS は手動：Help → Check for Updates… でブラウザにリリースページを開き、自分でダウンロードして Applications 内の .app を置き換えてください。"
+      },
+      "faq": {
+        "title": "よくある質問",
+        "mirrorTitle": "Whisper のダウンロードが遅い",
+        "mirrorBody": "既定では huggingface.co と hf-mirror.com を 4 秒間並行テストし、速い方からダウンロードします。両方失敗した場合は自動的に hf-mirror.com にフォールバックするため、通常は手動切り替え不要です。それでも遅い場合は Step 1 で「hf-mirror.com を強制使用」にチェックを入れて速度テストをスキップしてください。ダウンロード済みのバイトは再開され、最初からやり直す必要はありません。",
+        "macGatekeeperTitle": "macOS 15+ で Subcast の起動がブロックされる",
+        "macGatekeeperBody": "システム設定 → プライバシーとセキュリティ → 一番下までスクロールして「このまま開く」ボタンを探してください。",
+        "zombieTitle": "クラッシュ後に翻訳が続行されない",
+        "zombieBody": "翻訳は「前回未完了」とマークされ、こっそりモデルを再呼び出ししてリソースを浪費しないようにしています。ホームで「再試行」をクリックしてください。"
+      },
+      "links": {
+        "docs": "ドキュメントを見る",
+        "repository": "リポジトリ",
+        "reportIssue": "問題を報告"
+      }
+    }
+  }
+}

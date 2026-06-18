@@ -1,0 +1,573 @@
+{
+  "app": {
+    "title": "Subcast",
+    "lan": "局域网",
+    "settings": "设置",
+    "back": "返回",
+    "language": "语言",
+    "home": "首页",
+    "library": "资源库",
+    "models": "模型",
+    "modelsActive": "当前激活的转录与 AI 模型",
+    "modelBusy": "正在执行任务，模型使用中",
+    "manageModels": "管理模型",
+    "modelNotInstalled": "未安装：{name}",
+    "llmNotInstalled": "AI 模型未安装",
+    "llmLabel": "AI 模型"
+  },
+  "fileStatus": {
+    "transcribing": "转写中 {pct}%",
+    "transcribeQueued": "排队中",
+    "transcribeFailed": "转写失败",
+    "transcribed": "已转写",
+    "translating": "翻译 {lang} {pct}%",
+    "translateQueued": "排队翻译 {lang}",
+    "translateFailed": "翻译失败",
+    "translatedCount": "+{n} 译文",
+    "aiRunning": "AI 总结中",
+    "aiReady": "AI 总结"
+  },
+  "library": {
+    "title": "资源库",
+    "subtitle": "已下载到本机的媒体与字幕，可点击播放或在此删除。",
+    "loading": "加载中…",
+    "totals": "{count} 个文件 · {size}",
+    "noSubtitles": "无字幕",
+    "deleteOne": "删除",
+    "deleteOneTitle": "删除该文件？",
+    "deleteOneDesc": "「{name}」及其缓存字幕将被删除，此操作不可撤销。",
+    "clearAll": "全部清除",
+    "clearAllTitle": "清除所有缓存？",
+    "clearAllDesc": "将删除所有缓存媒体与字幕文件。此操作不可撤销。",
+    "cancel": "取消",
+    "confirm": "删除",
+    "rename": "重命名",
+    "renameDesc": "留空则恢复原始文件名。",
+    "renameConfirm": "保存",
+    "empty": {
+      "title": "资源库为空",
+      "description": "在首页拖入媒体文件后会出现在这里。"
+    }
+  },
+  "index": {
+    "drop": "拖入一个或多个视频/音频文件（单个文件可附带 .srt/.vtt/.ass 字幕），或",
+    "choose": "选择文件",
+    "uploading": "上传中…",
+    "queue": "任务队列",
+    "queueMeta": "{active} 进行中 / {total} 最近",
+    "queueEmpty": "暂无任务",
+    "queueLoading": "加载中…",
+    "cancel": "取消",
+    "cancelTaskTitle": "取消该任务？",
+    "cancelTaskDesc": "「{name}」的当前任务将停止，已完成的数据会尽量保留。",
+    "cancelTaskConfirm": "确认取消",
+    "chunkTooltip": "{total} 个语音片段（每段 ≤30 秒，音乐/静音已被 VAD 过滤）",
+    "transcribing": "转写中",
+    "translating": "翻译中",
+    "kindTranscribe": "转写",
+    "kindTranslate": "翻译",
+    "kindInsightZh": "AI 总结 (中文)",
+    "kindInsightEn": "AI 总结 (英文)",
+    "kindDiarize": "说话人识别",
+    "noVideo": "拖入的内容里没有视频或音频文件",
+    "status": {
+      "queued": "排队中",
+      "running": "运行中",
+      "completed": "已完成",
+      "failed": "失败",
+      "canceled": "已取消",
+      "done": "已完成",
+      "error": "出错"
+    },
+    "library": {
+      "title": "最近文件",
+      "noSubs": "无字幕",
+      "viewAll": "在设置中查看全部",
+      "more": "更多",
+      "rename": "重命名",
+      "renameDesc": "留空则恢复原始文件名。",
+      "renameConfirm": "保存",
+      "cancel": "取消",
+      "justNow": "刚刚",
+      "minutesAgo": "{n} 分钟前",
+      "hoursAgo": "{n} 小时前",
+      "daysAgo": "{n} 天前"
+    }
+  },
+  "health": {
+    "missing": "缺少必要的依赖",
+    "recheck": "重新检测",
+    "copy": "复制",
+    "copied": "已复制"
+  },
+  "companion": {
+    "title": "伴生字幕检测",
+    "body": "在媒体文件旁发现字幕文件：",
+    "useExisting": "使用现有字幕",
+    "ignore": "忽略并重新转写"
+  },
+  "player": {
+    "subtitles": "字幕",
+    "indexTitle": "字幕索引",
+    "indexSubtitle": "用于搜索、定位和校对 · 不替代主画面字幕",
+    "meta": {
+      "transcribing": "转写中",
+      "transcribed": "转写完成",
+      "translating": "翻译中",
+      "translated": "翻译完成",
+      "failed": "失败"
+    },
+    "retranscribe": {
+      "button": "重新转写",
+      "title": "重新转写？",
+      "desc": "将清空原始字幕、{n} 条翻译以及 AI 总结，并使用当前 Whisper 模型重新转写。此操作不可撤销。",
+      "confirm": "重新转写"
+    },
+    "original": "原始音轨",
+    "cues": "{n} 条",
+    "suspect": "{n} 条可疑",
+    "suspectTitle": "Whisper 把这些 chunk 标记为低置信度",
+    "suspectCueTitle": "转写质量可能异常（已重试 2 次）",
+    "noAudio": "── 无语音 {n}s ──",
+    "firstCueDelay": "转写中…首条字幕约 30-60s 后出现",
+    "translatingShort": "翻译中…",
+    "shortcuts": "键盘快捷键",
+    "subtitleStyle": "字幕样式",
+    "fontSize": "字号",
+    "color": "颜色",
+    "customColor": "自定义颜色",
+    "bgOpacity": "背景透明度",
+    "reset": "恢复默认",
+    "translateProgress": "翻译中 {pct}%",
+    "translateRetrying": "正在拆分重试",
+    "cache": "缓存",
+    "status": {
+      "idle": "空闲",
+      "running": "运行中",
+      "done": "完成",
+      "error": "错误"
+    },
+    "shortcutDescriptions": {
+      "playPause": "播放 / 暂停",
+      "seek5": "后退 / 前进 5 秒",
+      "seek10": "后退 / 前进 10 秒（YouTube 风格）",
+      "volume": "音量 ± 10%",
+      "speed": "倍速 ± 一档",
+      "mute": "静音切换",
+      "fullscreen": "全屏切换",
+      "subs": "字幕开关",
+      "jumpPct": "跳转 10%-90% 进度",
+      "help": "显示此帮助",
+      "esc": "关闭对话框"
+    },
+    "errors": {
+      "disconnected": "与服务的连接已断开。",
+      "FATAL_UNKNOWN": "出现意外错误，请稍后重试。",
+      "TASK_NOT_FOUND": "任务已失效，请重新触发。",
+      "MODEL_NOT_CONFIGURED": "AI 模型未配置或不可用，请到 设置 → 模型 中安装/选择一个。",
+      "WHISPER_NOT_CONFIGURED": "Whisper 转录组件未就绪，请到 设置 → 模型 中下载语音模型。",
+      "CANCELED": "任务已取消。",
+      "ORIGINAL_NOT_READY": "原文转写还未就绪，请先完成转写。",
+      "BATCH_RETRY_EXHAUSTED": "翻译重试多次仍失败，请稍后重试或更换模型。",
+      "PARSE_FAILED": "AI 输出无法解析，请重试。",
+      "fallback": "操作失败，请重试。",
+      "retry": "重试"
+    },
+    "cancelTranslation": "取消翻译",
+    "cancelTranslationTitle": "取消当前翻译？",
+    "cancelTranslationDesc": "已完成的字幕会保留，下次切换到该语言可以继续翻译。",
+    "cancelTranslationConfirm": "停止翻译",
+    "cancel": "取消",
+    "export": {
+      "title": "导出字幕",
+      "languages": "语言",
+      "format": "格式",
+      "download": "下载",
+      "includeSpeakers": "包含说话人标签（已识别时）",
+      "hintAtLeastOne": "至少选择一种语言。",
+      "hintExactly2": "双语字幕需要恰好选 2 种语言。"
+    },
+    "search": {
+      "placeholder": "搜索字幕...",
+      "next": "下一个匹配",
+      "prev": "上一个匹配",
+      "clear": "清空搜索"
+    },
+    "diarize": {
+      "viewToggle": {
+        "aria": "字幕视图",
+        "list": "列表视图",
+        "grouped": "按说话人分组"
+      },
+      "unknownSpeaker": "未确定",
+      "speakerDefault": "说话人 {letter}",
+      "singleSpeakerBadge": "单人独白",
+      "diarizing": "识别说话人中…",
+      "failed": "说话人识别失败",
+      "renamePlaceholder": "说话人 {letter}",
+      "renameDialogTitle": "重命名 {current}",
+      "renameDialogDesc": "留空则恢复默认名字。",
+      "renameCancel": "取消",
+      "renameConfirm": "保存",
+      "clickToRename": "点击重命名",
+      "headerMenu": "说话人选项",
+      "rename": "重命名",
+      "changeTopK": "变更说话人数",
+      "topKOption": "{k} 位说话人",
+      "unknownWarning": "{percent}（{duration}）的内容未能确信归属任何说话人。",
+      "unknownDurationShort": "{s} 秒",
+      "unknownDurationLong": "{m} 分 {s} 秒",
+      "tryMoreSpeakers": "改成 {k} 位试试",
+      "runButton": "识别说话人",
+      "retryButton": "重试识别",
+      "runHint": "识别这个视频里的说话人（本地运行，约 5-7 分钟/小时）",
+      "singleSpeakerHint": "识别出 1 位说话人，无需分组。",
+      "doneBadge": "{n} 位说话人",
+      "doneHint": "已完成。可在字幕面板右上切换列表 / 发言人视图。"
+    },
+    "insights": {
+      "tabLabel": "AI 总结",
+      "emptyTitle": "AI 总结",
+      "emptyHint": "从转写文本生成摘要与章节",
+      "feature1": "全文摘要 + 3-5 条要点",
+      "feature2": "3-8 个可点击章节标记",
+      "feature3": "完全本地 · 隐私优先",
+      "estimate": "{model} · 约 30-60 秒",
+      "waitForTranscript": "转写完成后可生成",
+      "generate": "生成 AI 总结",
+      "generating": "生成中...",
+      "generatingReading": "正在读取转写文本...",
+      "generatingSummary": "正在生成摘要...",
+      "generatingChapters": "正在生成章节...",
+      "cancel": "取消",
+      "regenerate": "重新生成",
+      "copy": "复制",
+      "copied": "已复制",
+      "retry": "再试一次",
+      "clear": "清空",
+      "clearTitle": "清空 AI 总结？",
+      "clearDesc": "已缓存的摘要和章节将被删除。可以稍后重新生成。此操作不可撤销。",
+      "clearConfirm": "清空",
+      "summarySection": "全文总结",
+      "chaptersSection": "章节",
+      "outdatedHint": "总结基于已变更的设置生成（模型或转写文本已变）。",
+      "langMismatch": "此 AI 总结是用{lang}生成的。",
+      "regenerateInLang": "用{lang}重新生成",
+      "langZh": "中文",
+      "langEn": "英文",
+      "errors": {
+        "VIDEO_TOO_LONG": "媒体内容太长，当前模型无法生成 AI 总结。",
+        "PARSE_FAILED": "AI 输出无法解析，请重试。",
+        "MODEL_NOT_CONFIGURED": "AI 模型未配置或不可用，请到 设置 → 模型 中安装/选择一个。",
+        "NETWORK": "生成期间网络中断。",
+        "fallback": "生成失败，请重试。"
+      }
+    }
+  },
+  "batch": {
+    "defaultName": "批量处理 · {count} 个文件",
+    "uploadProgress": "上传 {done}/{total}",
+    "summary": "{done} 完成 · {failed} 失败 · 共 {total}",
+    "retryFailed": "重试失败项",
+    "create": {
+      "title": "批量处理 {count} 个文件",
+      "desc": "选择一个预设即可开始，结果会保存到资源库。",
+      "targetLangs": "翻译语言",
+      "noTranslate": "该预设不包含翻译，无需选择语言。",
+      "previewTitle": "批量计划",
+      "allReadyTitle": "无需处理",
+      "previewLoading": "正在检查已有结果…",
+      "uploadOnStart": "点击开始后会导入 {count} 个文件，并创建批量任务。",
+      "readyToCreate": "{count} 个文件将创建批量任务。",
+      "partialReady": "{ready} 个文件已有可复用结果；{queued} 个文件将加入批量任务。",
+      "libraryReused": "{library} 个文件已在资源库中；{queued} 个文件将加入批量任务。",
+      "libraryAndPartialReady": "{library} 个文件已在资源库中；{ready} 个文件已有所需结果；{queued} 个文件将加入批量任务。",
+      "allReady": "选择的 {count} 个文件所需结果都已存在，无需创建批量任务。",
+      "noWork": "无需处理",
+      "start": "开始批量处理"
+    },
+    "presets": {
+      "transcribe": "只转写",
+      "transcribe_translate": "转写+翻译",
+      "transcribe_insights": "转写+总结",
+      "transcribe_translate_insights": "转写+翻译+总结",
+      "full": "全部步骤"
+    },
+    "presetDescriptions": {
+      "transcribe": "将执行：转写。",
+      "transcribe_translate": "将执行：转写、翻译。",
+      "transcribe_insights": "将执行：转写、AI 总结。",
+      "transcribe_translate_insights": "将执行：转写、翻译、AI 总结。",
+      "full": "将执行：转写、翻译、AI 总结、说话人识别。"
+    },
+    "errors": {
+      "allUploadsFailed": "所有文件上传失败，请重试。",
+      "partialStageFailed": "{count} 个文件预检失败，其余文件可继续创建批量任务。",
+      "partialUploadFailed": "{count} 个文件上传失败，其余文件已创建批量任务。"
+    },
+    "info": {
+      "reused": "{reused} 个文件已在资源库中，将复用已有结果；{queued} 个文件已加入批量任务。",
+      "allReady": "选择的 {count} 个文件所需结果都已存在，无需创建批量任务。"
+    }
+  },
+  "common": {
+    "cancel": "取消"
+  },
+  "settings": {
+    "title": "设置",
+    "subtitle": "用户偏好与本地缓存管理。",
+    "tabs": {
+      "overview": "概览",
+      "preferences": "偏好",
+      "models": "模型"
+    },
+    "models": {
+      "activeTitle": "当前激活模型",
+      "notInstalledWarn": "{name} 未完整安装，转写会失败。请「下载更多」或在下方列表切换到已安装的模型。",
+      "whisper": "Whisper 转录模型",
+      "llm": "AI 模型 (Qwen 2.5)",
+      "size": "{size}",
+      "active": "当前激活",
+      "activeFile": "当前激活：{name}",
+      "notConfigured": "未配置 — 请通过 setup wizard 配置 AI 模型。",
+      "switch": "切换",
+      "delete": "删除",
+      "downloadMore": "下载更多",
+      "loading": "加载中…",
+      "empty": "暂无已安装模型，点击右上角下载",
+      "emptyLlm": "暂无已安装 AI 模型，点击右上角下载",
+      "refresh": "刷新",
+      "deleteTitle": "删除该模型？",
+      "deleteDesc": "「{name}」（{size}）将从本地移除，下次使用前需要重新下载。",
+      "cancel": "取消",
+      "confirm": "删除",
+      "switchFailed": "切换失败：{error}",
+      "deleteFailed": "删除失败：{error}"
+    },
+    "hardware": "硬件",
+    "tier": "档位",
+    "ram": "内存",
+    "cpu": "CPU",
+    "gpu": "GPU",
+    "platform": "平台",
+    "recommended": "推荐",
+    "applyRecommended": "应用推荐配置到草稿",
+    "preferences": "偏好设置",
+    "section": "偏好设置",
+    "whisperModel": "Whisper 模型",
+    "whisperHint": "越大越精准但越慢。更改对新转写任务生效。",
+    "llmModel": "AI 模型",
+    "llmHint": "由进程内 llama-server 提供的本地 Qwen 2.5 量化模型。推荐：{model}。",
+    "cacheLimit": "缓存大小上限",
+    "silenceThreshold": "静音阈值",
+    "chunkingStrategy": {
+      "title": "音频切分策略",
+      "hint": "Subcast 在送给转写器之前如何把音频切成小段。",
+      "vad": "自动识别说话段（推荐）",
+      "vadHint": "用 Silero VAD 跳过音乐 / 静音段，幻觉更少，长视频更快。",
+      "fixed": "固定 30 秒切片",
+      "fixedHint": "每 30 秒切一段，不看内容。仅在自动识别在你机器上失败时再选这个。"
+    },
+    "silenceHint": "字幕间隔 ≥ 此时长会在列表插入「── 无语音 ──」分隔符。",
+    "cueFontSize": "字幕列表字号",
+    "cueFontSizeHint": "仅影响右侧字幕列表面板；播放器内字幕样式在播放器内单独设置。",
+    "debugTitle": "调试模式",
+    "debugDescription": "JSONL 日志保留原始路径与文件名。",
+    "debugMode": "调试模式（JSONL 日志保留原始路径/文件名）",
+    "save": "保存",
+    "saved": "已保存",
+    "saving": "保存中…",
+    "resetDraft": "撤销",
+    "lastSaved": "上次保存 {time}",
+    "loading": "正在加载硬件信息…",
+    "tierLabels": {
+      "entry": "入门",
+      "standard": "标准",
+      "recommended": "推荐",
+      "high": "高配"
+    },
+    "cache": {
+      "title": "缓存",
+      "totals": "{count} 个文件 · {size}",
+      "noVideos": "暂无缓存",
+      "noVideosDesc": "在首页拖入媒体文件后会出现在这里。",
+      "noSubtitles": "无字幕",
+      "deleteOne": "删除",
+      "deleteOneTitle": "删除该文件？",
+      "deleteOneDesc": "「{name}」及其缓存字幕将被删除，此操作不可撤销。",
+      "clearAll": "全部清除",
+      "clearAllTitle": "清除所有缓存？",
+      "clearAllDesc": "将删除所有缓存媒体与字幕文件。此操作不可撤销。",
+      "cancel": "取消",
+      "confirm": "删除"
+    },
+    "diagnostic": {
+      "title": "诊断包",
+      "body": "导出 ZIP，包含脱敏后的 JSONL 日志（近 7 天）、设置、硬件信息、已安装模型。不包含任何媒体内容或字幕文本。",
+      "export": "导出 ZIP"
+    },
+    "logViewer": {
+      "title": "日志查看",
+      "body": "近期结构化事件。除非开启调试模式，否则 path / name 字段会被哈希。",
+      "selectFile": "日期",
+      "tailLabel": "行数",
+      "refresh": "刷新",
+      "noFiles": "暂无日志文件——首次转写或其他事件之后会出现在这里。",
+      "loading": "加载中…",
+      "loadFailed": "日志加载失败",
+      "showing": "已显示最近 {count} / {total} 行",
+      "truncatedNote": "还有更早的行未显示。可调大行数或导出完整 ZIP。",
+      "writerUnhealthy": "日志写入持续失败——近期事件可能未能写入磁盘。"
+    }
+  },
+  "help": {
+    "title": "帮助",
+    "subtitle": "使用帮助、版本信息与更新记录。",
+    "tabs": {
+      "help": "帮助",
+      "about": "关于",
+      "changelog": "更新日志"
+    },
+    "changelog": {
+      "title": "更新日志",
+      "body": "最近版本的重要变化。完整提交记录以代码仓库为准。",
+      "v040": {
+        "multiLocale": "界面新增繁体中文、日语、西班牙语，原有简体中文 / 英语保留；语言切换从二态按钮升级为下拉菜单，按钮上保留各语言的原生字符标识。",
+        "windowPause": "桌面应用窗口隐藏或最小化时自动暂停播放，避免关闭主界面后后台仍有声音。",
+        "playerToolbar": "播放器顶栏只保留操作按钮，缓存 / 转写 / 翻译进度等信息下移到视频名下方的状态行；右侧面板由“字幕”改名为“索引”，更清楚地说明它的定位是搜索与校对，而非主画面字幕。",
+        "polish": "短视频的波形播放进度更平滑；批量暂存与清空缓存的流程更稳定。"
+      },
+      "v039": {
+        "batch": "新增批量处理：一次选择多个音视频文件，统一配置后自动排队执行。",
+        "workflow": "支持批量预设，可组合转写、翻译、AI 总结与说话人识别。",
+        "queue": "任务队列新增批量进度卡片，可查看整体进度、失败数量并重试失败项。"
+      },
+      "v037": {
+        "diarize": "新增说话人分离，可在转写完成后识别不同发言人并写入字幕视图。",
+        "speakerUi": "播放器新增说话人标签、分组视图与重命名能力，适合访谈、播客和会议内容。",
+        "packaging": "修复说话人识别在 macOS 打包环境中的原生依赖加载问题。"
+      },
+      "v035": {
+        "downloads": "优化模型下载体验，减少首次配置时因网络波动导致的失败。",
+        "mirrors": "下载源支持自动测速与切换，在 Hugging Face 和镜像源之间选择更稳定的一侧。",
+        "resume": "增强断点续传与取消后的恢复能力，避免大模型下载从头开始。"
+      },
+      "v030": {
+        "llama": "AI 引擎从 Ollama 切换到内置 llama.cpp/llama-server，减少外部运行时依赖。",
+        "localAi": "翻译与 AI 总结改为使用 Subcast 管理的本地大模型，配置路径更统一。",
+        "settings": "设置页新增模型管理能力，可查看、切换、下载和删除本地模型。"
+      },
+      "v020": {
+        "macApp": "开始支持 macOS 桌面应用，提供独立 App 体验。",
+        "packaging": "打包内置转写侧车程序与运行资源，减少手动启动本地网页服务的步骤。",
+        "diagnostics": "新增诊断导出、系统托盘和基础桌面菜单，方便测试与问题反馈。"
+      },
+      "v010": {
+        "web": "初始版本，仅支持本地运行的网页版。",
+        "transcribe": "支持导入本地音视频并使用 Whisper 完成本地转写。",
+        "translate": "支持基于转写结果生成翻译字幕，验证核心工作流。"
+      }
+    }
+  },
+  "desktop": {
+    "setupCheck": {
+      "checking": "正在检查环境…",
+      "retry": "重试",
+      "probeFailed": "环境检查失败"
+    },
+    "setupWizard": {
+      "welcome": "首次设置",
+      "manageTitle": "管理模型",
+      "stepLabel1": "Whisper 转录",
+      "stepLabel2": "AI 模型",
+      "subtitleStep1": "选择转录模型 (Whisper)",
+      "subtitleStep2": "选择 AI 模型（翻译 & 摘要）",
+      "recommended": "推荐",
+      "foundAt": "已在本机检测到：",
+      "scanFound": "已在 {source} 找到",
+      "actionSymlink": "软链接（不占额外空间）",
+      "actionCopy": "复制到 Subcast 数据目录",
+      "actionIgnore": "忽略，从网络下载新的",
+      "mirrorToggle": "强制走 {host}（跳过自动测速）",
+      "mirrorAutoNote": "自动选择：并发探测 huggingface.co 与 hf-mirror.com 各 4 秒，选下载更快的一边；都失败时自动退回到 hf-mirror.com。",
+      "downloading": "正在下载",
+      "linking": "正在链接",
+      "copying": "正在复制",
+      "installFailed": "安装失败：{error}",
+      "installStartFailed": "安装未能启动",
+      "pollFailed": "安装状态已停止更新。请检查连接后重试。",
+      "installCanceled": "下载已取消。选择一个模型后重新点「下载」即可继续。",
+      "skip": "跳过设置",
+      "back": "上一步",
+      "next": "下一步",
+      "finish": "完成",
+      "linkExisting": "软链接已有文件",
+      "copyExisting": "复制已有文件",
+      "download": "下载",
+      "cancel": "取消",
+      "remainingSecs": "剩余 {n} 秒",
+      "remainingMins": "剩余 {m} 分 {s} 秒",
+      "perSecond": "/秒",
+      "checkingEvery5s": "每 5 秒自动检查一次 — 请保持本窗口开启。",
+      "installedAt": "{name} 已安装在"
+    },
+    "llm": {
+      "selectModel": "选择 AI 模型",
+      "alreadyInstalled": "已安装",
+      "foundIn": "已在 {source} 找到",
+      "lowMemoryWarning": "你的机器内存不足 8 GB，运行 AI 模型可能影响系统响应。可以跳过此步，AI 功能稍后再在设置里配置。",
+      "installing": "正在下载 {name}…",
+      "ready": "{name} 已就绪",
+      "installFailed": "下载失败：{error}"
+    },
+    "home": {
+      "setupIncomplete": "首次设置未完成：",
+      "openSetupWizard": "打开设置向导",
+      "gapWhisper": "转录模型",
+      "gapLlm": "AI 模型",
+      "openFileFailed": "打开文件失败"
+    },
+    "about": {
+      "subtitle": "免费 · 离线 · 大模型 — 音视频转写翻译",
+      "fullyLocal": "100% 本地运行 · 零数据外发",
+      "versionLabel": "当前版本",
+      "privacyLabel": "隐私模式",
+      "licenseLabel": "开源协议",
+      "depsHeader": "使用以下开源组件",
+      "licenseLine": "© 2026 twoer · 基于",
+      "buttons": {
+        "repository": "代码仓库",
+        "license": "开源协议",
+        "reportIssue": "报告问题"
+      }
+    },
+    "help": {
+      "title": "帮助",
+      "introBody": "首次安装常见问题速查 + 出问题时找哪里。完整文档见仓库 README。",
+      "diagnostics": {
+        "title": "导出诊断",
+        "body": "Help → Export Diagnostics…（托盘菜单里也有）会把近 7 天的结构化日志 + 一份 system.json 打包成 zip。不包含媒体内容、字幕文本、文件名 —— 提交 issue 时附上即可。",
+        "export": "导出 ZIP"
+      },
+      "updates": {
+        "title": "更新",
+        "windowsBody": "Windows 在后台自动下载差分包，下次启动时自动应用。",
+        "macBody": "macOS 手动：Help → Check for Updates… 会在浏览器打开发布页，自行下载并替换 Applications 里的 .app。"
+      },
+      "faq": {
+        "title": "常见问题",
+        "mirrorTitle": "Whisper 下载很慢",
+        "mirrorBody": "默认会并发测速 huggingface.co 和 hf-mirror.com 各 4 秒，选更快的一边下载；都失败时自动退回到 hf-mirror.com，一般不用手动切。如果还是慢，在 Step 1 勾选「强制走 hf-mirror.com」跳过测速。已下载的字节会续传，无需重头。",
+        "macGatekeeperTitle": "macOS 15+ 阻止 Subcast 运行",
+        "macGatekeeperBody": "系统设置 → 隐私与安全性 → 下拉到底部找「仍要打开」按钮。",
+        "zombieTitle": "崩溃后翻译没继续",
+        "zombieBody": "翻译会被标记为「上次未完成」，而不是偷偷重新调用模型浪费计算。在主页点「重试」即可。"
+      },
+      "links": {
+        "docs": "查看文档",
+        "repository": "代码仓库",
+        "reportIssue": "报告问题"
+      }
+    }
+  }
+}

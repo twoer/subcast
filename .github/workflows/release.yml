@@ -1,0 +1,158 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Tag-triggered desktop release pipeline (Phase 5.5).
+#
+# Triggered by `git push --tags` of a `v*` tag. Builds Subcast.app +
+# Subcast-Setup.exe on the two supported platforms, then uploads them as
+# assets on the corresponding GitHub Release. Differential update files
+# (latest.yml / *.blockmap) ride along so electron-updater picks them up.
+#
+# Pre-flight (one-time, before the first release):
+#   - The `Build whisper-cli` workflow has run at least once; its
+#     artifacts are downloaded by the `fetch-binaries` step below.
+#   - Repository secrets configured:
+#       WIN_CSC_LINK            base64-encoded .pfx
+#       WIN_CSC_KEY_PASSWORD    passphrase
+#     macOS stays unsigned per decision 9.
+#
+# Drafting vs publishing:
+#   This workflow always uploads to a *draft* Release so the maintainer
+#   can fill in release notes, attach screenshots, and sanity-check the
+#   artifacts before publishing. Set `draft: false` on the
+#   `softprops/action-gh-release` step to flip the policy.
+
+name: Release
+
+# Upload step (softprops/action-gh-release) creates a draft release + tags
+# it, which requires contents: write on GITHUB_TOKEN. The default token
+# permissions on workflow_dispatch runs are read-only in restricted repos,
+# so declare the need explicitly. (Repo setting 'Settings → Actions →
+# Workflow permissions' must also allow writes, or this is overridden.)
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (must already exist locally + remote)'
+        required: true
+
+env:
+  WHISPER_BINARIES_RUN_ID: ''  # set per-build via gh API; see fetch-binaries
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            arch: arm64
+            whisper_artifact_name: whisper-cli-macos-14-arm64
+            whisper_dest: binaries/darwin-arm64/whisper-cli
+            build_script: build:desktop:mac
+            artifact_glob: |
+              dist-electron/*.dmg
+              dist-electron/*.blockmap
+              dist-electron/latest-mac.yml
+          # Pin windows-2022 to match build-whisper.yml (which produces
+          # whisper-cli-windows-2022-x64). windows-latest now ships VS 2026
+          # and breaks the VS 2022 build chain; see build-whisper.yml.
+          - os: windows-2022
+            arch: x64
+            whisper_artifact_name: whisper-cli-windows-2022-x64
+            whisper_dest: binaries/win32-x64/whisper-cli.exe
+            build_script: build:desktop:win
+            artifact_glob: |
+              dist-electron/*.exe
+              dist-electron/*.blockmap
+              dist-electron/latest.yml
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup pnpm
+        # No explicit version: pnpm/action-setup@v4 reads the version from
+        # the packageManager field in package.json (pnpm@9.12.0). Specifying
+        # version here too makes the action error with "Multiple versions of
+        # pnpm specified".
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Fetch latest whisper-cli artifact
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: build-whisper.yml
+          name: ${{ matrix.whisper_artifact_name }}
+          path: whisper-cli-tmp
+          # build-whisper.yml's run conclusion is 'failure' whenever the
+          # Windows job fails (VS2022 missing on the current runner image),
+          # even though the macOS job + its artifact succeed. Default
+          # behavior only searches successful runs, so the macOS artifact
+          # would be invisible. workflow_conclusion: "" disables that filter
+          # and searches the most recent run regardless of conclusion — the
+          # per-matrix `name` pin still ensures we get the right artifact.
+          workflow_conclusion: ''
+          if_no_artifact_found: fail
+
+      - name: Move whisper-cli into binaries/
+        shell: bash
+        run: |
+          set -euo pipefail
+          dest="${{ matrix.whisper_dest }}"
+          mkdir -p "$(dirname "$dest")"
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            # mac artifact is a directory tree: whisper-cli + whisper-libs/*.dylib.
+            # Spread the whole tree into binaries/<target>/ so fetch-whisper-cli's
+            # "already staged" guard sees both the binary and the dylibs and skips
+            # its on-the-fly cmake rebuild.
+            cp -r whisper-cli-tmp/. "$(dirname "$dest")"/
+            chmod +x "$dest" || true
+            echo "Staged mac whisper tree:"
+            ls -lh "$(dirname "$dest")"
+            ls -lh "$(dirname "$dest")/whisper-libs" || true
+          else
+            mv whisper-cli-tmp/whisper-cli* "$dest"
+            chmod +x "$dest" || true
+            ls -lh "$dest"
+          fi
+
+      - name: Build desktop artifacts
+        env:
+          # Windows code-signing — empty on macOS (electron-builder
+          # ignores them on that platform).
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          # electron-updater wants this to know which Release feed to write to.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GitHub-hosted runners sit in US datacenters — bypass the
+          # CN GitHub proxy (gh-proxy.com) that fetch-* scripts default
+          # to for local China-mainland builds. Routing runner downloads
+          # through the CN proxy is slow and gets terminated mid-stream
+          # (the diarize model fetch was failing with "terminated").
+          SUBCAST_GH_MIRROR: direct
+        run: pnpm ${{ matrix.build_script }}
+
+      - name: Upload to GitHub Release (draft)
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: ${{ matrix.artifact_glob }}
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

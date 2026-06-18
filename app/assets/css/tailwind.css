@@ -1,0 +1,211 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /*
+   * Tokens follow the "Soft UI Evolution" recommendation from
+   * ui-ux-pro-max for SaaS tools: blue-driven primary (#2563EB),
+   * subtle slate background, refined surfaces with soft shadows.
+   * CTA accent (orange-500) is reserved for the single primary
+   * action per screen.
+   */
+  :root {
+    --background: 210 40% 98%;        /* slate-50 #F8FAFC */
+    --foreground: 222 47% 11%;        /* slate-900 #0F172A */
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 217 91% 60%;           /* blue-500 #3B82F6 */
+    --primary-foreground: 0 0% 100%;
+    --primary-strong: 221 83% 53%;    /* blue-600 #2563EB */
+
+    --secondary: 215 28% 92%;         /* slate-200 */
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 215 28% 95%;             /* slate-100 */
+    --muted-foreground: 215 16% 47%;  /* slate-500 */
+
+    --accent: 215 28% 95%;
+    --accent-foreground: 222 47% 11%;
+
+    --cta: 24 95% 53%;                /* orange-500 #F97316 */
+    --cta-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;         /* red-600 */
+    --destructive-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;            /* amber-500 */
+    --warning-foreground: 28 80% 14%;
+
+    --success: 142 71% 45%;           /* green-500 */
+    --success-foreground: 0 0% 100%;
+
+    --border: 215 25% 88%;            /* slate-200 with a touch of warmth */
+    --input: 215 25% 88%;
+    --ring: 217 91% 60%;
+
+    --radius: 0.625rem;               /* 10px — softer than 8 */
+  }
+
+  .dark {
+    --background: 222 47% 6%;         /* slate-950 #020617 */
+    --foreground: 210 40% 96%;        /* slate-100 */
+
+    --card: 222 47% 9%;               /* slate-900 with a hint of lift */
+    --card-foreground: 210 40% 96%;
+
+    --popover: 222 47% 9%;
+    --popover-foreground: 210 40% 96%;
+
+    --primary: 217 91% 65%;
+    --primary-foreground: 222 47% 11%;
+    --primary-strong: 221 83% 60%;
+
+    --secondary: 215 28% 17%;
+    --secondary-foreground: 210 40% 96%;
+
+    --muted: 215 28% 14%;
+    --muted-foreground: 215 16% 70%;
+
+    --accent: 215 28% 17%;
+    --accent-foreground: 210 40% 96%;
+
+    --cta: 24 95% 60%;
+    --cta-foreground: 28 80% 12%;
+
+    --destructive: 0 72% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --warning: 38 92% 60%;
+    --warning-foreground: 28 80% 12%;
+
+    --success: 142 71% 55%;
+    --success-foreground: 0 0% 100%;
+
+    --border: 215 28% 18%;
+    --input: 215 28% 18%;
+    --ring: 217 91% 65%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    /* Inter ships with several stylistic alternates that visibly improve
+     * tabular numbers and disambiguate I/l/1 — turn them on globally. */
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
+    /* Thin, theme-aware scrollbars (Firefox + Chrome 121+ / Safari 17+).
+     * macOS still controls the auto-hide overlay behavior — this only
+     * recolors and narrows the scrollbar when the OS chooses to show it.
+     * `--muted-foreground` (slate-500) is chosen over `--border` so the
+     * thumb stays visible against very light surfaces. */
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+  }
+  /* Webkit fallback for environments that haven't picked up the modern
+   * scrollbar-color/width spec yet (mostly Electron < Chromium 121). */
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.35);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.55);
+  }
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+      Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  }
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo,
+      Monaco, Consolas, monospace;
+  }
+  /*
+   * Keep the browser's default focus ring as a fallback for elements that
+   * don't ship a custom one (native checkbox, range slider, color picker).
+   * shadcn buttons/inputs override this with their own ring-2 ring-ring.
+   */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Canonical card primitives. Page-level audit found 20+ ad-hoc
+   * variants of `surface-1 rounded-xl border border-border/50 p-X` —
+   * these three utilities collapse them to a single source of truth
+   * so border opacity / radius / padding can't silently drift again.
+   *
+   *   .card          — default section card (settings, library, log viewer)
+   *   .card-compact  — denser selection / progress card (wizard list items)
+   *   .card-list     — list container (queue, library rows, history)
+   *
+   * For semantic banners (warning / destructive / amber custom), keep
+   * inline classes — those carry meaning the card primitives don't.
+   */
+  .card {
+    @apply surface-1 rounded-xl border border-border/50 p-6;
+  }
+  .card-compact {
+    @apply surface-1 rounded-xl border border-border/50 p-4;
+  }
+  .card-list {
+    @apply surface-1 rounded-xl border border-border/50 p-3;
+  }
+}
+
+@layer utilities {
+  /* Surface elevation system — soft shadows that work in light & dark.
+   * shadcn cards use bare `border` by default; these classes upgrade
+   * key surfaces (hero cards, modals) without breaking compactness. */
+  .surface-1 {
+    @apply bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04),0_1px_1px_rgba(15,23,42,0.03)];
+  }
+  .surface-2 {
+    @apply bg-card shadow-[0_4px_12px_rgba(15,23,42,0.06),0_2px_4px_rgba(15,23,42,0.04)];
+  }
+  .surface-3 {
+    @apply bg-card shadow-[0_12px_32px_rgba(15,23,42,0.08),0_4px_8px_rgba(15,23,42,0.04)];
+  }
+  .dark .surface-1 {
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 1px rgba(0, 0, 0, 0.3);
+  }
+  .dark .surface-2 {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+  .dark .surface-3 {
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Reduced motion — kill non-essential transitions */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

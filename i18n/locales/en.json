@@ -1,0 +1,573 @@
+{
+  "app": {
+    "title": "Subcast",
+    "lan": "LAN",
+    "settings": "Settings",
+    "back": "Back",
+    "language": "Language",
+    "home": "Home",
+    "library": "Library",
+    "models": "Models",
+    "modelsActive": "Currently active transcription & AI models",
+    "modelBusy": "A task is running — model is in use",
+    "manageModels": "Manage models",
+    "modelNotInstalled": "Not installed: {name}",
+    "llmNotInstalled": "AI model not installed",
+    "llmLabel": "AI"
+  },
+  "fileStatus": {
+    "transcribing": "Transcribing {pct}%",
+    "transcribeQueued": "Queued",
+    "transcribeFailed": "Transcribe failed",
+    "transcribed": "Transcribed",
+    "translating": "Translating {lang} {pct}%",
+    "translateQueued": "Queued: {lang}",
+    "translateFailed": "Translate failed",
+    "translatedCount": "+{n} translated",
+    "aiRunning": "AI summarizing",
+    "aiReady": "AI summary"
+  },
+  "library": {
+    "title": "Library",
+    "subtitle": "Media files and subtitles cached locally. Click to open in the player, or remove here.",
+    "loading": "Loading…",
+    "totals": "{count} files · {size}",
+    "noSubtitles": "No subtitles",
+    "deleteOne": "Delete",
+    "deleteOneTitle": "Delete this file?",
+    "deleteOneDesc": "{name} and its cached subtitles will be removed. This cannot be undone.",
+    "clearAll": "Clear all",
+    "clearAllTitle": "Clear all cached data?",
+    "clearAllDesc": "This will delete every cached media file and subtitle. This action cannot be undone.",
+    "cancel": "Cancel",
+    "confirm": "Delete",
+    "rename": "Rename",
+    "renameDesc": "Leave blank to restore the original filename.",
+    "renameConfirm": "Save",
+    "empty": {
+      "title": "Library is empty",
+      "description": "Drag a media file into the home page and it will appear here."
+    }
+  },
+  "index": {
+    "drop": "Drop one or more video/audio files (single files can include .srt/.vtt/.ass), or",
+    "choose": "Choose files",
+    "uploading": "Uploading…",
+    "queue": "Queue",
+    "queueMeta": "{active} active / {total} recent",
+    "queueEmpty": "No recent tasks",
+    "queueLoading": "Loading…",
+    "cancel": "Cancel",
+    "cancelTaskTitle": "Cancel this task?",
+    "cancelTaskDesc": "The current task for \"{name}\" will stop. Completed data will be kept where possible.",
+    "cancelTaskConfirm": "Cancel task",
+    "chunkTooltip": "{total} speech chunks (≤30 s each, music/silence pre-filtered by VAD)",
+    "transcribing": "Transcribing",
+    "translating": "Translating",
+    "kindTranscribe": "Transcribe",
+    "kindTranslate": "Translate",
+    "kindInsightZh": "AI Summary (Chinese)",
+    "kindInsightEn": "AI Summary (English)",
+    "kindDiarize": "Speaker identification",
+    "noVideo": "No video or audio file in the drop",
+    "status": {
+      "queued": "Queued",
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed",
+      "canceled": "Canceled",
+      "done": "Done",
+      "error": "Error"
+    },
+    "library": {
+      "title": "Recent files",
+      "noSubs": "No subtitles",
+      "viewAll": "View all in settings",
+      "more": "More",
+      "rename": "Rename",
+      "renameDesc": "Leave empty to restore the original filename.",
+      "renameConfirm": "Save",
+      "cancel": "Cancel",
+      "justNow": "just now",
+      "minutesAgo": "{n}m ago",
+      "hoursAgo": "{n}h ago",
+      "daysAgo": "{n}d ago"
+    }
+  },
+  "health": {
+    "missing": "Some dependencies are missing",
+    "recheck": "Re-check",
+    "copy": "Copy",
+    "copied": "Copied"
+  },
+  "companion": {
+    "title": "Companion subtitles detected",
+    "body": "Found a subtitle file alongside the media:",
+    "useExisting": "Use existing",
+    "ignore": "Ignore & re-transcribe"
+  },
+  "player": {
+    "subtitles": "Subtitles",
+    "indexTitle": "Subtitle index",
+    "indexSubtitle": "For search, navigation, and review · not a substitute for on-screen captions",
+    "meta": {
+      "transcribing": "Transcribing",
+      "transcribed": "Transcribed",
+      "translating": "Translating",
+      "translated": "Translated",
+      "failed": "Failed"
+    },
+    "retranscribe": {
+      "button": "Re-transcribe",
+      "title": "Re-transcribe this file?",
+      "desc": "Clears the original subtitles, {n} translation(s), and AI summary, then re-runs Whisper with the current model. This cannot be undone.",
+      "confirm": "Re-transcribe"
+    },
+    "original": "Original",
+    "cues": "{n} cues",
+    "suspect": "{n} suspect",
+    "suspectTitle": "Whisper marked these chunks as low confidence",
+    "suspectCueTitle": "Transcription quality may be off (retried 2 times)",
+    "noAudio": "── no audio {n}s ──",
+    "firstCueDelay": "Transcribing… first cue in 30-60s",
+    "translatingShort": "Translating…",
+    "shortcuts": "Keyboard shortcuts",
+    "subtitleStyle": "Subtitle style",
+    "fontSize": "Font size",
+    "color": "Color",
+    "customColor": "Custom color",
+    "bgOpacity": "Background opacity",
+    "reset": "Reset to defaults",
+    "translateProgress": "Translating {pct}%",
+    "translateRetrying": "Retrying smaller batches",
+    "cache": "cache",
+    "status": {
+      "idle": "idle",
+      "running": "running",
+      "done": "done",
+      "error": "error"
+    },
+    "shortcutDescriptions": {
+      "playPause": "Play / Pause",
+      "seek5": "Seek -/+ 5s",
+      "seek10": "Seek -/+ 10s (YouTube)",
+      "volume": "Volume +/- 10%",
+      "speed": "Speed -/+ one step",
+      "mute": "Toggle mute",
+      "fullscreen": "Toggle fullscreen",
+      "subs": "Toggle subtitles",
+      "jumpPct": "Jump to 10%-90% of playback",
+      "help": "Show this help",
+      "esc": "Close dialog"
+    },
+    "errors": {
+      "disconnected": "Lost connection to the server.",
+      "FATAL_UNKNOWN": "Unexpected error. Please try again.",
+      "TASK_NOT_FOUND": "This task has expired. Please retry.",
+      "MODEL_NOT_CONFIGURED": "No AI model is configured or available. Open Settings → Models to install one.",
+      "WHISPER_NOT_CONFIGURED": "Whisper transcription is not ready. Open Settings → Models to download a voice model.",
+      "CANCELED": "Task canceled.",
+      "ORIGINAL_NOT_READY": "Original transcript isn't ready yet. Run transcription first.",
+      "BATCH_RETRY_EXHAUSTED": "Translation retried several times and still failed. Try again or switch models.",
+      "PARSE_FAILED": "The AI output couldn't be parsed. Please try again.",
+      "fallback": "Operation failed. Please try again.",
+      "retry": "Retry"
+    },
+    "cancelTranslation": "Cancel translation",
+    "cancelTranslationTitle": "Cancel this translation?",
+    "cancelTranslationDesc": "Cues translated so far will be kept. You can resume by switching to this language again later.",
+    "cancelTranslationConfirm": "Stop translation",
+    "cancel": "Cancel",
+    "export": {
+      "title": "Export Subtitles",
+      "languages": "Languages",
+      "format": "Format",
+      "download": "Download",
+      "includeSpeakers": "Include speaker labels (when available)",
+      "hintAtLeastOne": "Select at least one language.",
+      "hintExactly2": "Bilingual requires exactly 2 languages."
+    },
+    "search": {
+      "placeholder": "Search subtitles...",
+      "next": "Next match",
+      "prev": "Previous match",
+      "clear": "Clear search"
+    },
+    "diarize": {
+      "viewToggle": {
+        "aria": "Subtitle view",
+        "list": "List view",
+        "grouped": "Grouped by speaker"
+      },
+      "unknownSpeaker": "Unspecified",
+      "speakerDefault": "Speaker {letter}",
+      "singleSpeakerBadge": "Single speaker",
+      "diarizing": "Identifying speakers…",
+      "failed": "Speaker identification failed",
+      "renamePlaceholder": "Speaker {letter}",
+      "renameDialogTitle": "Rename {current}",
+      "renameDialogDesc": "Leave blank to restore the default name.",
+      "renameCancel": "Cancel",
+      "renameConfirm": "Save",
+      "clickToRename": "Click to rename",
+      "headerMenu": "Speaker options",
+      "rename": "Rename",
+      "changeTopK": "Change speaker count",
+      "topKOption": "{k} speakers",
+      "unknownWarning": "{percent} ({duration}) couldn't be confidently assigned to a speaker.",
+      "unknownDurationShort": "{s} s",
+      "unknownDurationLong": "{m} min {s} s",
+      "tryMoreSpeakers": "Try {k} speakers",
+      "runButton": "Identify speakers",
+      "retryButton": "Retry identification",
+      "runHint": "Identify speakers in this video (runs locally, ~5-7 min/h)",
+      "singleSpeakerHint": "Diarization found one speaker — no grouping needed.",
+      "doneBadge": "{n} speakers",
+      "doneHint": "Diarization complete. Use the toggle in the subtitle panel to switch list / grouped view."
+    },
+    "insights": {
+      "tabLabel": "AI Insights",
+      "emptyTitle": "AI Insights",
+      "emptyHint": "Generate summary and chapters from the transcript.",
+      "feature1": "Paragraph summary + 3-5 key points",
+      "feature2": "3-8 clickable chapter markers",
+      "feature3": "Fully local · privacy-first",
+      "estimate": "{model} · ~30-60 seconds",
+      "waitForTranscript": "Available after transcription finishes",
+      "generate": "Generate AI insights",
+      "generating": "Generating...",
+      "generatingReading": "Reading transcript...",
+      "generatingSummary": "Writing summary...",
+      "generatingChapters": "Writing chapters...",
+      "cancel": "Cancel",
+      "regenerate": "Regenerate",
+      "copy": "Copy",
+      "copied": "Copied",
+      "retry": "Try again",
+      "clear": "Clear",
+      "clearTitle": "Clear AI Insights?",
+      "clearDesc": "The cached summary and chapters will be removed. You can regenerate later. This cannot be undone.",
+      "clearConfirm": "Clear",
+      "summarySection": "Summary",
+      "chaptersSection": "Chapters",
+      "langMismatch": "This AI summary was generated in {lang}.",
+      "regenerateInLang": "Regenerate in {lang}",
+      "langZh": "Chinese",
+      "langEn": "English",
+      "outdatedHint": "Insights were generated with outdated settings (model or transcript changed).",
+      "errors": {
+        "VIDEO_TOO_LONG": "Media is too long for AI insights with the current model.",
+        "PARSE_FAILED": "The AI output couldn't be parsed. Please try again.",
+        "MODEL_NOT_CONFIGURED": "No AI model is configured or available. Open Settings → Models to install one.",
+        "NETWORK": "Lost connection while generating insights.",
+        "fallback": "Failed to generate insights. Please try again."
+      }
+    }
+  },
+  "batch": {
+    "defaultName": "Batch · {count} files",
+    "uploadProgress": "Uploading {done}/{total}",
+    "summary": "{done} done · {failed} failed · {total} total",
+    "retryFailed": "Retry failed items",
+    "create": {
+      "title": "Batch process {count} files",
+      "desc": "Choose a preset to start. Results are saved to the library.",
+      "targetLangs": "Translation languages",
+      "noTranslate": "This preset does not include translation.",
+      "previewTitle": "Batch plan",
+      "allReadyTitle": "Nothing to process",
+      "previewLoading": "Checking existing results…",
+      "uploadOnStart": "{count} files will be imported and queued after you start.",
+      "readyToCreate": "{count} files will be queued for batch processing.",
+      "partialReady": "{ready} files already have reusable results. {queued} files will be queued.",
+      "libraryReused": "{library} files are already in the library. {queued} files will be queued.",
+      "libraryAndPartialReady": "{library} files are already in the library. {ready} files already have the requested results. {queued} files will be queued.",
+      "allReady": "All selected results already exist for {count} files. No batch is needed.",
+      "noWork": "Nothing to process",
+      "start": "Start batch"
+    },
+    "presets": {
+      "transcribe": "Transcribe",
+      "transcribe_translate": "Transcribe+translate",
+      "transcribe_insights": "Transcribe+summary",
+      "transcribe_translate_insights": "Transcribe+translate+summary",
+      "full": "All steps"
+    },
+    "presetDescriptions": {
+      "transcribe": "Runs transcription.",
+      "transcribe_translate": "Runs transcription and translation.",
+      "transcribe_insights": "Runs transcription and AI summary.",
+      "transcribe_translate_insights": "Runs transcription, translation, and AI summary.",
+      "full": "Runs transcription, translation, AI summary, and speaker recognition."
+    },
+    "errors": {
+      "allUploadsFailed": "All file uploads failed. Please try again.",
+      "partialStageFailed": "{count} files failed preflight. The remaining files can still be queued.",
+      "partialUploadFailed": "{count} uploads failed. A batch was created for the remaining files."
+    },
+    "info": {
+      "reused": "{reused} files were already in the library, so existing results will be reused. {queued} files were queued for batch processing.",
+      "allReady": "All selected results already exist for {count} files. No batch was created."
+    }
+  },
+  "common": {
+    "cancel": "Cancel"
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Per-user preferences and on-disk cache management.",
+    "tabs": {
+      "overview": "Overview",
+      "preferences": "Preferences",
+      "models": "Models"
+    },
+    "models": {
+      "activeTitle": "Active models",
+      "notInstalledWarn": "{name} is not fully installed — transcription will fail. Use \"Download more\" or pick an installed model from the list below.",
+      "whisper": "Whisper transcription models",
+      "llm": "AI model (Qwen 2.5)",
+      "size": "{size}",
+      "active": "Active",
+      "activeFile": "Active: {name}",
+      "notConfigured": "Not configured — set up an AI model via the setup wizard.",
+      "switch": "Use",
+      "delete": "Delete",
+      "downloadMore": "Download more",
+      "loading": "Loading…",
+      "empty": "No models installed — click Download more above",
+      "emptyLlm": "No AI model installed — click Download more above",
+      "refresh": "Refresh",
+      "deleteTitle": "Delete this model?",
+      "deleteDesc": "{name} ({size}) will be removed from this machine. You'll need to re-download it next time.",
+      "cancel": "Cancel",
+      "confirm": "Delete",
+      "switchFailed": "Switch failed: {error}",
+      "deleteFailed": "Delete failed: {error}"
+    },
+    "hardware": "Hardware",
+    "tier": "Tier",
+    "ram": "RAM",
+    "cpu": "CPU",
+    "gpu": "GPU",
+    "platform": "Platform",
+    "recommended": "Recommended",
+    "applyRecommended": "Apply recommended to draft",
+    "preferences": "Preferences",
+    "section": "Preferences",
+    "whisperModel": "Whisper model",
+    "whisperHint": "Bigger = more accurate but slower. Changes apply to new transcribe tasks.",
+    "llmModel": "AI model",
+    "llmHint": "Local Qwen 2.5 quantization served by an in-process llama-server. Recommended: {model}.",
+    "cacheLimit": "Cache size limit",
+    "silenceThreshold": "Silence threshold",
+    "silenceHint": "Inter-cue gaps ≥ this duration get a 「── no audio ──」divider in the cue list.",
+    "chunkingStrategy": {
+      "title": "Audio chunking",
+      "hint": "How Subcast splits audio before feeding it to the transcriber.",
+      "vad": "Auto-detect speech (recommended)",
+      "vadHint": "Uses Silero VAD to skip music / silence regions. Fewer hallucinations, faster on long videos.",
+      "fixed": "Fixed 30-second chunks",
+      "fixedHint": "Slices every 30 s regardless of content. Use only if auto-detect fails on your hardware."
+    },
+    "cueFontSize": "Cue list font size",
+    "cueFontSizeHint": "Affects only the subtitle list panel; in-player subtitle styling is configured separately.",
+    "debugTitle": "Debug mode",
+    "debugDescription": "Keep raw paths and filenames in JSONL logs.",
+    "debugMode": "Debug mode (keep raw paths/filenames in JSONL logs)",
+    "save": "Save",
+    "saved": "Saved",
+    "saving": "Saving…",
+    "resetDraft": "Reset",
+    "lastSaved": "Last saved {time}",
+    "loading": "Loading hardware info…",
+    "tierLabels": {
+      "entry": "Entry",
+      "standard": "Standard",
+      "recommended": "Recommended",
+      "high": "High"
+    },
+    "cache": {
+      "title": "Cache",
+      "totals": "{count} files · {size}",
+      "noVideos": "No cached files yet",
+      "noVideosDesc": "Drag a media file into the home page and it will appear here.",
+      "noSubtitles": "No subtitles",
+      "deleteOne": "Delete",
+      "deleteOneTitle": "Delete this file?",
+      "deleteOneDesc": "{name} and its cached subtitles will be removed. This cannot be undone.",
+      "clearAll": "Clear all",
+      "clearAllTitle": "Clear all cached data?",
+      "clearAllDesc": "This will delete every cached media file and subtitle. This action cannot be undone.",
+      "cancel": "Cancel",
+      "confirm": "Delete"
+    },
+    "diagnostic": {
+      "title": "Diagnostic",
+      "body": "ZIP with sanitized JSONL logs (last 7d), settings, hardware info, installed models. No media content or cue text.",
+      "export": "Export ZIP"
+    },
+    "logViewer": {
+      "title": "Log viewer",
+      "body": "Recent structured events. Strings in path / name fields are hashed unless Debug mode is on.",
+      "selectFile": "Date",
+      "tailLabel": "Lines",
+      "refresh": "Refresh",
+      "noFiles": "No log files yet — events appear here after the first transcription.",
+      "loading": "Loading…",
+      "loadFailed": "Failed to load log",
+      "showing": "Showing last {count} of {total} lines",
+      "truncatedNote": "Older lines exist. Increase the tail count or export the full ZIP.",
+      "writerUnhealthy": "Log writer is failing — recent events may not be persisted to disk."
+    }
+  },
+  "help": {
+    "title": "Help",
+    "subtitle": "Usage help, version information, and release notes.",
+    "tabs": {
+      "help": "Help",
+      "about": "About",
+      "changelog": "Changelog"
+    },
+    "changelog": {
+      "title": "Changelog",
+      "body": "Important changes in recent versions. The repository remains the source of truth for the full commit history.",
+      "v040": {
+        "multiLocale": "UI now ships in Traditional Chinese, Japanese, and Spanish in addition to Simplified Chinese and English. The 2-state language toggle is upgraded to a dropdown picker with script-native short labels.",
+        "windowPause": "Pause media automatically when the desktop window hides or minimizes, so audio stops with the window.",
+        "playerToolbar": "Player toolbar now holds actions only; cache / transcribing / translating status moved to a meta row under the video name. The right panel is renamed from \"Subtitles\" to \"Index\" to clarify its role.",
+        "polish": "Smoother waveform progress on short videos; batch staging and cache-clear flows are more reliable."
+      },
+      "v039": {
+        "batch": "Added batch processing: select multiple audio/video files, configure once, and let Subcast queue the work.",
+        "workflow": "Added batch presets that combine transcription, translation, AI summary, and speaker recognition.",
+        "queue": "Added batch progress cards in the task queue with overall progress, failure counts, and retry support."
+      },
+      "v037": {
+        "diarize": "Added speaker diarization after transcription, with speaker labels available in the subtitle view.",
+        "speakerUi": "Added speaker labels, grouped subtitle view, and speaker renaming for interviews, podcasts, and meetings.",
+        "packaging": "Fixed native dependency loading for speaker recognition in packaged macOS builds."
+      },
+      "v035": {
+        "downloads": "Improved model download reliability to reduce first-run failures caused by unstable networks.",
+        "mirrors": "Added automatic mirror probing and selection between Hugging Face and mirror hosts.",
+        "resume": "Improved resume and cancellation recovery so large model downloads do not restart from scratch."
+      },
+      "v030": {
+        "llama": "Switched the AI engine from Ollama to bundled llama.cpp/llama-server to reduce external runtime dependencies.",
+        "localAi": "Moved translation and AI summaries onto Subcast-managed local LLM models with a unified setup flow.",
+        "settings": "Added model management in Settings for viewing, switching, downloading, and deleting local models."
+      },
+      "v020": {
+        "macApp": "Added the first macOS desktop app experience.",
+        "packaging": "Bundled transcription sidecars and runtime resources to reduce manual local-server setup.",
+        "diagnostics": "Added diagnostic export, tray integration, and basic desktop menus for testing and issue reports."
+      },
+      "v010": {
+        "web": "Initial release as a locally-run web app.",
+        "transcribe": "Added local media import and Whisper-based transcription.",
+        "translate": "Added translation subtitles from transcription output to validate the core workflow."
+      }
+    }
+  },
+  "desktop": {
+    "setupCheck": {
+      "checking": "Checking setup…",
+      "retry": "Retry",
+      "probeFailed": "Setup status probe failed"
+    },
+    "setupWizard": {
+      "welcome": "First-run setup",
+      "manageTitle": "Manage models",
+      "stepLabel1": "Whisper",
+      "stepLabel2": "AI model",
+      "subtitleStep1": "Choose transcription model (Whisper)",
+      "subtitleStep2": "Choose AI model (translation & insights)",
+      "recommended": "Recommended",
+      "foundAt": "Found existing file at",
+      "scanFound": "Found in {source}",
+      "actionSymlink": "Symlink (no extra disk used)",
+      "actionCopy": "Copy into Subcast data dir",
+      "actionIgnore": "Ignore and download a fresh copy",
+      "mirrorToggle": "Force download via {host} (skip auto-detect)",
+      "mirrorAutoNote": "Auto-detect: probe huggingface.co and hf-mirror.com in parallel for 4 s, then download from whichever delivers faster. If both fail, falls back to hf-mirror.com automatically.",
+      "downloading": "Downloading",
+      "linking": "Linking",
+      "copying": "Copying",
+      "installFailed": "Install failed: {error}",
+      "installStartFailed": "Install failed to start",
+      "pollFailed": "Install status stopped updating. Check your connection and try again.",
+      "installCanceled": "Download canceled. Pick a model and hit Download again to resume.",
+      "skip": "Skip setup",
+      "back": "Back",
+      "next": "Next",
+      "finish": "Finish",
+      "linkExisting": "Link existing file",
+      "copyExisting": "Copy existing file",
+      "download": "Download",
+      "cancel": "Cancel",
+      "remainingSecs": "{n}s left",
+      "remainingMins": "{m}m {s}s left",
+      "perSecond": "/s",
+      "checkingEvery5s": "Checking every 5 seconds — keep this window open.",
+      "installedAt": "{name} installed at"
+    },
+    "llm": {
+      "selectModel": "Select AI model",
+      "alreadyInstalled": "Installed",
+      "foundIn": "Found in {source}",
+      "lowMemoryWarning": "Your machine has under 8 GB RAM — running an AI model may slow the system. You can skip this step and configure AI later in Settings.",
+      "installing": "Downloading {name}…",
+      "ready": "{name} is ready",
+      "installFailed": "Download failed: {error}"
+    },
+    "home": {
+      "setupIncomplete": "Setup incomplete:",
+      "openSetupWizard": "Open Setup Wizard",
+      "gapWhisper": "Transcription model",
+      "gapLlm": "AI model",
+      "openFileFailed": "open-file failed"
+    },
+    "about": {
+      "subtitle": "Free · Offline · LLM — audio/video transcription & translation",
+      "fullyLocal": "100% local · zero data egress",
+      "versionLabel": "Current version",
+      "privacyLabel": "Privacy mode",
+      "licenseLabel": "License",
+      "depsHeader": "Built with these open-source components",
+      "licenseLine": "© 2026 twoer · Licensed under",
+      "buttons": {
+        "repository": "Repository",
+        "license": "License",
+        "reportIssue": "Report Issue"
+      }
+    },
+    "help": {
+      "title": "Help",
+      "introBody": "Quick reference for first-time setup quirks and where to look when something misbehaves. The full docs live in the repository README.",
+      "diagnostics": {
+        "title": "Export diagnostics",
+        "body": "Help → Export Diagnostics… (also in the tray menu) zips the last 7 days of structured logs plus a system.json snapshot — no media content, transcript text, or filenames are included. Attach the zip when filing an issue.",
+        "export": "Export ZIP"
+      },
+      "updates": {
+        "title": "Updates",
+        "windowsBody": "Windows auto-downloads differential updates in the background and applies them on next launch.",
+        "macBody": "macOS is manual: Help → Check for Updates… opens the release page in your browser; download and drag the new app into Applications."
+      },
+      "faq": {
+        "title": "Common issues",
+        "mirrorTitle": "Whisper download is slow",
+        "mirrorBody": "Subcast races huggingface.co against hf-mirror.com for 4 s and downloads from the faster side; if both fail it falls back to hf-mirror.com automatically — usually no action needed. If it's still slow, tick 'Force hf-mirror.com' in Step 1 to skip the probe. Partially-downloaded bytes resume; no restart needed.",
+        "macGatekeeperTitle": "macOS 15+ blocks Subcast",
+        "macGatekeeperBody": "System Settings → Privacy & Security → scroll to the bottom for the explicit 'Open Anyway' button.",
+        "zombieTitle": "Translation stopped after a crash",
+        "zombieBody": "We mark it failed instead of silently re-running inference. Hit Retry on the home page when ready."
+      },
+      "links": {
+        "docs": "Documentation",
+        "repository": "Repository",
+        "reportIssue": "Report Issue"
+      }
+    }
+  }
+}

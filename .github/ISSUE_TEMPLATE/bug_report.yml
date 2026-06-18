@@ -1,0 +1,78 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Bug report
+description: Report something that's broken or behaves unexpectedly.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug! If this is a security
+        issue, please follow [SECURITY.md](../../SECURITY.md) instead —
+        **do not** use this public form for security reports.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+      placeholder: |
+        Steps to reproduce:
+        1. ...
+        2. ...
+
+        Expected: ...
+        Actual: ...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Subcast version
+      description: Find it under Help → About, or in the window title in dev.
+      placeholder: "0.4.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Windows
+        - Linux (web/dev mode only)
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: os-version
+    attributes:
+      label: OS version
+      placeholder: "macOS 15.2, Windows 11 23H2, Ubuntu 24.04"
+    validations:
+      required: false
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: |
+        Attach a diagnostics zip from **Help → Export Diagnostics…**
+        (also in the tray menu). It contains the last 7 days of
+        structured logs and a system snapshot — **no** video content,
+        transcript text, or filenames. Drag the .zip onto this field.
+      placeholder: Drop the diagnostics .zip here.
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Optional — paste any console / terminal output verbatim.
+      render: shell
+    validations:
+      required: false

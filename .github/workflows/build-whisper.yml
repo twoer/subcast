@@ -1,0 +1,138 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Pre-compile whisper-cli for the two platforms Subcast desktop ships on
+# (decision 5: macOS arm64 + Windows x64). whisper.cpp is pinned to a
+# specific tag (decision 25); upgrading is a deliberate PR — bump
+# WHISPER_CPP_VERSION here and re-trigger the workflow.
+#
+# Artifacts:
+#   whisper-cli-macos-arm64  →  Mach-O arm64 binary (Metal acceleration on)
+#   whisper-cli-windows-x64  →  whisper-cli.exe (CPU-only, no CUDA yet)
+#
+# Trigger:
+#   - Push that touches this workflow file
+#   - Manual `workflow_dispatch`
+#
+# Phase 1.13 / Phase 1 milestone pipeline will fetch these artifacts into
+# `binaries/<platform>/` for electron-builder's extraResources.
+
+name: Build whisper-cli
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build-whisper.yml'
+  workflow_dispatch:
+
+env:
+  WHISPER_CPP_VERSION: v1.8.4   # decision 25 — confirmed 2026-05-12
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            arch: arm64
+            ext: ''
+            # Core cmake flags only. The -ffile-prefix-map (which scrubs the
+            # GitHub runner path /Users/runner/... so electron-builder's
+            # assertNoBuildMachinePaths doesn't reject the binary) is added
+            # in the Configure cmake step via $GITHUB_WORKSPACE, because
+            # ${{ github.workspace }} is NOT expanded inside matrix fields.
+            cmake_flags: '-DGGML_METAL=ON -DCMAKE_BUILD_TYPE=Release'
+            build_config: 'Release'
+            artifact_path: 'whisper.cpp/build/bin'
+          # Pin windows-2022 (NOT windows-latest). As of 2026-06-08 GitHub
+          # migrated windows-latest → VS 2026 (Microsoft skipped VS 2025),
+          # so '-G "Visual Studio 17 2022"' fails with 'could not find any
+          # instance of Visual Studio'. windows-2022 still ships VS 2022,
+          # which matches both this generator and the whisper.cpp v1.8.4
+          # toolchain the build was validated against.
+          - os: windows-2022
+            arch: x64
+            ext: '.exe'
+            cmake_flags: '-DCMAKE_BUILD_TYPE=Release -G "Visual Studio 17 2022" -A x64'
+            build_config: 'Release'
+            artifact_path: 'whisper.cpp/build/bin/Release/whisper-cli.exe'
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repo (for traceability only)
+        uses: actions/checkout@v4
+
+      - name: Clone whisper.cpp at pinned tag
+        shell: bash
+        run: |
+          git clone --depth 1 --branch ${{ env.WHISPER_CPP_VERSION }} https://github.com/ggerganov/whisper.cpp
+
+      - name: Configure cmake
+        working-directory: whisper.cpp
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          cd build
+          # On macOS, add -ffile-prefix-map to scrub the runner path
+          # (/Users/runner/work/...) from the binary so electron-builder's
+          # assertNoBuildMachinePaths (rejects any /Users/ in otool output)
+          # doesn't fail at packaging time. Done here via $GITHUB_WORKSPACE
+          # because ${{ github.workspace }} isn't expanded in matrix fields.
+          # Each -D<CFLAGS> value must be a single quoted argument to cmake,
+          # so the two -ffile-prefix-map entries stay one C flag string
+          # instead of being split into separate (rejected) cmake args.
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            MAPC="-ffile-prefix-map=$GITHUB_WORKSPACE/whisper.cpp=whisper.cpp -ffile-prefix-map=$GITHUB_WORKSPACE=subcast-ci"
+            cmake .. ${{ matrix.cmake_flags }} "-DCMAKE_C_FLAGS=$MAPC" "-DCMAKE_CXX_FLAGS=$MAPC"
+          else
+            cmake .. ${{ matrix.cmake_flags }}
+          fi
+
+      - name: Build whisper-cli
+        working-directory: whisper.cpp/build
+        shell: bash
+        run: cmake --build . --target whisper-cli --config ${{ matrix.build_config }}
+
+      # macOS only: whisper-cli is dynamically linked against libwhisper +
+      # libggml*.dylib. Stage them next to the binary (whisper.cpp/build/bin/
+      # whisper-libs/) so the uploaded artifact is self-contained and matches
+      # the layout scripts/fetch-whisper-cli.mjs expects under binaries/<target>/.
+      # Mirrors that script's libDirs + filename regex.
+      - name: Stage macOS dylibs
+        if: runner.os == 'macOS'
+        working-directory: whisper.cpp/build
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p bin/whisper-libs
+          count=0
+          for dir in src ggml/src ggml/src/ggml-blas ggml/src/ggml-metal; do
+            [ -d "$dir" ] || continue
+            for f in "$dir"/lib{whisper,ggml}*.dylib; do
+              [ -f "$f" ] || continue
+              cp "$f" "bin/whisper-libs/"
+              count=$((count + 1))
+            done
+          done
+          if [ "$count" -eq 0 ]; then
+            echo "::error::no whisper/ggml dylibs found under build/{src,ggml/src,...}"
+            exit 1
+          fi
+          echo "Staged $count dylib(s):"
+          ls -lh bin/whisper-libs/
+
+      - name: Sanity check binary
+        shell: bash
+        run: |
+          ls -lh ${{ matrix.artifact_path }}
+          # Don't try to run it — Windows runners don't have a working stdin
+          # and macOS unsigned binary may be quarantined.
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: whisper-cli-${{ matrix.os }}-${{ matrix.arch }}
+          path: ${{ matrix.artifact_path }}
+          retention-days: 30

@@ -1,0 +1,573 @@
+{
+  "app": {
+    "title": "Subcast",
+    "lan": "LAN",
+    "settings": "Ajustes",
+    "back": "Atrás",
+    "language": "Idioma",
+    "home": "Inicio",
+    "library": "Biblioteca",
+    "models": "Modelos",
+    "modelsActive": "Modelos de transcripción e IA activos",
+    "modelBusy": "Hay una tarea en ejecución — el modelo está en uso",
+    "manageModels": "Gestionar modelos",
+    "modelNotInstalled": "No instalado: {name}",
+    "llmNotInstalled": "Modelo de IA no instalado",
+    "llmLabel": "IA"
+  },
+  "fileStatus": {
+    "transcribing": "Transcribiendo {pct}%",
+    "transcribeQueued": "En cola",
+    "transcribeFailed": "Error al transcribir",
+    "transcribed": "Transcrito",
+    "translating": "Traduciendo {lang} {pct}%",
+    "translateQueued": "En cola: {lang}",
+    "translateFailed": "Error al traducir",
+    "translatedCount": "+{n} traducidos",
+    "aiRunning": "Generando resumen con IA",
+    "aiReady": "Resumen IA"
+  },
+  "library": {
+    "title": "Biblioteca",
+    "subtitle": "Archivos multimedia y subtítulos guardados localmente. Haz clic para abrir en el reproductor, o elimínalos desde aquí.",
+    "loading": "Cargando…",
+    "totals": "{count} archivos · {size}",
+    "noSubtitles": "Sin subtítulos",
+    "deleteOne": "Eliminar",
+    "deleteOneTitle": "¿Eliminar este archivo?",
+    "deleteOneDesc": "{name} y sus subtítulos en caché se eliminarán. Esta acción no se puede deshacer.",
+    "clearAll": "Borrar todo",
+    "clearAllTitle": "¿Borrar todos los datos en caché?",
+    "clearAllDesc": "Se eliminarán todos los archivos multimedia y subtítulos en caché. Esta acción no se puede deshacer.",
+    "cancel": "Cancelar",
+    "confirm": "Eliminar",
+    "rename": "Renombrar",
+    "renameDesc": "Déjalo en blanco para restaurar el nombre original del archivo.",
+    "renameConfirm": "Guardar",
+    "empty": {
+      "title": "La biblioteca está vacía",
+      "description": "Arrastra un archivo multimedia a la página de inicio y aparecerá aquí."
+    }
+  },
+  "index": {
+    "drop": "Arrastra uno o más archivos de vídeo/audio (los archivos individuales pueden incluir .srt/.vtt/.ass), o",
+    "choose": "Elegir archivos",
+    "uploading": "Subiendo…",
+    "queue": "Cola de tareas",
+    "queueMeta": "{active} activas / {total} recientes",
+    "queueEmpty": "Sin tareas recientes",
+    "queueLoading": "Cargando…",
+    "cancel": "Cancelar",
+    "cancelTaskTitle": "¿Cancelar esta tarea?",
+    "cancelTaskDesc": "La tarea actual de «{name}» se detendrá. Los datos completados se conservarán cuando sea posible.",
+    "cancelTaskConfirm": "Cancelar tarea",
+    "chunkTooltip": "{total} fragmentos de habla (≤30 s cada uno, música/silencio prefiltrados por VAD)",
+    "transcribing": "Transcribiendo",
+    "translating": "Traduciendo",
+    "kindTranscribe": "Transcripción",
+    "kindTranslate": "Traducción",
+    "kindInsightZh": "Resumen IA (chino)",
+    "kindInsightEn": "Resumen IA (inglés)",
+    "kindDiarize": "Identificación de hablantes",
+    "noVideo": "No hay archivos de vídeo o audio en lo que has arrastrado",
+    "status": {
+      "queued": "En cola",
+      "running": "En ejecución",
+      "completed": "Completado",
+      "failed": "Fallido",
+      "canceled": "Cancelado",
+      "done": "Listo",
+      "error": "Error"
+    },
+    "library": {
+      "title": "Archivos recientes",
+      "noSubs": "Sin subtítulos",
+      "viewAll": "Ver todo en ajustes",
+      "more": "Más",
+      "rename": "Renombrar",
+      "renameDesc": "Déjalo vacío para restaurar el nombre original del archivo.",
+      "renameConfirm": "Guardar",
+      "cancel": "Cancelar",
+      "justNow": "justo ahora",
+      "minutesAgo": "hace {n} min",
+      "hoursAgo": "hace {n} h",
+      "daysAgo": "hace {n} d"
+    }
+  },
+  "health": {
+    "missing": "Faltan algunas dependencias",
+    "recheck": "Volver a comprobar",
+    "copy": "Copiar",
+    "copied": "Copiado"
+  },
+  "companion": {
+    "title": "Subtítulos adjuntos detectados",
+    "body": "Se ha encontrado un archivo de subtítulos junto al archivo multimedia:",
+    "useExisting": "Usar los existentes",
+    "ignore": "Ignorar y volver a transcribir"
+  },
+  "player": {
+    "subtitles": "Subtítulos",
+    "indexTitle": "Índice de subtítulos",
+    "indexSubtitle": "Para buscar, navegar y revisar · no sustituye a los subtítulos sobre el vídeo",
+    "meta": {
+      "transcribing": "Transcribiendo",
+      "transcribed": "Transcrito",
+      "translating": "Traduciendo",
+      "translated": "Traducido",
+      "failed": "Fallido"
+    },
+    "retranscribe": {
+      "button": "Volver a transcribir",
+      "title": "¿Volver a transcribir este archivo?",
+      "desc": "Se borrarán los subtítulos originales, {n} traducción(es) y el resumen IA, y se volverá a ejecutar Whisper con el modelo actual. Esta acción no se puede deshacer.",
+      "confirm": "Volver a transcribir"
+    },
+    "original": "Original",
+    "cues": "{n} líneas",
+    "suspect": "{n} sospechosas",
+    "suspectTitle": "Whisper marcó estos fragmentos como baja confianza",
+    "suspectCueTitle": "La calidad de la transcripción puede ser baja (reintentado 2 veces)",
+    "noAudio": "── sin audio {n}s ──",
+    "firstCueDelay": "Transcribiendo… la primera línea aparece en 30-60 s",
+    "translatingShort": "Traduciendo…",
+    "shortcuts": "Atajos de teclado",
+    "subtitleStyle": "Estilo de subtítulos",
+    "fontSize": "Tamaño de fuente",
+    "color": "Color",
+    "customColor": "Color personalizado",
+    "bgOpacity": "Opacidad de fondo",
+    "reset": "Restablecer valores",
+    "translateProgress": "Traduciendo {pct}%",
+    "translateRetrying": "Reintentando en lotes más pequeños",
+    "cache": "caché",
+    "status": {
+      "idle": "inactivo",
+      "running": "en ejecución",
+      "done": "listo",
+      "error": "error"
+    },
+    "shortcutDescriptions": {
+      "playPause": "Reproducir / pausar",
+      "seek5": "Retroceder/avanzar 5 s",
+      "seek10": "Retroceder/avanzar 10 s (estilo YouTube)",
+      "volume": "Volumen ±10%",
+      "speed": "Velocidad ±1 paso",
+      "mute": "Silenciar / activar sonido",
+      "fullscreen": "Pantalla completa",
+      "subs": "Mostrar / ocultar subtítulos",
+      "jumpPct": "Saltar al 10%-90% de la reproducción",
+      "help": "Mostrar esta ayuda",
+      "esc": "Cerrar el diálogo"
+    },
+    "errors": {
+      "disconnected": "Se perdió la conexión con el servidor.",
+      "FATAL_UNKNOWN": "Error inesperado. Inténtalo de nuevo más tarde.",
+      "TASK_NOT_FOUND": "Esta tarea ha caducado. Vuelve a iniciarla.",
+      "MODEL_NOT_CONFIGURED": "No hay ningún modelo de IA configurado o disponible. Abre Ajustes → Modelos para instalar uno.",
+      "WHISPER_NOT_CONFIGURED": "La transcripción Whisper no está lista. Abre Ajustes → Modelos para descargar un modelo de voz.",
+      "CANCELED": "Tarea cancelada.",
+      "ORIGINAL_NOT_READY": "La transcripción original aún no está lista. Ejecuta primero la transcripción.",
+      "BATCH_RETRY_EXHAUSTED": "La traducción se reintentó varias veces y aún falló. Vuelve a intentarlo o cambia de modelo.",
+      "PARSE_FAILED": "No se pudo analizar la salida de la IA. Inténtalo de nuevo.",
+      "fallback": "La operación falló. Inténtalo de nuevo.",
+      "retry": "Reintentar"
+    },
+    "cancelTranslation": "Cancelar traducción",
+    "cancelTranslationTitle": "¿Cancelar esta traducción?",
+    "cancelTranslationDesc": "Se conservarán las líneas traducidas hasta el momento. Podrás reanudar volviendo a cambiar a este idioma más tarde.",
+    "cancelTranslationConfirm": "Detener traducción",
+    "cancel": "Cancelar",
+    "export": {
+      "title": "Exportar subtítulos",
+      "languages": "Idiomas",
+      "format": "Formato",
+      "download": "Descargar",
+      "includeSpeakers": "Incluir etiquetas de hablante (cuando estén disponibles)",
+      "hintAtLeastOne": "Selecciona al menos un idioma.",
+      "hintExactly2": "Los subtítulos bilingües requieren exactamente 2 idiomas."
+    },
+    "search": {
+      "placeholder": "Buscar en subtítulos...",
+      "next": "Siguiente coincidencia",
+      "prev": "Coincidencia anterior",
+      "clear": "Borrar búsqueda"
+    },
+    "diarize": {
+      "viewToggle": {
+        "aria": "Vista de subtítulos",
+        "list": "Vista de lista",
+        "grouped": "Agrupado por hablante"
+      },
+      "unknownSpeaker": "Sin determinar",
+      "speakerDefault": "Hablante {letter}",
+      "singleSpeakerBadge": "Un único hablante",
+      "diarizing": "Identificando hablantes…",
+      "failed": "Error al identificar hablantes",
+      "renamePlaceholder": "Hablante {letter}",
+      "renameDialogTitle": "Renombrar {current}",
+      "renameDialogDesc": "Déjalo en blanco para restaurar el nombre por defecto.",
+      "renameCancel": "Cancelar",
+      "renameConfirm": "Guardar",
+      "clickToRename": "Haz clic para renombrar",
+      "headerMenu": "Opciones de hablante",
+      "rename": "Renombrar",
+      "changeTopK": "Cambiar el número de hablantes",
+      "topKOption": "{k} hablantes",
+      "unknownWarning": "{percent} ({duration}) del contenido no se pudo asignar con confianza a un hablante.",
+      "unknownDurationShort": "{s} s",
+      "unknownDurationLong": "{m} min {s} s",
+      "tryMoreSpeakers": "Probar con {k}",
+      "runButton": "Identificar hablantes",
+      "retryButton": "Reintentar identificación",
+      "runHint": "Identifica los hablantes de este vídeo (se ejecuta localmente, ~5-7 min por hora)",
+      "singleSpeakerHint": "La diarización detectó un solo hablante — no se necesita agrupar.",
+      "doneBadge": "{n} hablantes",
+      "doneHint": "Diarización completada. Usa el selector en el panel de subtítulos para alternar entre vista de lista y por hablante."
+    },
+    "insights": {
+      "tabLabel": "Resumen IA",
+      "emptyTitle": "Resumen IA",
+      "emptyHint": "Genera un resumen y capítulos a partir de la transcripción.",
+      "feature1": "Resumen + 3-5 puntos clave",
+      "feature2": "3-8 marcadores de capítulo clicables",
+      "feature3": "Totalmente local · privacidad ante todo",
+      "estimate": "{model} · ~30-60 segundos",
+      "waitForTranscript": "Disponible al terminar la transcripción",
+      "generate": "Generar resumen IA",
+      "generating": "Generando...",
+      "generatingReading": "Leyendo la transcripción...",
+      "generatingSummary": "Escribiendo el resumen...",
+      "generatingChapters": "Escribiendo los capítulos...",
+      "cancel": "Cancelar",
+      "regenerate": "Regenerar",
+      "copy": "Copiar",
+      "copied": "Copiado",
+      "retry": "Intentar de nuevo",
+      "clear": "Borrar",
+      "clearTitle": "¿Borrar el resumen IA?",
+      "clearDesc": "Se eliminarán el resumen y los capítulos en caché. Podrás regenerarlos más tarde. Esta acción no se puede deshacer.",
+      "clearConfirm": "Borrar",
+      "summarySection": "Resumen",
+      "chaptersSection": "Capítulos",
+      "langMismatch": "Este resumen IA se generó en {lang}.",
+      "regenerateInLang": "Regenerar en {lang}",
+      "langZh": "Chino",
+      "langEn": "Inglés",
+      "outdatedHint": "El resumen se generó con ajustes desactualizados (cambió el modelo o la transcripción).",
+      "errors": {
+        "VIDEO_TOO_LONG": "El contenido multimedia es demasiado largo para generar un resumen IA con el modelo actual.",
+        "PARSE_FAILED": "No se pudo analizar la salida de la IA. Inténtalo de nuevo.",
+        "MODEL_NOT_CONFIGURED": "No hay ningún modelo de IA configurado o disponible. Abre Ajustes → Modelos para instalar uno.",
+        "NETWORK": "Se perdió la conexión durante la generación.",
+        "fallback": "Error al generar el resumen. Inténtalo de nuevo."
+      }
+    }
+  },
+  "batch": {
+    "defaultName": "Lote · {count} archivos",
+    "uploadProgress": "Subiendo {done}/{total}",
+    "summary": "{done} completados · {failed} fallidos · {total} en total",
+    "retryFailed": "Reintentar los fallidos",
+    "create": {
+      "title": "Procesar {count} archivos por lote",
+      "desc": "Elige un preset para empezar. Los resultados se guardan en la biblioteca.",
+      "targetLangs": "Idiomas de traducción",
+      "noTranslate": "Este preset no incluye traducción.",
+      "previewTitle": "Plan del lote",
+      "allReadyTitle": "Nada que procesar",
+      "previewLoading": "Comprobando resultados existentes…",
+      "uploadOnStart": "Se importarán {count} archivos y se pondrán en cola al iniciar.",
+      "readyToCreate": "{count} archivos se pondrán en cola para el procesamiento por lote.",
+      "partialReady": "{ready} archivos ya tienen resultados reutilizables. {queued} archivos se pondrán en cola.",
+      "libraryReused": "{library} archivos ya están en la biblioteca. {queued} archivos se pondrán en cola.",
+      "libraryAndPartialReady": "{library} archivos ya están en la biblioteca. {ready} archivos ya tienen los resultados solicitados. {queued} archivos se pondrán en cola.",
+      "allReady": "Todos los resultados ya existen para los {count} archivos seleccionados. No se necesita lote.",
+      "noWork": "Nada que procesar",
+      "start": "Iniciar lote"
+    },
+    "presets": {
+      "transcribe": "Transcribir",
+      "transcribe_translate": "Transcribir+traducir",
+      "transcribe_insights": "Transcribir+resumen",
+      "transcribe_translate_insights": "Transcribir+traducir+resumen",
+      "full": "Todos los pasos"
+    },
+    "presetDescriptions": {
+      "transcribe": "Ejecuta: transcripción.",
+      "transcribe_translate": "Ejecuta: transcripción y traducción.",
+      "transcribe_insights": "Ejecuta: transcripción y resumen IA.",
+      "transcribe_translate_insights": "Ejecuta: transcripción, traducción y resumen IA.",
+      "full": "Ejecuta: transcripción, traducción, resumen IA y reconocimiento de hablantes."
+    },
+    "errors": {
+      "allUploadsFailed": "Fallaron todas las subidas de archivos. Inténtalo de nuevo.",
+      "partialStageFailed": "Falló la comprobación previa de {count} archivos. Los archivos restantes pueden seguir poniéndose en cola.",
+      "partialUploadFailed": "Fallaron {count} subidas. Se creó un lote para los archivos restantes."
+    },
+    "info": {
+      "reused": "{reused} archivos ya estaban en la biblioteca, por lo que se reutilizarán los resultados existentes. {queued} archivos se pusieron en cola para el procesamiento por lote.",
+      "allReady": "Todos los resultados ya existen para los {count} archivos seleccionados. No se creó ningún lote."
+    }
+  },
+  "common": {
+    "cancel": "Cancelar"
+  },
+  "settings": {
+    "title": "Ajustes",
+    "subtitle": "Preferencias de usuario y gestión de la caché local.",
+    "tabs": {
+      "overview": "Resumen",
+      "preferences": "Preferencias",
+      "models": "Modelos"
+    },
+    "models": {
+      "activeTitle": "Modelos activos",
+      "notInstalledWarn": "{name} no está completamente instalado — la transcripción fallará. Usa «Descargar más» o elige un modelo instalado de la lista.",
+      "whisper": "Modelos de transcripción Whisper",
+      "llm": "Modelo de IA (Qwen 2.5)",
+      "size": "{size}",
+      "active": "Activo",
+      "activeFile": "Activo: {name}",
+      "notConfigured": "Sin configurar — configura un modelo de IA mediante el asistente de configuración.",
+      "switch": "Usar",
+      "delete": "Eliminar",
+      "downloadMore": "Descargar más",
+      "loading": "Cargando…",
+      "empty": "Sin modelos instalados — haz clic en «Descargar más» arriba",
+      "emptyLlm": "Sin modelos de IA instalados — haz clic en «Descargar más» arriba",
+      "refresh": "Actualizar",
+      "deleteTitle": "¿Eliminar este modelo?",
+      "deleteDesc": "{name} ({size}) se eliminará de este equipo. Tendrás que descargarlo de nuevo la próxima vez.",
+      "cancel": "Cancelar",
+      "confirm": "Eliminar",
+      "switchFailed": "Error al cambiar: {error}",
+      "deleteFailed": "Error al eliminar: {error}"
+    },
+    "hardware": "Hardware",
+    "tier": "Nivel",
+    "ram": "RAM",
+    "cpu": "CPU",
+    "gpu": "GPU",
+    "platform": "Plataforma",
+    "recommended": "Recomendado",
+    "applyRecommended": "Aplicar configuración recomendada al borrador",
+    "preferences": "Preferencias",
+    "section": "Preferencias",
+    "whisperModel": "Modelo Whisper",
+    "whisperHint": "Más grande = más preciso pero más lento. Los cambios se aplican a las nuevas tareas de transcripción.",
+    "llmModel": "Modelo de IA",
+    "llmHint": "Cuantización local de Qwen 2.5 servida por un llama-server en proceso. Recomendado: {model}.",
+    "cacheLimit": "Límite de tamaño de caché",
+    "silenceThreshold": "Umbral de silencio",
+    "silenceHint": "Los intervalos entre líneas ≥ esta duración añaden un separador «── sin audio ──» en la lista.",
+    "chunkingStrategy": {
+      "title": "Fragmentación de audio",
+      "hint": "Cómo divide Subcast el audio antes de pasarlo al transcriptor.",
+      "vad": "Detectar habla automáticamente (recomendado)",
+      "vadHint": "Usa Silero VAD para omitir las zonas con música o silencio. Menos alucinaciones, más rápido en vídeos largos.",
+      "fixed": "Fragmentos fijos de 30 segundos",
+      "fixedHint": "Divide cada 30 s independientemente del contenido. Úsalo solo si la detección automática falla en tu equipo."
+    },
+    "cueFontSize": "Tamaño de fuente de la lista de subtítulos",
+    "cueFontSizeHint": "Solo afecta al panel de la lista de subtítulos; el estilo de los subtítulos en el reproductor se configura por separado.",
+    "debugTitle": "Modo de depuración",
+    "debugDescription": "Conserva las rutas y nombres de archivo originales en los registros JSONL.",
+    "debugMode": "Modo de depuración (conserva rutas/nombres originales en los registros JSONL)",
+    "save": "Guardar",
+    "saved": "Guardado",
+    "saving": "Guardando…",
+    "resetDraft": "Deshacer",
+    "lastSaved": "Último guardado {time}",
+    "loading": "Cargando información de hardware…",
+    "tierLabels": {
+      "entry": "Básico",
+      "standard": "Estándar",
+      "recommended": "Recomendado",
+      "high": "Alto"
+    },
+    "cache": {
+      "title": "Caché",
+      "totals": "{count} archivos · {size}",
+      "noVideos": "Aún no hay archivos en caché",
+      "noVideosDesc": "Arrastra un archivo multimedia a la página de inicio y aparecerá aquí.",
+      "noSubtitles": "Sin subtítulos",
+      "deleteOne": "Eliminar",
+      "deleteOneTitle": "¿Eliminar este archivo?",
+      "deleteOneDesc": "{name} y sus subtítulos en caché se eliminarán. Esta acción no se puede deshacer.",
+      "clearAll": "Borrar todo",
+      "clearAllTitle": "¿Borrar todos los datos en caché?",
+      "clearAllDesc": "Se eliminarán todos los archivos multimedia y subtítulos en caché. Esta acción no se puede deshacer.",
+      "cancel": "Cancelar",
+      "confirm": "Eliminar"
+    },
+    "diagnostic": {
+      "title": "Diagnóstico",
+      "body": "ZIP con registros JSONL anonimizados (últimos 7 días), ajustes, información de hardware y modelos instalados. No incluye contenido multimedia ni texto de subtítulos.",
+      "export": "Exportar ZIP"
+    },
+    "logViewer": {
+      "title": "Visor de registros",
+      "body": "Eventos estructurados recientes. Los campos path / name se ofuscan con hash salvo que el modo depuración esté activo.",
+      "selectFile": "Fecha",
+      "tailLabel": "Líneas",
+      "refresh": "Actualizar",
+      "noFiles": "Aún no hay archivos de registro — aparecerán aquí tras la primera transcripción.",
+      "loading": "Cargando…",
+      "loadFailed": "Error al cargar el registro",
+      "showing": "Mostrando las últimas {count} de {total} líneas",
+      "truncatedNote": "Hay líneas más antiguas. Aumenta el número de líneas o exporta el ZIP completo.",
+      "writerUnhealthy": "La escritura de registros falla de forma continua — los eventos recientes pueden no estar guardados en disco."
+    }
+  },
+  "help": {
+    "title": "Ayuda",
+    "subtitle": "Ayuda de uso, información de versión y notas de la versión.",
+    "tabs": {
+      "help": "Ayuda",
+      "about": "Acerca de",
+      "changelog": "Novedades"
+    },
+    "changelog": {
+      "title": "Novedades",
+      "body": "Cambios importantes en versiones recientes. El historial completo de commits se encuentra en el repositorio.",
+      "v040": {
+        "multiLocale": "La interfaz ya está disponible en chino tradicional, japonés y español, además del chino simplificado e inglés. El conmutador de idioma binario se sustituye por un menú desplegable y cada idioma muestra una abreviatura en su escritura nativa.",
+        "windowPause": "Pausa la reproducción automáticamente cuando la ventana del escritorio se oculta o minimiza, para que el audio no siga sonando.",
+        "playerToolbar": "La barra del reproductor ahora solo contiene acciones; el estado de caché / transcripción / traducción se ha movido a una fila bajo el nombre del vídeo. El panel derecho se ha renombrado de «Subtítulos» a «Índice» para aclarar su función.",
+        "polish": "Progreso de forma de onda más suave en vídeos cortos; los flujos de preparación de lotes y borrado de caché son más fiables."
+      },
+      "v039": {
+        "batch": "Procesamiento por lotes añadido: selecciona varios archivos de audio/vídeo, configúralos una vez y deja que Subcast los encole.",
+        "workflow": "Añadidos presets de lote que combinan transcripción, traducción, resumen IA e identificación de hablantes.",
+        "queue": "Añadidas tarjetas de progreso de lote en la cola de tareas con progreso global, contador de fallos y soporte de reintento."
+      },
+      "v037": {
+        "diarize": "Diarización de hablantes añadida tras la transcripción, con etiquetas de hablante disponibles en la vista de subtítulos.",
+        "speakerUi": "Etiquetas de hablante, vista de subtítulos agrupada y renombrado de hablantes para entrevistas, pódcasts y reuniones.",
+        "packaging": "Corregida la carga de dependencias nativas para el reconocimiento de hablantes en builds empaquetados de macOS."
+      },
+      "v035": {
+        "downloads": "Mayor fiabilidad en la descarga de modelos para reducir los fallos en la primera ejecución por redes inestables.",
+        "mirrors": "Sondeo automático y selección entre Hugging Face y hosts espejo.",
+        "resume": "Recuperación de reanudación y cancelación mejorada para que las descargas grandes no empiecen desde cero."
+      },
+      "v030": {
+        "llama": "Motor de IA cambiado de Ollama a llama.cpp/llama-server incluido, para reducir las dependencias de tiempo de ejecución externas.",
+        "localAi": "Traducción y resúmenes IA migrados a modelos LLM locales gestionados por Subcast con un flujo de configuración unificado.",
+        "settings": "Gestión de modelos añadida en Ajustes para ver, cambiar, descargar y eliminar modelos locales."
+      },
+      "v020": {
+        "macApp": "Primera experiencia como aplicación de escritorio macOS.",
+        "packaging": "Sidecars de transcripción y recursos de ejecución empaquetados para reducir la configuración manual de servidor local.",
+        "diagnostics": "Añadidos exportación de diagnóstico, integración con la bandeja del sistema y menús básicos de escritorio para pruebas y reportes de problemas."
+      },
+      "v010": {
+        "web": "Versión inicial como aplicación web de ejecución local.",
+        "transcribe": "Importación de medios locales y transcripción basada en Whisper.",
+        "translate": "Subtítulos de traducción a partir de la transcripción para validar el flujo central."
+      }
+    }
+  },
+  "desktop": {
+    "setupCheck": {
+      "checking": "Comprobando la configuración…",
+      "retry": "Reintentar",
+      "probeFailed": "Falló la comprobación del estado de configuración"
+    },
+    "setupWizard": {
+      "welcome": "Configuración inicial",
+      "manageTitle": "Gestionar modelos",
+      "stepLabel1": "Whisper",
+      "stepLabel2": "Modelo de IA",
+      "subtitleStep1": "Elige el modelo de transcripción (Whisper)",
+      "subtitleStep2": "Elige el modelo de IA (traducción y resumen)",
+      "recommended": "Recomendado",
+      "foundAt": "Archivo existente encontrado en",
+      "scanFound": "Encontrado en {source}",
+      "actionSymlink": "Enlace simbólico (no usa espacio extra)",
+      "actionCopy": "Copiar al directorio de datos de Subcast",
+      "actionIgnore": "Ignorar y descargar una copia nueva",
+      "mirrorToggle": "Forzar descarga vía {host} (omitir detección automática)",
+      "mirrorAutoNote": "Detección automática: sondea huggingface.co y hf-mirror.com en paralelo durante 4 s y descarga desde el que responda más rápido. Si ambos fallan, vuelve automáticamente a hf-mirror.com.",
+      "downloading": "Descargando",
+      "linking": "Enlazando",
+      "copying": "Copiando",
+      "installFailed": "Error de instalación: {error}",
+      "installStartFailed": "La instalación no pudo iniciarse",
+      "pollFailed": "El estado de instalación dejó de actualizarse. Comprueba tu conexión y reinténtalo.",
+      "installCanceled": "Descarga cancelada. Selecciona un modelo y pulsa Descargar de nuevo para continuar.",
+      "skip": "Omitir configuración",
+      "back": "Atrás",
+      "next": "Siguiente",
+      "finish": "Finalizar",
+      "linkExisting": "Enlazar archivo existente",
+      "copyExisting": "Copiar archivo existente",
+      "download": "Descargar",
+      "cancel": "Cancelar",
+      "remainingSecs": "{n} s restantes",
+      "remainingMins": "{m} min {s} s restantes",
+      "perSecond": "/s",
+      "checkingEvery5s": "Comprobando cada 5 segundos — mantén esta ventana abierta.",
+      "installedAt": "{name} instalado en"
+    },
+    "llm": {
+      "selectModel": "Selecciona el modelo de IA",
+      "alreadyInstalled": "Instalado",
+      "foundIn": "Encontrado en {source}",
+      "lowMemoryWarning": "Tu equipo tiene menos de 8 GB de RAM — ejecutar un modelo de IA puede ralentizar el sistema. Puedes omitir este paso y configurar la IA más tarde en Ajustes.",
+      "installing": "Descargando {name}…",
+      "ready": "{name} está listo",
+      "installFailed": "Error en la descarga: {error}"
+    },
+    "home": {
+      "setupIncomplete": "Configuración incompleta:",
+      "openSetupWizard": "Abrir asistente de configuración",
+      "gapWhisper": "Modelo de transcripción",
+      "gapLlm": "Modelo de IA",
+      "openFileFailed": "no se pudo abrir el archivo"
+    },
+    "about": {
+      "subtitle": "Gratis · Sin conexión · LLM — transcripción y traducción de audio/vídeo",
+      "fullyLocal": "100% local · cero datos enviados",
+      "versionLabel": "Versión actual",
+      "privacyLabel": "Modo privacidad",
+      "licenseLabel": "Licencia",
+      "depsHeader": "Construido con estos componentes de código abierto",
+      "licenseLine": "© 2026 twoer · Bajo licencia",
+      "buttons": {
+        "repository": "Repositorio",
+        "license": "Licencia",
+        "reportIssue": "Reportar problema"
+      }
+    },
+    "help": {
+      "title": "Ayuda",
+      "introBody": "Referencia rápida para las particularidades de la configuración inicial y dónde mirar cuando algo va mal. La documentación completa está en el README del repositorio.",
+      "diagnostics": {
+        "title": "Exportar diagnóstico",
+        "body": "Help → Export Diagnostics… (también en el menú de la bandeja) crea un ZIP con los últimos 7 días de registros estructurados y una instantánea system.json — sin contenido multimedia, texto de subtítulos ni nombres de archivo. Adjunta el ZIP al abrir un issue.",
+        "export": "Exportar ZIP"
+      },
+      "updates": {
+        "title": "Actualizaciones",
+        "windowsBody": "Windows descarga actualizaciones diferenciales en segundo plano y las aplica en el siguiente inicio.",
+        "macBody": "macOS es manual: Help → Check for Updates… abre la página de la versión en el navegador; descarga y arrastra la nueva app a Aplicaciones."
+      },
+      "faq": {
+        "title": "Problemas comunes",
+        "mirrorTitle": "La descarga de Whisper es lenta",
+        "mirrorBody": "Subcast prueba huggingface.co contra hf-mirror.com durante 4 s y descarga desde el más rápido; si ambos fallan, vuelve automáticamente a hf-mirror.com — normalmente no necesitas hacer nada. Si sigue lento, marca «Forzar hf-mirror.com» en el Paso 1 para omitir el sondeo. Los bytes ya descargados se reanudan; no hace falta empezar de cero.",
+        "macGatekeeperTitle": "macOS 15+ bloquea Subcast",
+        "macGatekeeperBody": "Ajustes del Sistema → Privacidad y seguridad → desplázate hasta el final para encontrar el botón explícito «Abrir igualmente».",
+        "zombieTitle": "La traducción se detuvo tras un cierre inesperado",
+        "zombieBody": "La marcamos como fallida en lugar de volver a ejecutar inferencia silenciosamente. Pulsa Reintentar en la página de inicio cuando estés listo."
+      },
+      "links": {
+        "docs": "Documentación",
+        "repository": "Repositorio",
+        "reportIssue": "Reportar problema"
+      }
+    }
+  }
+}
