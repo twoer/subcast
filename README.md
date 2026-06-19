@@ -2,14 +2,41 @@
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/twoer/subcast)](https://github.com/twoer/subcast/releases)
+[![macOS](https://img.shields.io/badge/platform-macOS%20%28Apple%20Silicon%29-black?logo=apple&logoColor=white)](https://github.com/twoer/subcast/releases/latest)
+[![Windows](https://img.shields.io/badge/platform-Windows%20x64-black?logo=windows&logoColor=white)](https://github.com/twoer/subcast/releases/latest)
 
 > 免费 · 离线 · 大模型 — 音视频转写翻译
 >
 > English: [README.en.md](./README.en.md)
 
-> ⚠️ **首次配置需要联网**：完成 Whisper 模型 + Ollama 安装 + Qwen 模型下载后，所有后续转写翻译完全本地，**不联网、不调用付费 API、不上报任何遥测**，所有数据都留在本机。
+> 📥 **[下载最新版 →](https://github.com/twoer/subcast/releases/latest)** &nbsp;·&nbsp; macOS (Apple Silicon) / Windows x64
+>
+> ✅ **开箱即用**：安装包内置 Whisper `base` 转写模型（~148 MB）和 Silero VAD，装完即可直接拖入视频开始转写，**无需联网下载任何东西**。
+>
+> ⚠️ **翻译 / AI 摘要**需要额外的 Ollama + Qwen 模型，首次配置需联网下载一次；下载完成后所有功能（含翻译、摘要）全部本地运行，**不联网、不调用付费 API、不上报任何遥测**，数据全部留在本机。
 
 把视频拖进来 → 本地 Whisper 转写 → 边播放边按需翻译。Subcast 是面向 macOS / Windows 的桌面应用。同一套 Nuxt/Nitro 代码也用于 `pnpm dev` 本地开发——这只是无需重打包 Electron 时迭代 UI 的最快方式，**不是**一个可部署/对外提供服务的 Web 产品。
+
+## 核心功能
+
+- 🔒 **隐私优先** —— 所有数据与推理都在本地完成，敏感音视频不出本机
+- 💸 **零成本** —— 不依赖任何云端 API，一次下载模型后零持续费用
+- 🌍 **多语言翻译** —— 原文 + 任意目标语言，播放器里实时切换，已缓存语言打 ✓ 标记
+- ⚡ **流式体验** —— 转写过程中即可开始观看，不必等整段跑完
+- ✨ **AI 总结 + 章节** —— 播放器内一键生成；本地 Ollama 流式输出；章节可点击跳转
+- ↩️ **断点续传** —— 中途强行结束进程，下次从最后一个已完成的 30s 分片继续
+- 🎙 **语音感知分片** —— Silero VAD 预分段，Whisper 只处理真正的人声，大幅减少静音 / 纯音乐段的幻觉，长视频提速 30–50%
+- 🚦 **自适应配置** —— 首次启动按硬件等级自动推荐 Whisper / Ollama 模型，并复用本机已有模型
+- 📥 **导出 & 搜索** —— 单语 / 多语 / 双语字幕导出（VTT / SRT / TXT，多语自动 ZIP）；播放器内常驻搜索框，`/` 或 `Ctrl/Cmd+F` 聚焦，匹配高亮 + `Enter` / `Shift+Enter` 循环
+- 🌊 **波形进度条** —— 内联音频波形可视化，点击 / 拖动精准定位；波峰在上传时预生成，播放器打开即开即用、零等待
+- 🗂 **媒体库管理** —— 所有转写过的媒体集中管理，缓存用量、语言标记、任务状态一目了然；支持重命名、单条 / 批量删除
+
+<details>
+<summary><b>📖 为什么做这个项目？（适合谁用）</b></summary>
+
+云端转写服务用便利换取你的媒体——每次上传都把敏感音视频（访谈、会议、语音备忘）暴露给第三方、受限于它支持的语言、按小时计费。Subcast 面向无法接受这种妥协的人：律师、记者、研究者，以及任何受保密或数据驻留约束的用户，还有更愿意把整套流程留在本机的本地大模型爱好者。转写、翻译、AI 摘要全部在单个应用里本地完成，**一次性下载模型后零持续成本、数据不离开你的机器**。
+
+</details>
 
 ## 预览
 
@@ -17,7 +44,14 @@
 
 ![首页](demo/index.png)
 
-**播放器** —— 左边视频（自定义控件），右边按语言切换的字幕列表，已缓存语言在下拉里打 ✓ 标记，跟随播放进度高亮当前 cue。
+**媒体库** —— 所有转写过的媒体集中管理，显示缓存用量、语言标记、任务状态；支持重命名、单条 / 批量删除。
+
+![媒体库](demo/library.png)
+
+**播放器** —— 应用的核心。左侧视频（自定义控件 + 波形进度条，可拖动精准定位），右侧双标签：
+
+- **字幕** —— 按语言切换的字幕列表，已缓存语言打 ✓ 标记，跟随播放进度高亮当前 cue；支持搜索高亮、说话人分组视图（说话人可重命名、可调整人数重跑）
+- **AI 洞察** —— 一键生成本地 Ollama 流式摘要 + 可点击跳转的章节
 
 ![播放器](demo/player.png)
 
@@ -25,22 +59,9 @@
 
 ![设置](demo/setting.png)
 
-## 为什么用它
+**关于** —— 应用身份卡片、第三方依赖与许可证清单、仓库 / 许可证 / 提交 issue 链接。
 
-云端转写服务用便利换取你的媒体——每次上传都把敏感音视频（访谈、会议、语音备忘）暴露给第三方、受限于它支持的语言、按小时计费。Subcast 面向无法接受这种妥协的人：律师、记者、研究者，以及任何受保密或数据驻留约束的用户，还有更愿意把整套流程留在本机的本地大模型爱好者。转写、翻译、AI 摘要全部在单个应用里本地完成，**一次性下载模型后零持续成本、数据不离开你的机器**。
-
-> **当前状态：** 早期阶段（0.x）。1.0 之前，打包方式、配置布局、部分 API 可能在小版本间变动。本项目由单人维护，PR review / 合并的响应周期约为 1–2 周。欢迎提交 bug 报告和修复；较大的新功能建议先开 issue 讨论。
-
-## 亮点
-
-- 🔒 **隐私优先** —— 所有数据与推理都在本地完成
-- 💸 **零成本** —— 不依赖任何云端 API
-- 🌍 **多语言** —— 原文 + 任意目标语言，可实时切换
-- ⚡ **流式体验** —— 转写过程中即可开始观看
-- ↩️ **断点续传** —— 中途强行结束进程，下次会从最后一个已完成的 30s 分片继续
-- 🚦 **自适应** —— 首次启动按硬件等级自动推荐 Whisper / Ollama 模型，并复用本机已有模型
-- 📥 **导出 & 搜索** —— 单语 / 多语 / 双语字幕导出（VTT / SRT / TXT，多语自动 ZIP）；播放器内常驻搜索框，`/` 或 `Ctrl/Cmd+F` 聚焦输入，匹配高亮 + `Enter` / `Shift+Enter` 循环
-- ✨ **AI 总结 + 章节** —— 播放器内一键生成；本地 Ollama 流式输出；章节可点击跳转
+![关于](demo/about.png)
 
 ---
 
@@ -57,20 +78,28 @@
 | macOS（Apple Silicon） | `Subcast-<version>-arm64.dmg` | 260 MB |
 | Windows（x64） | `Subcast-Setup-<version>.exe` | 240 MB |
 
-Whisper / Ollama / Qwen 模型本身由首次运行向导按需下载，不打包进安装器。推荐档（`base` + `qwen2.5:7b`）额外占用约 **5 GB**。
+**已内置**：Whisper `base` 模型（~148 MB）、Silero VAD（~2 MB）、ffmpeg/ffprobe、whisper-cli、llama-server——**装完即用，转写无需联网**。如需更高精度，可在设置里下载 `small` / `medium` / `large-v3`。
+
+**首次需联网下载**（仅翻译 / 摘要用）：Ollama 运行时 + Qwen 语言模型，推荐档 `qwen2.5:7b` 约 4.7 GB。
 
 ### macOS
 
 1. 双击 `.dmg`，把 **Subcast** 拖入 Applications。
-2. 首次启动会出现 Gatekeeper 警告（Subcast 故意不签名，见下方"License & 成本"）。处理一次即可：
+2. 首次打开会提示 **"Subcast 已损坏，无法打开"** —— 这不是真的损坏，是 macOS Gatekeeper 对未签名 app 的拦截（Subcast 暂未购买 Apple 签名证书，见下方"License & 成本"）。任选一种方式处理，**只需一次**：
 
-   - **macOS 14（Sonoma）及更早** —— 在 Applications 里**右键** `Subcast.app` → **打开** → 确认。
-   - **macOS 15+（Sequoia）** —— 系统设置 → **隐私与安全性** → 下拉至 *"Subcast 已被阻止"* → **仍要打开**，再输入密码授权。
+   - **方式一（推荐）**：打开终端（Terminal），粘贴这行回车：
+     ```bash
+     xattr -cr /Applications/Subcast.app
+     ```
+     然后双击 Subcast 即可正常打开。
 
-   <!-- TODO: 并排两张截图，新旧系统各一张。 -->
+   - **方式二**：在 Applications 里**右键** `Subcast.app` → **打开** → 弹窗选"打开"。
+     （macOS 15+ 如果右键没用：系统设置 → 隐私与安全性 → 下拉至 *"Subcast 已被阻止"* → **仍要打开**。）
+
+   <!-- TODO: 并排两张截图：终端 xattr 命令 + Gatekeeper 弹窗。 -->
 
 3. 跟随首次运行向导：
-   1. **Whisper 转录模型** —— 选档位（默认 `base`）。如果本机已有 `ggml-*.bin` 文件（如来自 [whisper.cpp](https://github.com/ggerganov/whisper.cpp) 或 [Aiko](https://sindresorhus.com/aiko)），Subcast 会提示软链接 / 复制，避免重复下载。
+   1. **Whisper 转录模型** —— `base` 已随安装包内置，可直接开始转写；如需更高精度，可在此下载 `small` / `medium` / `large-v3`。如果本机已有 `ggml-*.bin` 文件（如来自 [whisper.cpp](https://github.com/ggerganov/whisper.cpp) 或 [Aiko](https://sindresorhus.com/aiko)），Subcast 会提示软链接 / 复制，避免重复下载。
    2. **Ollama 运行时** —— 安装到独立目录，作为菜单栏程序常驻。Subcast 自动检测；如果未运行，点击"前往 ollama.com"，安装好后回到向导点"我已安装"重检即可。
    3. **Qwen 语言模型** —— 在 `3b` / `7b`（推荐）/ `14b` 中选择；本机已有的型号会自动标 ✓ 并优先选中。
 
@@ -252,19 +281,22 @@ pnpm lint
 
 ## License & 成本
 
-[Apache-2.0](./LICENSE) © 2026 twoer
+[Apache-2.0](./LICENSE) © 2026 twoer —— **完全免费，可自由使用、修改、分发（含商业用途）**，无需付费、无需注册、无任何功能限制。
 
-Subcast 采用 Apache 2.0 开源协议：允许自由使用、修改、分发（包括商业用途），需保留版权与许可声明；衍生作品可选择是否开源。
+第三方组件（whisper-cli MIT、ffmpeg LGPL build、所有 npm 依赖）的归属与来源声明见 [`NOTICES.md`](./NOTICES.md)；LGPL 版 ffmpeg 对应源码可从 <https://ffmpeg.org/download.html> 获取。
 
-第三方组件（whisper-cli MIT、ffmpeg LGPL build、所有 npm 依赖）的归属
-与来源声明见 [`NOTICES.md`](./NOTICES.md)。LGPL 版 ffmpeg 对应源码可从
-<https://ffmpeg.org/download.html> 获取。
+> 💡 **关于首次启动的"未知开发者"警告**：Subcast 不购买 Apple / Microsoft 的签名证书（见下方折叠说明），因此首次安装时会弹 Gatekeeper / SmartScreen 警告，按 [安装步骤](#桌面版安装) 点一次"仍要打开"即可，**不影响功能、不影响安全**——只是系统对未签名应用的通用提示。
 
-按照设计，**维护者发布 Subcast 每年成本是 $0**：
+<details>
+<summary><b>🔧 维护者视角：为什么免费且能持续？（项目设计哲学）</b></summary>
 
-- macOS：不加入 Apple Developer Program（$99/年）。用户首次启动会看到 Gatekeeper 警告，按上述步骤点一次即可。
-- Windows：自签名代码证书（$0）。用户首次安装会看到 SmartScreen 警告，按上述步骤 *"More info → Run anyway"* 即可。
-- 分发：GitHub Releases（公开仓库免费）。
-- 遥测 / 崩溃上报：**无**。诊断只在用户主动导出时打包。
+按照设计，**发布 Subcast 的每年成本是 $0**，这是项目刻意的选择，也是能长期维护下去的前提：
 
-如果要消除首次警告，需要升级到 Apple Developer 账号 + Windows OV 证书（合计 \~$300/年），不在 v0.1.0 路线图上。
+- **macOS** —— 不加入 Apple Developer Program（$99/年）。用户首次启动看到 Gatekeeper 警告是预期内的，点一次即可。
+- **Windows** —— 使用自签名代码证书（$0）。用户首次安装看到 SmartScreen 警告，走 *"More info → Run anyway"*。
+- **分发** —— GitHub Releases（公开仓库免费）。
+- **遥测 / 崩溃上报** —— **无**。诊断只在用户主动导出时打包。
+
+如果要彻底消除首次警告，需要升级到 Apple Developer 账号 + Windows OV 证书（合计约 $300/年），目前不在路线图上。如果你愿意支持项目长期维护（例如赞助签名证书费用），欢迎通过仓库主页的联系方式与维护者沟通。
+
+</details>

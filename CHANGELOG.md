@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.1 — 2026-06-19
+
+### 修复 / Fixed
+- 翻译 / AI 摘要功能在 macOS 打包版中完全不可用：ggml-org 预编译 llama-server 是动态链接版但未附带 dylib，运行时 dyld 找不到 `libllama.dylib` 直接崩溃。改为在 CI 中从源码编译 llama.cpp（`-DBUILD_SHARED_LIBS=OFF`），产出自包含的静态二进制
+  Translation / AI Insights were completely broken in the macOS packaged app: the prebuilt llama-server was dynamically linked but its dylibs weren't shipped, so dyld aborted at runtime. Now llama.cpp is compiled from source in CI (`-DBUILD_SHARED_LIBS=OFF`) to produce a self-contained static binary
+- 清空缓存 / 删除单个视频 / 重试转写时报 `FOREIGN KEY constraint failed`：`dub_tasks`、`dub_variants`、`dub_segments`、`video_export_tasks` 等表引用了 `videos` 但不在删除列表中；且 `PRAGMA foreign_keys=OFF` 在事务内是空操作（SQLite 限制）。已补全所有依赖表，并将 pragma 移到事务外
+  "Clear all" / single-video delete / transcribe retry threw `FOREIGN KEY constraint failed`: `dub_tasks`, `dub_variants`, `dub_segments`, `video_export_tasks` etc. FK'd to `videos` but weren't in the deletion list; and `PRAGMA foreign_keys=OFF` inside a transaction is a no-op. All dependent tables now covered, pragma moved outside the transaction
+- Windows 打包版启动即崩（`file:///_entry.js`）：ESM 模块在 Windows asar 内的 `import.meta.url` 返回非法路径。改用 `app.getAppPath()` 定位入口
+  Windows packaged app crashed at startup (`file:///_entry.js`): `import.meta.url` returns an invalid path for ESM modules inside asar on Windows. Replaced with `app.getAppPath()`
+- GitHub Actions 打包流水线修复：whisper-cli / llama-server artifact 完整性、Windows VS2026 兼容、proxy 绕过、fetch 超时、dylib 打包等 10+ 处问题
+  GitHub Actions release pipeline fixed: whisper-cli / llama-server artifact completeness, Windows VS2026 compatibility, proxy bypass, fetch timeout, dylib bundling, and 10+ other issues
+
 ## 0.4.0 — 2026-05-18
 
 ### 新增 / Added

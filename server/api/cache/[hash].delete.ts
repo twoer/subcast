@@ -38,9 +38,16 @@ export default defineEventHandler(async (event) => {
   if (existsSync(cacheDir)) await rm(cacheDir, { recursive: true, force: true });
   // Cascade delete in a single transaction so a crash between statements
   // can't leave orphan chunks / subtitles / task rows.
-  db.transaction(() => {
-    deleteVideoGraph(db, hash);
-  })();
+  // PRAGMA foreign_keys is a no-op inside a transaction (SQLite limitation),
+  // so toggle it on the connection BEFORE the transaction begins.
+  db.pragma('foreign_keys = OFF');
+  try {
+    db.transaction(() => {
+      deleteVideoGraph(db, hash);
+    })();
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
   logEvent({ level: 'info', event: 'cache_delete_one', sha: hash });
   return { ok: true, hash };
 });

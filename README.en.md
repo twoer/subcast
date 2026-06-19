@@ -2,14 +2,18 @@
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/twoer/subcast)](https://github.com/twoer/subcast/releases)
+[![macOS](https://img.shields.io/badge/platform-macOS%20%28Apple%20Silicon%29-black?logo=apple&logoColor=white)](https://github.com/twoer/subcast/releases/latest)
+[![Windows](https://img.shields.io/badge/platform-Windows%20x64-black?logo=windows&logoColor=white)](https://github.com/twoer/subcast/releases/latest)
 
 > Free · Offline · LLM-powered — audio/video transcription + translation
 >
 > 中文文档: [README.md](./README.md)
 
-> ⚠️ **First-time setup requires internet.** Once Whisper, Ollama, and Qwen
-> models are downloaded, all transcription and translation runs
-> **100% locally** — no cloud APIs, no telemetry, no recurring costs.
+> 📥 **[Download latest →](https://github.com/twoer/subcast/releases/latest)** &nbsp;·&nbsp; macOS (Apple Silicon) / Windows x64
+>
+> ✅ **Works out of the box:** the installer ships with the Whisper `base` transcription model (~148 MB) and Silero VAD bundled — drop in a video and start transcribing immediately, **no download, no internet needed**.
+>
+> ⚠️ **Translation / AI summary** need the extra Ollama + Qwen models, downloaded once during first-run setup; after that, every feature (including translation and summary) runs fully locally — **no cloud APIs, no telemetry, no recurring costs**.
 
 Drop in a video → local Whisper transcribes → translate on demand while
 you watch. Subcast is a desktop app for macOS and Windows. The same
@@ -17,7 +21,22 @@ Nuxt/Nitro codebase also powers `pnpm dev` as a local development base —
 that is not a deployed/served product, just the fastest way to iterate
 on the UI without repackaging Electron.
 
-## Why
+## Features
+
+- 🔒 **Privacy-first** — all inference runs locally; sensitive media never leaves your machine
+- 💸 **Zero ongoing cost** — no cloud APIs; one-time model download, then zero recurring fees
+- 🌍 **Multilingual translation** — original + any target language, switchable live in the player; cached languages marked ✓
+- ⚡ **Streaming** — start watching while transcription is still running, no need to wait for the whole file
+- ✨ **AI summary + chapters** — one-click via local Ollama; chapters click to seek
+- ↩️ **Resume on crash** — interrupted transcription continues from the last completed chunk
+- 🎙 **Speech-aware chunking** — Silero VAD pre-segments audio so Whisper only sees actual speech, slashing hallucinations from silent / music-only regions and speeding up long videos 30-50 %
+- 🚦 **Adaptive setup** — first-run wizard picks Whisper / Ollama models based on your hardware, reuses any models already on disk, and races huggingface.co vs hf-mirror.com to download from the faster source automatically
+- 📥 **Export & search** — VTT / SRT / TXT (mono- and bilingual; bulk → ZIP); in-player search with highlighted matches
+- 🌊 **Waveform seek bar** — audio amplitude visualized inline; click or drag to scrub; peaks pre-generated on upload so the player opens with zero wait
+- 🗂 **Media library** — every transcribed file in one place, with cache usage, language tags, and task status; rename, delete one or clear all
+
+<details>
+<summary><b>📖 Why this project? (Who is it for)</b></summary>
 
 Cloud transcription services trade your media for convenience — every
 upload exposes sensitive audio (interviews, meetings, voice notes) to a
@@ -29,30 +48,31 @@ their own machine. Transcription, translation, and AI summary all run
 locally from a single app, with **zero recurring cost** and **no data
 leaving your machine** after the one-time model download.
 
-> **Status:** early stage (0.x). Pre-1.0 — the packaging surface, config
-> layout, and some APIs may change between minor versions. This is a
-> single-maintainer project, so PR review / merge turnaround may be 1–2
-> weeks. Bug reports and fixes are very welcome; large features are best
-> discussed in an issue first.
+</details>
 
-<p align="center">
-  <img src="demo/index.png" alt="Home / upload screen" width="45%" />
-  &nbsp;
-  <img src="demo/player.png" alt="Player with waveform and bilingual subtitles" width="45%" />
-</p>
+**Home** — drop in a video; the transcribe / translate queue shows live below.
 
-## Highlights
+![Home](demo/index.png)
 
-- 🔒 **Privacy-first** — all inference runs locally
-- 💸 **Zero ongoing cost** — no cloud APIs
-- 🌍 **Multilingual** — original + any target language, switchable on the fly
-- ⚡ **Streaming** — start watching while transcription is still running
-- ↩️ **Resume on crash** — interrupted transcription continues from the last completed chunk
-- 🎙 **Speech-aware chunking** — Silero VAD pre-segments audio so Whisper only sees actual speech, slashing hallucinations from silent / music-only regions and speeding up long videos 30-50 %
-- 🚦 **Adaptive setup** — first-run wizard picks Whisper / Ollama models based on your hardware, reuses any models already on disk, and races huggingface.co vs hf-mirror.com to download from the faster source automatically
-- 📥 **Export & search** — VTT / SRT / TXT (mono- and bilingual; bulk → ZIP); in-player search with highlighted matches
-- ✨ **AI summary + chapters** — one-click via local Ollama; chapters click to seek
-- 🌊 **Waveform seek bar** — audio amplitude visualized inline; click or drag to scrub; peaks pre-generated on upload so the player opens with zero wait
+**Media library** — every transcribed file in one place, with cache usage, language tags, and task status; rename, delete one or clear all.
+
+![Media library](demo/library.png)
+
+**Player** — the heart of the app. Left: video with custom controls + waveform seek bar (click/drag to scrub precisely). Right: two tabs.
+
+- **Subtitles** — language-switchable cue list, cached languages marked ✓, current cue highlighted as it plays; in-place search with highlighted matches, speaker-grouped view (rename speakers, re-run with a different speaker count)
+- **AI Insights** — one-click local Ollama streaming summary + clickable chapters that seek the video
+
+![Player](demo/player.png)
+
+**Settings** — hardware info + model picker + cache management + subtitle display prefs.
+
+![Settings](demo/setting.png)
+
+**About** — app identity card, third-party dependency & license list, links to repo / license / report-an-issue.
+
+![About](demo/about.png)
+
 
 ---
 
@@ -79,9 +99,9 @@ Grab the latest installer from the
 | macOS (Apple Silicon) | `Subcast-<version>-arm64.dmg`   | 260 MB |
 | Windows (x64)   | `Subcast-Setup-<version>.exe`         | 240 MB |
 
-The Whisper / Ollama / Qwen models themselves are downloaded by the
-first-run wizard, not bundled. Expect another **~5 GB** (recommended
-tier: `base` + `qwen2.5:7b`).
+**Bundled:** the Whisper `base` model (~148 MB), Silero VAD (~2 MB), ffmpeg/ffprobe, whisper-cli, and llama-server are all included — **transcription works the moment you install, no internet needed**. Want higher accuracy? Download `small` / `medium` / `large-v3` from Settings later.
+
+**Downloaded on first run (translation / summary only):** the Ollama runtime + a Qwen model, ~4.7 GB for the recommended `qwen2.5:7b`.
 
 ### macOS
 
@@ -105,8 +125,10 @@ tier: `base` + `qwen2.5:7b`).
    </p>
 
 3. The setup wizard guides you through:
-   1. **Whisper transcription model** — pick a tier (default `base`).
-      If you already have a `ggml-*.bin` file on disk (e.g. from
+   1. **Whisper transcription model** — `base` ships with the installer
+      and is ready to use; for higher accuracy you can download
+      `small` / `medium` / `large-v3` here. If you already have a
+      `ggml-*.bin` file on disk (e.g. from
       [whisper.cpp](https://github.com/ggerganov/whisper.cpp) or
       [Aiko](https://sindresorhus.com/aiko)), Subcast offers to symlink
       or copy it instead of downloading.
@@ -303,26 +325,40 @@ not** open a public issue.
 
 ## License & cost
 
-[Apache-2.0](./LICENSE) © 2026 twoer
-
-Subcast is licensed under Apache 2.0. You are free to use, modify, and distribute it
-(including commercially) provided you retain the copyright and license notice; derivative works may be released under any license.
+[Apache-2.0](./LICENSE) © 2026 twoer — **completely free to use, modify, and distribute (including commercially)**, with no payment, registration, or feature limits.
 
 Third-party components (whisper-cli MIT, ffmpeg LGPL build, all npm
 dependencies) and their attribution / source-availability notices are
 listed in [`NOTICES.md`](./NOTICES.md). ffmpeg source corresponding to
 the bundled LGPL build is available from <https://ffmpeg.org/download.html>.
 
-By design, **shipping Subcast costs the maintainer $0/year**:
+> 💡 **About the "unidentified developer" warning on first launch:**
+> Subcast does not purchase Apple / Microsoft code-signing certificates
+> (see the note below), so first install shows a Gatekeeper / SmartScreen
+> warning. Follow the [install steps](#install-desktop) and click
+> *"Open Anyway"* / *"Run anyway"* once — **it does not affect
+> functionality or safety**; it's just the OS's generic notice for
+> unsigned apps.
 
-- macOS: not enrolled in the Apple Developer Program ($99/yr). Users
-  see a Gatekeeper warning the first time and dismiss it once.
-- Windows: self-signed code-signing certificate ($0). Users see a
-  SmartScreen warning the first time and dismiss it once via
+<details>
+<summary><b>🔧 Maintainer's note: how this stays free (project philosophy)</b></summary>
+
+By design, **shipping Subcast costs the maintainer $0/year** — a
+deliberate choice that keeps the project sustainable long-term:
+
+- **macOS** — not enrolled in the Apple Developer Program ($99/yr). The
+  Gatekeeper warning on first launch is expected; dismiss it once.
+- **Windows** — self-signed code-signing certificate ($0). The SmartScreen
+  warning on first install is expected; go through
   *"More info → Run anyway"*.
-- Distribution: GitHub Releases (free for public repos).
-- Telemetry / crash reporting: none — diagnostics ship by user action only.
+- **Distribution** — GitHub Releases (free for public repos).
+- **Telemetry / crash reporting** — **none**. Diagnostics ship only when
+  the user explicitly exports them.
 
 For users who want zero install friction, the upgrade path is a paid
 OV code-signing cert (~$200/yr) and Apple Developer enrollment ($99/yr)
-— neither is on the v0.1.0 roadmap.
+— neither is on the current roadmap. If you'd like to support long-term
+maintenance (e.g. sponsoring signing-certificate costs), reach out via
+the contact on the maintainer's GitHub profile.
+
+</details>

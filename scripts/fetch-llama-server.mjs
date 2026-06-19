@@ -113,6 +113,33 @@ try {
 }
 process.stdout.write('\n');
 
+// Integrity check: verify the downloaded zip is complete. The previous
+// build produced a truncated llama-server (3.5 MB vs the expected ~5.8 MB
+// on mac arm64) because this script had NO size verification — a dropped
+// connection left a partial zip, which unzipped into a broken binary that
+// spawned but immediately died, surfacing at runtime as 'llama-server did
+// not announce listening port within 30000ms'. Fail the build here instead.
+const actualBytes = statSync(zipPath).size;
+if (total && actualBytes !== total) {
+  rmSync(stage, { recursive: true, force: true });
+  console.error(
+    `[fetch-llama-server] download truncated: got ${actualBytes} bytes, server advertised ${total}. ` +
+      `Re-run; if it persists the upstream asset may be corrupt.`,
+  );
+  process.exit(1);
+}
+// Even without content-length, a llama.cpp release zip is always > 5 MB.
+// Reject anything implausibly small (covers the no-content-length case).
+const MIN_PLAUSIBLE_ZIP = 5_000_000;
+if (actualBytes < MIN_PLAUSIBLE_ZIP) {
+  rmSync(stage, { recursive: true, force: true });
+  console.error(
+    `[fetch-llama-server] download too small: ${actualBytes} bytes (< ${MIN_PLAUSIBLE_ZIP}). Likely truncated; aborting.`,
+  );
+  process.exit(1);
+}
+console.log(`[fetch-llama-server] download complete: ${actualBytes} bytes`);
+
 // Extract the zip. macOS / Linux have `unzip` preinstalled; Windows
 // has `tar -xf` (which speaks zip) since Windows 10 1803.
 console.log(`[fetch-llama-server] extracting ${assetName}`);

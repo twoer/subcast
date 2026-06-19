@@ -130,8 +130,17 @@ export async function startNitro(): Promise<NitroHandle> {
   // In dev: desktop-dist/main.js → ../.output/server/index.mjs (from repo root).
   // In packaged: electron-builder ships .output/** into the asar, so the
   // same relative resolution lands inside `app.asar/.output/server/`.
-  const here = dirname(fileURLToPath(import.meta.url));
-  const repoRoot = join(here, '..');
+  // Resolve the Nitro entry. In dev (source), `import.meta.url` points at
+  // this file and we walk up to the repo root. In a packaged app (asar),
+  // `import.meta.url` can return a bogus path on Windows (observed:
+  // `file:///_entry.js`), so use Electron's app.getAppPath() instead.
+  let repoRoot: string;
+  if (app.isPackaged) {
+    repoRoot = app.getAppPath();
+  } else {
+    const here = dirname(fileURLToPath(import.meta.url));
+    repoRoot = join(here, '..');
+  }
   const nitroEntry = join(repoRoot, '.output', 'server', 'index.mjs');
 
   if (!existsSync(nitroEntry)) {

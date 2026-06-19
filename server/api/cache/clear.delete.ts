@@ -30,9 +30,18 @@ export default defineEventHandler(async () => {
         }
       }
       const db = getDb();
-      db.transaction(() => {
-        clearMediaGraph(db);
-      })();
+      // PRAGMA foreign_keys is a no-op INSIDE a transaction (SQLite limitation).
+      // It must be toggled on the connection BEFORE the transaction begins.
+      // clearMediaGraph touches every FK-linked table at once; with FK checks
+      // ON the per-statement validation hits transient violations mid-wipe.
+      db.pragma('foreign_keys = OFF');
+      try {
+        db.transaction(() => {
+          clearMediaGraph(db);
+        })();
+      } finally {
+        db.pragma('foreign_keys = ON');
+      }
     });
   });
   logEvent({ level: 'info', event: 'cache_clear_all' });

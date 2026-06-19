@@ -14,11 +14,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Pin windows-2022 (NOT windows-latest). As of 2026-06-08 GitHub
+          # migrated windows-latest → VS 2026; windows-2022 still ships the
+          # VS 2022 toolchain this build (and the release pipeline) expects.
+          # macOS: -DBUILD_SHARED_LIBS=OFF produces a self-contained static
+          # llama-server — critical, because ggml-org's prebuilt b4524 mac
+          # zip ships a dynamically-linked llama-server WITHOUT the dylibs,
+          # so downloading it leaves the sidecar unable to load at runtime.
           - os: macos-14
             arch: arm64
             cmake_flags: -DGGML_METAL=ON -DLLAMA_CURL=OFF -DBUILD_SHARED_LIBS=OFF
             artifact_path: build/bin/llama-server
-          - os: windows-latest
+          - os: windows-2022
             arch: x64
             cmake_flags: -DLLAMA_CURL=OFF -DBUILD_SHARED_LIBS=OFF
             artifact_path: build/bin/Release/llama-server.exe
@@ -32,9 +39,17 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          mkdir build && cd build
-          cmake .. ${{ matrix.cmake_flags }}
-          cmake --build . --target llama-server --config Release -j
+          set -euo pipefail
+          # Use -S/-B (out-of-source) instead of `mkdir build && cd build` so
+          # paths in matrix.artifact_path stay relative to the repo root and
+          # the subsequent `ls` + upload step resolve correctly.
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            MAPC="-ffile-prefix-map=$GITHUB_WORKSPACE/llama.cpp=llama.cpp -ffile-prefix-map=$GITHUB_WORKSPACE=subcast-ci"
+            cmake -S . -B build ${{ matrix.cmake_flags }} "-DCMAKE_C_FLAGS=$MAPC" "-DCMAKE_CXX_FLAGS=$MAPC"
+          else
+            cmake -S . -B build ${{ matrix.cmake_flags }}
+          fi
+          cmake --build build --target llama-server --config Release -j
           ls -lh ${{ matrix.artifact_path }}
       - name: Upload artifact
         uses: actions/upload-artifact@v4

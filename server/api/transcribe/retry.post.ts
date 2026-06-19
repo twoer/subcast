@@ -99,9 +99,15 @@ export default defineEventHandler(async (event) => {
 
   // Cascade-delete derived DB rows in one transaction. Note we keep the
   // `videos` row so display_name and metadata persist.
-  db.transaction(() => {
-    deleteVideoGraph(db, hash, { keepVideo: true });
-  })();
+  // PRAGMA foreign_keys is a no-op inside a transaction; toggle before it.
+  db.pragma('foreign_keys = OFF');
+  try {
+    db.transaction(() => {
+      deleteVideoGraph(db, hash, { keepVideo: true });
+    })();
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
 
   logEvent({ level: 'info', event: 'transcribe_retry', sha: hash, model });
 

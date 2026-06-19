@@ -50,7 +50,13 @@ import { installTray } from './trayMenu.js';
 import { disposeUpdater, installUpdater } from './updater.js';
 import type { SubcastWindowAPI } from './types.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
+// Resolve `here` (the desktop-dist/ dir containing main.js + preload.cjs).
+// In dev, import.meta.url works. In a packaged Windows app (asar), it
+// returns a bogus 'file:///_entry.js' that crashes fileURLToPath — so use
+// app.getAppPath() + 'desktop-dist' when packaged.
+const here = app.isPackaged
+  ? join(app.getAppPath(), 'desktop-dist')
+  : dirname(fileURLToPath(import.meta.url));
 // preload.cjs (not .js) — the preload runs in Electron's sandboxed
 // environment which requires CommonJS. The file is emitted by a
 // separate tsconfig (tsconfig.preload.json) and renamed to .cjs by

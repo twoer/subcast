@@ -54,6 +54,8 @@ jobs:
             arch: arm64
             whisper_artifact_name: whisper-cli-macos-14-arm64
             whisper_dest: binaries/darwin-arm64/whisper-cli
+            llama_artifact_name: llama-server-macos-14-arm64
+            llama_dest: binaries/darwin-arm64/llama-server
             build_script: build:desktop:mac
             artifact_glob: |
               dist-electron/*.dmg
@@ -66,6 +68,8 @@ jobs:
             arch: x64
             whisper_artifact_name: whisper-cli-windows-2022-x64
             whisper_dest: binaries/win32-x64/whisper-cli.exe
+            llama_artifact_name: llama-server-windows-2022-x64
+            llama_dest: binaries/win32-x64/llama-server.exe
             build_script: build:desktop:win
             artifact_glob: |
               dist-electron/*.exe
@@ -129,6 +133,37 @@ jobs:
             mv whisper-cli-tmp/whisper-cli* "$dest"
             chmod +x "$dest" || true
             ls -lh "$dest"
+          fi
+
+      - name: Fetch latest llama-server artifact (static build)
+        id: llama_artifact
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: build-llama-server.yml
+          name: ${{ matrix.llama_artifact_name }}
+          path: llama-server-tmp
+          # Same rationale as whisper: the run may be marked 'failure'
+          # because the other-platform job failed; search regardless.
+          workflow_conclusion: ''
+          if_no_artifact_found: warn
+        # Windows build-llama-server may fail (MSVC/chrono issue with b4522);
+        # don't block — the build script's fetch:llama-server will download
+        # the prebuilt zip as a fallback. macOS always succeeds here.
+        continue-on-error: true
+
+      - name: Move llama-server into binaries/
+        if: steps.llama_artifact.outcome == 'success' && hashFiles('llama-server-tmp') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          dest="${{ matrix.llama_dest }}"
+          mkdir -p "$(dirname "$dest")"
+          if ls llama-server-tmp/llama-server* 1>/dev/null 2>&1; then
+            mv llama-server-tmp/llama-server* "$dest"
+            chmod +x "$dest" || true
+            ls -lh "$dest"
+          else
+            echo "No llama-server artifact found — build script will use fetch:llama-server fallback"
           fi
 
       - name: Build desktop artifacts
