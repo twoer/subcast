@@ -146,25 +146,43 @@ jobs:
           # because the other-platform job failed; search regardless.
           workflow_conclusion: ''
           if_no_artifact_found: warn
-        # Windows build-llama-server may fail (MSVC/chrono issue with b4522);
-        # don't block — the build script's fetch:llama-server will download
-        # the prebuilt zip as a fallback. macOS always succeeds here.
-        continue-on-error: true
+        # macOS MUST get the static build (dynamic version crashes at runtime).
+        # Windows build-llama-server may fail (MSVC/chrono issue); tolerate
+        # that and fall back to the prebuilt zip via fetch:llama-server.
+        continue-on-error: ${{ matrix.os == 'windows-2022' }}
 
       - name: Move llama-server into binaries/
-        if: steps.llama_artifact.outcome == 'success' && hashFiles('llama-server-tmp') != ''
+        # Only run if the Fetch step succeeded (artifact was downloaded).
+        # The script itself checks for the file, so no hashFiles glob needed
+        # (which can be unreliable for freshly-created dirs on CI).
+        if: steps.llama_artifact.outcome == 'success'
         shell: bash
         run: |
-          set -euo pipefail
           dest="${{ matrix.llama_dest }}"
           mkdir -p "$(dirname "$dest")"
           if ls llama-server-tmp/llama-server* 1>/dev/null 2>&1; then
             mv llama-server-tmp/llama-server* "$dest"
             chmod +x "$dest" || true
+            echo "Moved CI-built llama-server -> $dest"
             ls -lh "$dest"
           else
-            echo "No llama-server artifact found — build script will use fetch:llama-server fallback"
+            echo "No llama-server artifact in llama-server-tmp/ — build script will download prebuilt as fallback"
           fi
+
+      - name: Verify llama-server is static (macOS only)
+        if: runner.os == 'macOS' && steps.llama_artifact.outcome == 'success'
+        shell: bash
+        run: |
+          # Hard-fail the build if the staged llama-server is dynamically
+          # linked — that's the exact bug that shipped broken v0.4.0/v0.4.1.
+          dest="${{ matrix.llama_dest }}"
+          echo "=== otool -L $dest ==="
+          otool -L "$dest" | head -15
+          if otool -L "$dest" | grep -q "libllama\|libggml"; then
+            echo "::error::llama-server is dynamically linked (needs libllama/libggml dylibs). The CI static build artifact was NOT used. Aborting to prevent shipping a broken app."
+            exit 1
+          fi
+          echo "✓ llama-server is self-contained (no external dylib deps)"
 
       - name: Build desktop artifacts
         env:
