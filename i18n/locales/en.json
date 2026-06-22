@@ -442,21 +442,10 @@
     "changelog": {
       "title": "Changelog",
       "body": "Important changes in recent versions. The repository remains the source of truth for the full commit history.",
-      "v047": {
-        "retrySleep": "Fixed 0.4.6 failing every URL import instantly: the retry-sleep argument was invalid syntax (yt-dlp rejected 'http:5,exponential'). Now uses 'http:exponential' for proper backoff.",
-        "errExtract": "yt-dlp error messages in the log/UI no longer dump the whole 'Usage: yt-dlp [OPTIONS]…' help banner — only the actionable 'error:' / 'ERROR:' line is kept."
-      },
-      "v046": {
-        "cancel": "The cancel button now actually cancels: it signals the server to SIGTERM the running yt-dlp (or drop a queued import) instead of only hiding the progress bar while the download kept running in the background.",
-        "concurrency": "Fixed a race where pasting two import links in quick succession could spawn two yt-dlp processes at once; the single-flight queue now reserves its execution slot synchronously before the first await.",
-        "realExt": "Imported audio is no longer mis-stored as .mp4: the real downloaded extension (.m4a / .webm / .mp3 …) is used, so /api/video serves the correct Content-Type and the player works.",
-        "ipv4": "Downloads that failed with SSL UNEXPECTED_EOF_WHILE_READING on IPv6-hosting CDNs now pin IPv4 (--force-ipv4) and back off between retries (--retry-sleep exponential) instead of hammering the server 10× and getting rate-limited."
-      },
-      "v045": {
+      "v048": {
         "urlImport": "New \"Import link\" in the home drop zone: paste a web URL from ScreenPal / Bilibili / YouTube and 1500+ other sites, the bundled yt-dlp downloads it with a live percentage, then jumps to the player to start transcribing.",
-        "dedup": "Re-importing the same link short-circuits to the already-downloaded video with zero network I/O and an instant jump; different-source-same-content is deduped by SHA-256, so disk isn't double-spent.",
-        "network": "yt-dlp now uses a larger socket timeout and more retries, and automatically forwards the system proxy (Electron child processes don't inherit it by default), reducing timeouts on international sites.",
-        "schemaHeal": "Fixed URL import 500'ing on first use: the DB's version number had been bumped past this branch's column-adding migration by another branch. Added self-healing so the required columns exist regardless of the version number."
+        "cancel": "The cancel button now actually cancels: it signals the server to stop the running yt-dlp (or drop a queued import) instead of only hiding the progress bar while the download kept running in the background.",
+        "stability": "Multiple URL-import stability fixes: imports are correctly serialized (no duplicate yt-dlp processes), audio is stored under its real extension (.m4a/.webm/.mp3, not always .mp4), downloads pin IPv4 and back off between retries to avoid CDN rate-limiting, and yt-dlp error messages are shown cleanly without the full help banner."
       },
       "v041": {
         "llamaStatic": "Fixed macOS packaged translation / AI Insights being completely broken: the prebuilt llama-server was dynamically linked but shipped without dylibs. CI now compiles a static build from source (-DBUILD_SHARED_LIBS=OFF).",

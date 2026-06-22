@@ -442,21 +442,10 @@
     "changelog": {
       "title": "更新紀錄",
       "body": "近期版本的重要變更。完整提交紀錄以程式碼倉庫為準。",
-      "v047": {
-        "retrySleep": "修復 0.4.6 對任何 URL 匯入都立即失敗的問題:retry-sleep 引數語法無效(yt-dlp 拒絕 'http:5,exponential')。改用 'http:exponential' 做指數退避。",
-        "errExtract": "yt-dlp 報錯時記錄/UI 不再把整段 'Usage: yt-dlp [OPTIONS]…' 說明文字塞進訊息,只保留可操作的 'error:' / 'ERROR:' 行。"
-      },
-      "v046": {
-        "cancel": "取消按鈕現在真的會取消:通知伺服器 SIGTERM 執行中的 yt-dlp(或丟棄排隊中的匯入),而不是只隱藏進度條、讓下載在背景繼續跑。",
-        "concurrency": "修復快速連續貼上兩個匯入連結時會同時啟動兩個 yt-dlp 行程的競態:單飛佇列現在在第一個 await 之前就同步佔用執行槽。",
-        "realExt": "匯入的音訊不再被錯誤存成 .mp4:使用下載的真實副檔名(.m4a / .webm / .mp3 …),/api/video 因此回傳正確的 Content-Type,播放器正常運作。",
-        "ipv4": "在走 IPv6 的 CDN 上因 SSL UNEXPECTED_EOF_WHILE_READING 失敗的下載,現在固定走 IPv4(--force-ipv4),並在重試之間退避(--retry-sleep exponential),而不是連續 10 次猛打被 CDN 限流。"
-      },
-      "v045": {
+      "v048": {
         "urlImport": "首頁拖曳區新增「匯入連結」：貼上 ScreenPal / B 站 / YouTube 等 1500+ 站台的網頁地址，內建 yt-dlp 自動下載，即時顯示百分比進度，完成後跳轉播放器開始轉寫。",
-        "dedup": "重複匯入同一連結自動命中已下載的影片，零網路開銷、瞬時跳轉；不同來源同一內容依 SHA-256 兜底去重，不重複佔用磁碟。",
-        "network": "yt-dlp 加大 socket 逾時與重試次數，並自動透傳系統代理（Electron 子程序預設不繼承），減少國際站台的逾時失敗。",
-        "schemaHeal": "修復首次使用 URL 匯入即報 500 的問題：資料庫版本號被其他分支推高後，本版本的欄位新增遷移被略過。新增自癒邏輯，無論版本號如何都確保所需欄位存在。"
+        "cancel": "取消按鈕現在真的會取消:通知伺服器停止執行中的 yt-dlp(或丟棄排隊中的匯入),而不是只隱藏進度條、讓下載在背景繼續跑。",
+        "stability": "多項 URL 匯入穩定性修復:匯入工作正確序列化(不會重複啟動 yt-dlp 行程)、音訊按真實副檔名儲存(.m4a/.webm/.mp3，不再一律 .mp4)、下載固定走 IPv4 並在重試之間退避以避免被 CDN 限流、yt-dlp 錯誤訊息乾淨顯示不再帶整段說明文字。"
       },
       "v041": {
         "llamaStatic": "修復 macOS 打包版翻譯 / AI 摘要完全無法使用：預編譯 llama-server 是動態連結版但未附帶 dylib。改為 CI 從原始碼編譯靜態版（-DBUILD_SHARED_LIBS=OFF）。",
