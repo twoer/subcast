@@ -468,15 +468,20 @@ class UrlImportQueue {
       // attempt the flaky route. (Reported by a 0.4.5 user hitting this
       // against a hosted-video CDN; standard yt-dlp mitigation.)
       '--force-ipv4',
-      // Back off between retries instead of hammering the server. yt-dlp's
-      // --retry-sleep takes the form <TYPE>:<EXPR> where TYPE is singular
-      // (http / extractor / fragment) and EXPR is *one* expression — you
-      // cannot combine a fixed delay and a mode with a comma. We use
-      // exponential (1s -> 2s -> 4s ...) so rapid reconnects don't look
-      // like abuse and trigger harder rate-limiting / SSL EOF from the CDN.
-      // (The previous 'http:5,exponential' made yt-dlp reject every argv
-      // with "invalid http retry sleep expression".)
-      '--retry-sleep', 'http:exponential',
+      // Back off between retries instead of hammering the server. Verified
+      // against the bundled yt-dlp's own --help: the format is [TYPE:]EXPR
+      // where TYPE is http/fragment/file_access/extractor and EXPR is a
+      // number, linear=START[:END[:STEP]], or exp=START[:END[:BASE]]. So
+      // `http:exp=1:20` = on HTTP errors, sleep with exponential backoff
+      // starting at 1s, base 2, capped at 20s (1 -> 2 -> 4 -> 8 -> 16 -> 20).
+      // This stops rapid reconnects from looking like abuse and triggering
+      // harder rate-limiting / SSL EOF from the CDN.
+      // History: 0.4.6 shipped 'http:5,exponential' (comma combo invalid),
+      // 0.4.7 shipped 'http:exponential' (exponential not a valid EXPR —
+      // must be exp=...). Both rejected with "invalid http retry sleep
+      // expression". 0.4.8 uses 'http:exp=1:20', tested locally against
+      // binaries/darwin-arm64/yt-dlp 2026.06.09.
+      '--retry-sleep', 'http:exp=1:20',
       // P2.3: hard cap at the same 2GB the local upload path enforces.
       // yt-dlp aborts the download once the *streamed* byte count crosses
       // this; we re-verify the merged file size on disk below because some

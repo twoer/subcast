@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.8 — 2026-06-22
+
+### 修复 / Fixed
+- 0.4.6 和 0.4.7 的 `--retry-sleep` 参数语法都写错了，导致 yt-dlp 拒绝整个命令行、URL 导入对所有链接立即失败。按 yt-dlp 自带 `--help` 的实际语法（`[TYPE:]EXPR`，EXPR 是 `exp=START:END` 而非单词 `exponential`）改为 `--retry-sleep http:exp=1:20`，已在本地用打包的 yt-dlp 2026.06.09 实测通过
+  The `--retry-sleep` argument shipped in 0.4.6 (`http:5,exponential`) and 0.4.7 (`http:exponential`) used invalid syntax, so yt-dlp rejected the whole argv and URL import failed instantly for every link. Changed to `--retry-sleep http:exp=1:20` per yt-dlp's own --help format (`[TYPE:]EXPR`, EXPR is `exp=START:END` not the word "exponential"), verified locally against the bundled yt-dlp 2026.06.09
+
 ## 0.4.7 — 2026-06-22
 
 ### 修复 / Fixed

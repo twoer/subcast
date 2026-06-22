@@ -12,31 +12,12 @@ const { t } = useI18n();
 
 const CHANGELOG = [
   {
-    version: '0.4.7',
+    version: '0.4.8',
     date: '2026-06-22',
     items: [
-      'help.changelog.v047.retrySleep',
-      'help.changelog.v047.errExtract',
-    ],
-  },
-  {
-    version: '0.4.6',
-    date: '2026-06-22',
-    items: [
-      'help.changelog.v046.cancel',
-      'help.changelog.v046.concurrency',
-      'help.changelog.v046.realExt',
-      'help.changelog.v046.ipv4',
-    ],
-  },
-  {
-    version: '0.4.5',
-    date: '2026-06-21',
-    items: [
-      'help.changelog.v045.urlImport',
-      'help.changelog.v045.dedup',
-      'help.changelog.v045.network',
-      'help.changelog.v045.schemaHeal',
+      'help.changelog.v048.urlImport',
+      'help.changelog.v048.cancel',
+      'help.changelog.v048.stability',
     ],
   },
   {

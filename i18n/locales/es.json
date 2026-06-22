@@ -442,21 +442,10 @@
     "changelog": {
       "title": "Novedades",
       "body": "Cambios importantes en versiones recientes. El historial completo de commits se encuentra en el repositorio.",
-      "v047": {
-        "retrySleep": "Corregido el fallo de 0.4.6 que hacía fallar toda importación de URL al instante: el argumento retry-sleep tenía una sintaxis inválida (yt-dlp rechazaba 'http:5,exponential'). Ahora usa 'http:exponential' para un retroceso adecuado.",
-        "errExtract": "Los mensajes de error de yt-dlp en el registro/UI ya no vuelcan todo el banner de ayuda 'Usage: yt-dlp [OPTIONS]…' — solo se conserva la línea accionable 'error:' / 'ERROR:'."
-      },
-      "v046": {
-        "cancel": "El botón cancelar ahora cancela de verdad: indica al servidor que envíe SIGTERM al yt-dlp en ejecución (o descarte una importación en cola) en lugar de solo ocultar la barra de progreso mientras la descarga seguía en segundo plano.",
-        "concurrency": "Corregida una condición de carrera por la que pegar dos enlaces de importación muy rápido podía lanzar dos procesos yt-dlp a la vez; la cola de un solo vuelo ahora reserva su ranura de ejecución de forma sincrónica antes del primer await.",
-        "realExt": "El audio importado ya no se guarda incorrectamente como .mp4: se usa la extensión real descargada (.m4a / .webm / .mp3 …), de modo que /api/video sirve el Content-Type correcto y el reproductor funciona.",
-        "ipv4": "Las descargas que fallaban con SSL UNEXPECTED_EOF_WHILE_READING en CDN con IPv6 ahora fijan IPv4 (--force-ipv4) y retroceden entre reintentos (--retry-sleep exponential) en lugar de golpear el servidor 10× y ser limitadas."
-      },
-      "v045": {
+      "v048": {
         "urlImport": "Nueva opción «Importar enlace» en la zona de arrastre de la página de inicio: pega una URL de ScreenPal / Bilibili / YouTube y 1500+ sitios más; el yt-dlp integrado la descarga con un porcentaje en vivo y luego salta al reproductor para iniciar la transcripción.",
-        "dedup": "Reimportar el mismo enlace hace cortocircuito al vídeo ya descargado, sin tráfico de red y con salto instantáneo; el mismo contenido de fuentes distintas se deduplica por SHA-256, sin duplicar el disco.",
-        "network": "yt-dlp ahora usa un tiempo de espera de socket mayor y más reintentos, y reenvía automáticamente el proxy del sistema (los procesos hijos de Electron no lo heredan por defecto), reduciendo los tiempos de espera en sitios internacionales.",
-        "schemaHeal": "Corregido el error 500 de importación de URL al primer uso: el número de versión de la base de datos había sido elevado más allá de la migración de esta rama por otra rama. Se añadió una lógica de autocuración que garantiza las columnas necesarias sin importar el número de versión."
+        "cancel": "El botón cancelar ahora cancela de verdad: indica al servidor que detenga el yt-dlp en ejecución (o descarte una importación en cola) en lugar de solo ocultar la barra de progreso mientras la descarga seguía en segundo plano.",
+        "stability": "Múltiples correcciones de estabilidad en la importación de URL: las importaciones se serializan correctamente (sin procesos yt-dlp duplicados), el audio se guarda con su extensión real (.m4a/.webm/.mp3, no siempre .mp4), las descargas fijan IPv4 y retroceden entre reintentos para evitar la limitación del CDN, y los mensajes de error de yt-dlp se muestran de forma limpia sin el banner de ayuda completo."
       },
       "v041": {
         "llamaStatic": "Corregido: la traducción y las ideas con IA estaban completamente rotas en el paquete de macOS; el llama-server precompilado estaba enlazado dinámicamente pero sin dylibs. Ahora el CI compila una versión estática desde el código fuente (-DBUILD_SHARED_LIBS=OFF).",
