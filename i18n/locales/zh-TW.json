@@ -70,6 +70,17 @@
     "kindInsightEn": "AI 摘要 (英文)",
     "kindDiarize": "語者辨識",
     "noVideo": "拖入的內容裡沒有影片或音訊檔案",
+    "urlImport": {
+      "or": "或貼上連結",
+      "placeholder": "影片連結（ScreenPal / B 站 / YouTube 等）",
+      "button": "匯入連結",
+      "hint": "由 yt-dlp 解析並下載，支援 1500+ 站台",
+      "fetchingInfo": "正在解析影片資訊…",
+      "downloading": "下載中 {percent}%",
+      "finalizing": "正在匯入到媒體庫…",
+      "error": "下載失敗",
+      "unsupportedUrl": "請輸入 http(s) 連結"
+    },
     "status": {
       "queued": "排隊中",
       "running": "執行中",
@@ -431,6 +442,18 @@
     "changelog": {
       "title": "更新紀錄",
       "body": "近期版本的重要變更。完整提交紀錄以程式碼倉庫為準。",
+      "v045": {
+        "urlImport": "首頁拖曳區新增「匯入連結」：貼上 ScreenPal / B 站 / YouTube 等 1500+ 站台的網頁地址，內建 yt-dlp 自動下載，即時顯示百分比進度，完成後跳轉播放器開始轉寫。",
+        "dedup": "重複匯入同一連結自動命中已下載的影片，零網路開銷、瞬時跳轉；不同來源同一內容依 SHA-256 兜底去重，不重複佔用磁碟。",
+        "network": "yt-dlp 加大 socket 逾時與重試次數，並自動透傳系統代理（Electron 子程序預設不繼承），減少國際站台的逾時失敗。",
+        "schemaHeal": "修復首次使用 URL 匯入即報 500 的問題：資料庫版本號被其他分支推高後，本版本的欄位新增遷移被略過。新增自癒邏輯，無論版本號如何都確保所需欄位存在。"
+      },
+      "v041": {
+        "llamaStatic": "修復 macOS 打包版翻譯 / AI 摘要完全無法使用：預編譯 llama-server 是動態連結版但未附帶 dylib。改為 CI 從原始碼編譯靜態版（-DBUILD_SHARED_LIBS=OFF）。",
+        "foreignKey": "修復清空快取 / 刪除單一影片 / 重試轉寫時報 FOREIGN KEY constraint failed：補全所有依賴資料表刪除，並把 PRAGMA foreign_keys 移到事務外。",
+        "windowsStartup": "修復 Windows 打包版啟動即崩（file:///_entry.js）：ESM 模組在 asar 內的 import.meta.url 回傳非法路徑，改用 app.getAppPath()。",
+        "ciPipeline": "修復 GitHub Actions 打包流程：whisper-cli / llama-server artifact 完整性、Windows VS2026 相容、代理繞過、fetch 逾時、dylib 打包等 10+ 處問題。"
+      },
       "v040": {
         "multiLocale": "介面新增繁體中文、日文、西班牙文，原有簡體中文 / 英文保留；語言切換從雙態按鈕升級為下拉選單，按鈕上保留各語言的原生字元標識。",
         "windowPause": "桌面應用視窗隱藏或最小化時會自動暫停播放，避免關閉主介面後背景仍有聲音。",

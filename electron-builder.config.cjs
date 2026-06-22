@@ -97,6 +97,16 @@ function buildExtraResources() {
     } else {
       console.warn(`[electron-builder] llama-server missing at ${llamaRel} — packaging without it. Run scripts/fetch-llama-server.mjs.`);
     }
+
+    // yt-dlp: standalone binary that powers the "import video from URL"
+    // feature. Without it URL import fails with a clear error in-app, but
+    // local-file import / transcription are unaffected — warn-and-continue.
+    const ytdlpRel = `binaries/${t.os === 'mac' ? 'darwin' : t.os === 'win' ? 'win32' : t.os}-${t.arch}/yt-dlp${t.ext}`;
+    if (fs.existsSync(path.join(root, ytdlpRel))) {
+      out.push({ from: ytdlpRel, to: `yt-dlp${t.ext}` });
+    } else {
+      console.warn(`[electron-builder] yt-dlp missing at ${ytdlpRel} — packaging without it. Run scripts/fetch-yt-dlp.mjs before release.`);
+    }
   }
 
   // Default Whisper model (ggml-base.bin, ~148 MB) — shipped so first
@@ -174,7 +184,7 @@ async function ensureExecutable(context) {
     ? join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`, 'Contents', 'Resources')
     : join(context.appOutDir, 'resources');
 
-  for (const name of ['ffmpeg', 'ffprobe', 'whisper-cli', 'llama-server']) {
+  for (const name of ['ffmpeg', 'ffprobe', 'whisper-cli', 'llama-server', 'yt-dlp']) {
     const target = join(resourcesDir, name);
     try {
       await access(target);

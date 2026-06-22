@@ -29,6 +29,7 @@
 - 🚦 **自适应配置** —— 首次启动按硬件等级自动推荐 Whisper / Ollama 模型，并复用本机已有模型
 - 📥 **导出 & 搜索** —— 单语 / 多语 / 双语字幕导出（VTT / SRT / TXT，多语自动 ZIP）；播放器内常驻搜索框，`/` 或 `Ctrl/Cmd+F` 聚焦，匹配高亮 + `Enter` / `Shift+Enter` 循环
 - 🌊 **波形进度条** —— 内联音频波形可视化，点击 / 拖动精准定位；波峰在上传时预生成，播放器打开即开即用、零等待
+- 🔗 **URL 导入** —— 粘贴 ScreenPal / B 站 / YouTube 等 1500+ 站点的网页链接，内置 yt-dlp sidecar 下载后自动进入转写流程，实时显示百分比进度。详见 [免责声明](./DISCLAIMER.md)（仅供导入你有权下载的内容）
 - 🗂 **媒体库管理** —— 所有转写过的媒体集中管理，缓存用量、语言标记、任务状态一目了然；支持重命名、单条 / 批量删除
 
 <details>
@@ -283,7 +284,9 @@ pnpm lint
 
 [Apache-2.0](./LICENSE) © 2026 twoer —— **完全免费，可自由使用、修改、分发（含商业用途）**，无需付费、无需注册、无任何功能限制。
 
-第三方组件（whisper-cli MIT、ffmpeg LGPL build、所有 npm 依赖）的归属与来源声明见 [`NOTICES.md`](./NOTICES.md)；LGPL 版 ffmpeg 对应源码可从 <https://ffmpeg.org/download.html> 获取。
+第三方组件（whisper-cli MIT、ffmpeg LGPL build、yt-dlp Unlicense、所有 npm 依赖）的归属与来源声明见 [`NOTICES.md`](./NOTICES.md)；LGPL 版 ffmpeg 对应源码可从 <https://ffmpeg.org/download.html> 获取。
+
+> ⚠️ **关于 URL 导入功能**：内置的 yt-dlp 是通用下载工具，**仅供导入你有权访问 / 有权下载的内容**（自己上传的视频、CC 协议内容、公开课等）。用户需自行遵守当地版权法与各站点服务条款。完整的免责声明见 [`DISCLAIMER.md`](./DISCLAIMER.md)。
 
 > 💡 **关于首次启动的"未知开发者"警告**：Subcast 不购买 Apple / Microsoft 的签名证书（见下方折叠说明），因此首次安装时会弹 Gatekeeper / SmartScreen 警告，按 [安装步骤](#桌面版安装) 点一次"仍要打开"即可，**不影响功能、不影响安全**——只是系统对未签名应用的通用提示。
 

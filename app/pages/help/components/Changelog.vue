@@ -12,6 +12,26 @@ const { t } = useI18n();
 
 const CHANGELOG = [
   {
+    version: '0.4.5',
+    date: '2026-06-21',
+    items: [
+      'help.changelog.v045.urlImport',
+      'help.changelog.v045.dedup',
+      'help.changelog.v045.network',
+      'help.changelog.v045.schemaHeal',
+    ],
+  },
+  {
+    version: '0.4.1',
+    date: '2026-06-19',
+    items: [
+      'help.changelog.v041.llamaStatic',
+      'help.changelog.v041.foreignKey',
+      'help.changelog.v041.windowsStartup',
+      'help.changelog.v041.ciPipeline',
+    ],
+  },
+  {
     version: '0.4.0',
     date: '2026-05-18',
     items: [

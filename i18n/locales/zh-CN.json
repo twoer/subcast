@@ -70,6 +70,17 @@
     "kindInsightEn": "AI 总结 (英文)",
     "kindDiarize": "说话人识别",
     "noVideo": "拖入的内容里没有视频或音频文件",
+    "urlImport": {
+      "or": "或粘贴链接",
+      "placeholder": "视频链接（ScreenPal / B 站 / YouTube 等）",
+      "button": "导入链接",
+      "hint": "yt-dlp 解析并下载，支持 1500+ 站点",
+      "fetchingInfo": "正在解析视频信息…",
+      "downloading": "下载中 {percent}%",
+      "finalizing": "正在导入到媒体库…",
+      "error": "下载失败",
+      "unsupportedUrl": "请输入 http(s) 链接"
+    },
     "status": {
       "queued": "排队中",
       "running": "运行中",
@@ -431,6 +442,18 @@
     "changelog": {
       "title": "更新日志",
       "body": "最近版本的重要变化。完整提交记录以代码仓库为准。",
+      "v045": {
+        "urlImport": "首页拖拽区新增「导入链接」：粘贴 ScreenPal / B 站 / YouTube 等 1500+ 站点的网页地址，内置 yt-dlp 自动下载，实时显示百分比进度，完成后跳转播放器开始转写。",
+        "dedup": "重复导入同一链接自动命中已下载的视频，零网络开销、瞬时跳转；不同来源同一内容按 SHA-256 兜底去重，不重复占用磁盘。",
+        "network": "yt-dlp 加大 socket 超时与重试次数，并自动透传系统代理（Electron 子进程默认不继承），减少国际站点的超时失败。",
+        "schemaHeal": "修复首次使用 URL 导入即报 500 的问题：数据库版本号被其他分支推高后，本版本的列添加迁移被跳过。新增自愈逻辑，无论版本号如何都确保所需列存在。"
+      },
+      "v041": {
+        "llamaStatic": "修复 macOS 打包版翻译 / AI 摘要完全不可用：预编译 llama-server 是动态链接版但未附带 dylib。改为 CI 从源码编译静态版（-DBUILD_SHARED_LIBS=OFF）。",
+        "foreignKey": "修复清空缓存 / 删除单个视频 / 重试转写时报 FOREIGN KEY constraint failed：补全所有依赖表删除，并把 PRAGMA foreign_keys 移到事务外。",
+        "windowsStartup": "修复 Windows 打包版启动即崩（file:///_entry.js）：ESM 模块在 asar 内的 import.meta.url 返回非法路径，改用 app.getAppPath()。",
+        "ciPipeline": "修复 GitHub Actions 打包流水线：whisper-cli / llama-server artifact 完整性、Windows VS2026 兼容、代理绕过、fetch 超时、dylib 打包等 10+ 处问题。"
+      },
       "v040": {
         "multiLocale": "界面新增繁体中文、日语、西班牙语，原有简体中文 / 英语保留；语言切换从二态按钮升级为下拉菜单，按钮上保留各语言的原生字符标识。",
         "windowPause": "桌面应用窗口隐藏或最小化时自动暂停播放，避免关闭主界面后后台仍有声音。",

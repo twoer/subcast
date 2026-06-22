@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.5 — 2026-06-21
+
+### 新增 / Added
+- **URL 导入**：首页拖拽区新增「导入链接」入口，粘贴 ScreenPal / B 站 / YouTube 等 1500+ 站点的网页地址，内置 yt-dlp sidecar 自动解析并下载，实时显示百分比进度，完成后跳转播放器开始转写。yt-dlp 作为新的 sidecar 二进制打包（macOS universal2 / Windows x64）
+  **URL import**: a new "Import link" affordance sits inside the home drop zone — paste a web URL from ScreenPal / Bilibili / YouTube and 1500+ other sites, the bundled yt-dlp sidecar resolves and downloads it with a live percentage, then auto-navigates to the player where transcription kicks off. yt-dlp is packaged as a new sidecar binary (macOS universal2 / Windows x64)
+- **链接去重**：重复导入同一个地址时自动命中已下载的视频，零网络开销、瞬时跳转播放器；按内容 SHA-256 兜底去重，不同来源同一内容不重复占用磁盘
+  **Link dedup**: re-importing the same URL short-circuits to the already-downloaded video with zero network I/O and an instant jump to the player; content SHA-256 remains the backstop so different-source-same-content never double-spends disk
+- 新增 [`DISCLAIMER.md`](./DISCLAIMER.md)（中英双语）：明确 URL 导入为通用下载工具，仅供导入你有权访问的内容，用户自行遵守当地版权法与各站点服务条款
+  Added [`DISCLAIMER.md`](./DISCLAIMER.md) (zh + en): clarifies that URL import is a general-purpose downloader intended only for content you have the right to access; users must comply with their jurisdiction's copyright law and each source site's ToS
+
+### 修复 / Fixed
+- URL 导入首次使用即 500：数据库 `user_version` 被其他分支的迁移推高后，本版本的 `ALTER TABLE … ADD COLUMN source_url` 被跳过，列缺失导致查询报 `no such column`。新增 `ensureColumn` 自愈逻辑，无论 `user_version` 如何都确保列存在
+  URL import 500'd on first use: the DB's `user_version` had been bumped past this branch's migration by another branch, so `ALTER TABLE … ADD COLUMN source_url` was skipped and the missing column threw `no such column` on lookup. Added an `ensureColumn` self-heal that guarantees the column exists regardless of how `user_version` was bumped
+- dev:desktop 模式下 yt-dlp 找不到（`exited with code -2`）：`SUBCAST_RESOURCES_PATH` 在 dev 模式指向空的 `resources/` 目录，回退到 PATH 又无 yt-dlp。改为额外尝试仓库本地的 `binaries/<plat>/yt-dlp`
+  yt-dlp not found in `dev:desktop` mode (`exited with code -2`): `SUBCAST_RESOURCES_PATH` points at an empty `resources/` dir in dev, and the PATH fallback found nothing. Now also tries the repo-local `binaries/<plat>/yt-dlp`
+- 网络偶发超时（`Read timed out`）导致导入失败：为 yt-dlp 加 `--socket-timeout 60` / `--retries 10` / `--fragment-retries 10`，并向子进程透传 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY`（Electron spawn 默认不继承）
+  Transient network stalls (`Read timed out`) failed imports: added `--socket-timeout 60` / `--retries 10` / `--fragment-retries 10` to the yt-dlp spawn, and forwarded `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` to the child (Electron's spawn does not inherit them by default)
+- 下载进度条从 0 直接跳到 100：yt-dlp 初始 tick 的 `at Unknown B/s` 行被旧正则丢弃，且进度条无过渡动画。解析改为容错（Unknown 时 speed/eta 返回 undefined 而非丢帧），并给进度条加 0.4s ease-out 平滑
+  Download progress jumped 0 → 100 with no middle: yt-dlp's opening `at Unknown B/s` ticks were dropped by the strict regex, and the bar had no transition. The parser now tolerates Unknown (returns undefined for speed/eta instead of dropping the frame) and the bar gets a 0.4s ease-out
+- URL 导入期间上传按钮误显「上传中」、顶部提示条与进度条信息重复：按钮文案改为仅在真实文件上传时显示「上传中」；URL 导入仅用内联进度条反馈，错误才推到顶部 Alert
+  Upload button mislabeled "uploading…" and the top banner duplicated the inline progress during URL import: the label now reads "uploading…" only for real file uploads; URL import relies on the inline bar, with only errors surfacing to the top Alert
+
 ## 0.4.1 — 2026-06-19
 
 ### 修复 / Fixed

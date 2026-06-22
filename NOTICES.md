@@ -79,6 +79,23 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 > downstream redistributors are responsible for any required patent
 > licensing.
 
+### 1.3 yt-dlp
+
+- **Upstream**: <https://github.com/yt-dlp/yt-dlp>
+- **Version**: `2026.06.09` (pinned in `scripts/fetch-yt-dlp.mjs`)
+- **License**: [Unlicense](https://github.com/yt-dlp/yt-dlp/blob/master/LICENSE)
+  (public domain dedication)
+- **Role**: optional sidecar used by the URL-import feature to resolve and
+  download media from a web address so Subcast can transcribe it locally.
+- **How bundled**: the standalone binary is fetched at build time by
+  `scripts/fetch-yt-dlp.mjs` from yt-dlp's official GitHub Releases and
+  placed next to whisper-cli / ffmpeg under `<App>/Contents/Resources/yt-dlp`
+  (macOS) or `resources/yt-dlp.exe` (Windows). Subcast ships the upstream
+  binary **unmodified** and does not maintain its own site extractors.
+- **Usage note**: yt-dlp is a general-purpose downloader. See
+  [`DISCLAIMER.md`](./DISCLAIMER.md) for the scope-of-use and
+  copyright-compliance notice that applies to the URL-import feature.
+
 ---
 
 ## 2. AI Models

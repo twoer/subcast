@@ -24,6 +24,29 @@ export function getDb(): Database.Database {
   return _db;
 }
 
+/**
+ * Idempotently ensure a column exists on a table. SQLite has no
+ * IF NOT EXISTS for ADD COLUMN, so this inspects PRAGMA table_info
+ * and only ALTERs when the column is genuinely missing.
+ *
+ * Why this exists: the user_version-based migration chain assumes
+ * versions increase monotonically along a single line of development.
+ * In practice a developer runs different branches (e.g. a feature
+ * branch that bumps user_version to N+1), then switches back to a
+ * branch whose migrations only go to N. The skipped migration never
+ * re-runs because `version < N` is false — yet the column it was
+ * supposed to add was never created. Querying that column then throws
+ * `no such column`. Guarding the column additions that later code
+ * relies on with this helper makes the schema self-healing regardless
+ * of how user_version was bumped.
+ */
+function ensureColumn(db: Database.Database, table: string, column: string, definition: string): void {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
 function migrate(db: Database.Database): void {
   const version = (db.pragma('user_version', { simple: true }) as number) ?? 0;
   if (version < 1) {
@@ -275,6 +298,23 @@ function migrate(db: Database.Database): void {
         ON batch_items(batch_id, status, created_at);
     `);
     db.pragma('user_version = 12');
+  }
+  if (version < 13) {
+    // URL import dedup: remembers the source URL a video was imported
+    // from so a repeat import of the same link short-circuits to the
+    // existing sha without re-downloading. Nullable because every video
+    // imported before this migration (and every local-file upload) has
+    // no source URL.
+    ensureColumn(db, 'videos', 'source_url', 'TEXT');
+    db.pragma('user_version = 13');
+  }
+  // Post-migration integrity: the source_url column is now load-bearing
+  // (urlImportQueue.lookupExistingImport queries it). If a prior branch
+  // bumped user_version past 13 without our migration running, the column
+  // would still be missing and every URL import would 500. Re-check it
+  // unconditionally so the schema self-heals across branch switches.
+  if (version >= 13) {
+    ensureColumn(db, 'videos', 'source_url', 'TEXT');
   }
 }
 

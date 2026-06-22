@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- app/pages/index.vue -->
 <script setup lang="ts">
-import { AlertCircle, Check, Upload, ListVideo, X, Film, FileText, History, ArrowRight, FileStack, RotateCcw } from 'lucide-vue-next';
+import { AlertCircle, Check, Upload, ListVideo, X, Film, FileText, History, ArrowRight, FileStack, RotateCcw, Link2 } from 'lucide-vue-next';
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip';
 import { getFileStatus } from '~/utils/fileStatus';
 import { isTaskErrorCode } from '#shared/errorCodes';
@@ -10,6 +10,7 @@ import { useBatchList } from '~/composables/useBatchList';
 import { useHomeUpload } from '~/composables/useHomeUpload';
 import { useBatchStaging } from '~/composables/useBatchStaging';
 import { useDesktopOpenFileUpload } from '~/composables/useDesktopOpenFileUpload';
+import { useUrlImport } from '~/composables/useUrlImport';
 import { useClipboardFeedback } from '~/composables/useClipboardFeedback';
 import { useUploadStatus } from '~/composables/useUploadStatus';
 import { fmtBytes } from '~/utils/format';
@@ -148,6 +149,22 @@ const {
   status: uploadStatus,
   prepareBatchFiles,
 });
+
+const {
+  phase: urlImportPhase,
+  percent: urlImportPercent,
+  urlInput,
+  importUrl,
+  cancel: cancelUrlImport,
+} = useUrlImport({
+  t,
+  status: uploadStatus,
+});
+
+function onSubmitUrl(): void {
+  void importUrl(urlInput.value);
+  urlInput.value = '';
+}
 
 useDesktopOpenFileUpload({
   t,
@@ -351,7 +368,7 @@ function statusBadgeClass(s: QueueItem['status']) {
           :disabled="isUploading"
           @click="fileInput?.click()"
         >
-          {{ isUploading ? t('index.uploading') : t('index.choose') }}
+          {{ (isUploading && urlImportPhase === 'idle') ? t('index.uploading') : t('index.choose') }}
         </Button>
         <p v-if="batchProgress" class="mt-3 text-xs text-muted-foreground">
           {{ t('batch.uploadProgress', { done: batchProgress.done, total: batchProgress.total }) }}
@@ -364,6 +381,64 @@ function statusBadgeClass(s: QueueItem['status']) {
           class="hidden"
           @change="onPickFile"
         >
+
+        <!-- URL import: integrated into the drop zone as a compact secondary
+             entry. A divider + "or" separates local-file (primary) from
+             URL (secondary), keeping the two import modes visually unified
+             rather than two disconnected boxes. -->
+        <div class="mx-auto mt-6 flex max-w-md items-center gap-3 text-xs text-muted-foreground">
+          <span class="h-px flex-1 bg-border" />
+          {{ t('index.urlImport.or') }}
+          <span class="h-px flex-1 bg-border" />
+        </div>
+        <form
+          class="mx-auto mt-3 flex max-w-md items-center gap-2"
+          @submit.prevent="onSubmitUrl"
+        >
+          <div class="flex flex-1 items-center gap-2 rounded-md border border-input bg-background px-3 focus-within:ring-2 focus-within:ring-ring">
+            <Link2 class="h-4 w-4 shrink-0 text-muted-foreground" />
+            <input
+              v-model="urlInput"
+              type="url"
+              :placeholder="t('index.urlImport.placeholder')"
+              :disabled="isUploading"
+              class="h-9 w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            >
+          </div>
+          <Button
+            type="submit"
+            size="sm"
+            variant="secondary"
+            class="h-9 shrink-0"
+            :disabled="isUploading || !urlInput.trim()"
+          >
+            {{ t('index.urlImport.button') }}
+          </Button>
+          <Button
+            v-if="urlImportPhase === 'downloading' || urlImportPhase === 'fetching_info'"
+            type="button"
+            size="sm"
+            variant="ghost"
+            class="h-9 shrink-0 px-2"
+            @click="cancelUrlImport"
+          >
+            <X class="h-4 w-4" />
+          </Button>
+        </form>
+        <!-- Inline progress bar: only takes one line during download,
+             replaces the separate progress block. -->
+        <div
+          v-if="urlImportPhase === 'downloading' || urlImportPhase === 'fetching_info' || urlImportPhase === 'finalizing'"
+          class="mx-auto mt-2 flex max-w-md items-center gap-2 text-xs text-muted-foreground"
+        >
+          <Progress
+            :model-value="Math.round(urlImportPercent * 100)"
+            class="url-import-progress h-1.5 flex-1"
+          />
+          <span class="shrink-0 font-mono tabular-nums">
+            {{ Math.round(urlImportPercent * 100) }}%
+          </span>
+        </div>
       </div>
 
       <Alert v-if="error" variant="destructive" class="mt-4">
@@ -627,3 +702,15 @@ function statusBadgeClass(s: QueueItem['status']) {
 
   </AppShell>
 </template>
+
+<style scoped>
+/* Smooth the URL-import progress bar. yt-dlp emits progress in
+   exponentially-spaced ticks (0% → 0.4% → 3% → 27% → 100% on a small
+   file), so without a transition the indicator visibly jumps. A short
+   ease-out smooths the visual without lagging behind real movement.
+   Scoped to the URL import bar so the shared transcription/translation
+   Progress components are unaffected. */
+.url-import-progress :deep([role='progressbar'] > *) {
+  transition: transform 0.4s ease-out;
+}
+</style>

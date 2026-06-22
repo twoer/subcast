@@ -24,6 +24,8 @@ export interface VideoRow {
   created_at: number;
   last_opened_at: number;
   deleted_at: number | null;
+  /** Source URL for URL-imported videos; null for local-file uploads. */
+  source_url: string | null;
 }
 
 export interface SubtitleRow {

@@ -70,6 +70,17 @@
     "kindInsightEn": "AI Summary (English)",
     "kindDiarize": "Speaker identification",
     "noVideo": "No video or audio file in the drop",
+    "urlImport": {
+      "or": "or paste a link",
+      "placeholder": "Video link (ScreenPal / Bilibili / YouTube / direct media)",
+      "button": "Import link",
+      "hint": "Resolved and downloaded by yt-dlp (1500+ sites)",
+      "fetchingInfo": "Resolving video info…",
+      "downloading": "Downloading {percent}%",
+      "finalizing": "Importing to library…",
+      "error": "Download failed",
+      "unsupportedUrl": "Please enter an http(s) URL"
+    },
     "status": {
       "queued": "Queued",
       "running": "Running",
@@ -431,6 +442,18 @@
     "changelog": {
       "title": "Changelog",
       "body": "Important changes in recent versions. The repository remains the source of truth for the full commit history.",
+      "v045": {
+        "urlImport": "New \"Import link\" in the home drop zone: paste a web URL from ScreenPal / Bilibili / YouTube and 1500+ other sites, the bundled yt-dlp downloads it with a live percentage, then jumps to the player to start transcribing.",
+        "dedup": "Re-importing the same link short-circuits to the already-downloaded video with zero network I/O and an instant jump; different-source-same-content is deduped by SHA-256, so disk isn't double-spent.",
+        "network": "yt-dlp now uses a larger socket timeout and more retries, and automatically forwards the system proxy (Electron child processes don't inherit it by default), reducing timeouts on international sites.",
+        "schemaHeal": "Fixed URL import 500'ing on first use: the DB's version number had been bumped past this branch's column-adding migration by another branch. Added self-healing so the required columns exist regardless of the version number."
+      },
+      "v041": {
+        "llamaStatic": "Fixed macOS packaged translation / AI Insights being completely broken: the prebuilt llama-server was dynamically linked but shipped without dylibs. CI now compiles a static build from source (-DBUILD_SHARED_LIBS=OFF).",
+        "foreignKey": "Fixed FOREIGN KEY constraint failed on clearing cache / deleting a single video / retrying transcription: added all dependent-table deletions and moved PRAGMA foreign_keys outside the transaction.",
+        "windowsStartup": "Fixed Windows packaged app crashing at startup (file:///_entry.js): import.meta.url returns an invalid path for ESM modules inside asar; switched to app.getAppPath().",
+        "ciPipeline": "Fixed the GitHub Actions release pipeline: whisper-cli / llama-server artifact completeness, Windows VS2026 compatibility, proxy bypass, fetch timeout, dylib bundling, and 10+ other issues."
+      },
       "v040": {
         "multiLocale": "UI now ships in Traditional Chinese, Japanese, and Spanish in addition to Simplified Chinese and English. The 2-state language toggle is upgraded to a dropdown picker with script-native short labels.",
         "windowPause": "Pause media automatically when the desktop window hides or minimizes, so audio stops with the window.",

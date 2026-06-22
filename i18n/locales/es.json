@@ -70,6 +70,17 @@
     "kindInsightEn": "Resumen IA (inglés)",
     "kindDiarize": "Identificación de hablantes",
     "noVideo": "No hay archivos de vídeo o audio en lo que has arrastrado",
+    "urlImport": {
+      "or": "o pega un enlace",
+      "placeholder": "Enlace de vídeo (ScreenPal / Bilibili / YouTube, etc.)",
+      "button": "Importar enlace",
+      "hint": "Resuelto y descargado por yt-dlp (1500+ sitios)",
+      "fetchingInfo": "Resolviendo información del vídeo…",
+      "downloading": "Descargando {percent}%",
+      "finalizing": "Importando a la biblioteca…",
+      "error": "Error en la descarga",
+      "unsupportedUrl": "Introduce una URL http(s)"
+    },
     "status": {
       "queued": "En cola",
       "running": "En ejecución",
@@ -431,6 +442,18 @@
     "changelog": {
       "title": "Novedades",
       "body": "Cambios importantes en versiones recientes. El historial completo de commits se encuentra en el repositorio.",
+      "v045": {
+        "urlImport": "Nueva opción «Importar enlace» en la zona de arrastre de la página de inicio: pega una URL de ScreenPal / Bilibili / YouTube y 1500+ sitios más; el yt-dlp integrado la descarga con un porcentaje en vivo y luego salta al reproductor para iniciar la transcripción.",
+        "dedup": "Reimportar el mismo enlace hace cortocircuito al vídeo ya descargado, sin tráfico de red y con salto instantáneo; el mismo contenido de fuentes distintas se deduplica por SHA-256, sin duplicar el disco.",
+        "network": "yt-dlp ahora usa un tiempo de espera de socket mayor y más reintentos, y reenvía automáticamente el proxy del sistema (los procesos hijos de Electron no lo heredan por defecto), reduciendo los tiempos de espera en sitios internacionales.",
+        "schemaHeal": "Corregido el error 500 de importación de URL al primer uso: el número de versión de la base de datos había sido elevado más allá de la migración de esta rama por otra rama. Se añadió una lógica de autocuración que garantiza las columnas necesarias sin importar el número de versión."
+      },
+      "v041": {
+        "llamaStatic": "Corregido: la traducción y las ideas con IA estaban completamente rotas en el paquete de macOS; el llama-server precompilado estaba enlazado dinámicamente pero sin dylibs. Ahora el CI compila una versión estática desde el código fuente (-DBUILD_SHARED_LIBS=OFF).",
+        "foreignKey": "Corregido FOREIGN KEY constraint failed al borrar la caché / eliminar un vídeo / reintentar la transcripción: se añadieron todas las eliminaciones de tablas dependientes y se movió PRAGMA foreign_keys fuera de la transacción.",
+        "windowsStartup": "Corregido el fallo al iniciar el paquete de Windows (file:///_entry.js): import.meta.url devuelve una ruta no válida para módulos ESM dentro de asar; se cambió a app.getAppPath().",
+        "ciPipeline": "Corregido el pipeline de publicación de GitHub Actions: integridad de artefactos whisper-cli / llama-server, compatibilidad con VS2026 de Windows, omisión de proxy, tiempo de espera de fetch, empaquetado de dylib y más de 10 problemas más."
+      },
       "v040": {
         "multiLocale": "La interfaz ya está disponible en chino tradicional, japonés y español, además del chino simplificado e inglés. El conmutador de idioma binario se sustituye por un menú desplegable y cada idioma muestra una abreviatura en su escritura nativa.",
         "windowPause": "Pausa la reproducción automáticamente cuando la ventana del escritorio se oculta o minimiza, para que el audio no siga sonando.",
