@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4.6 — 2026-06-22
+
+### 修复 / Fixed
+- URL 导入的取消按钮形同虚设：点击只关闭了前端进度条，服务端 yt-dlp 仍在后台下载，浪费带宽和磁盘。新增 `DELETE /api/import-url` 接口，前端保留 jobId 并真正调用，取消时 SIGTERM 掉运行中的 yt-dlp 或丢弃排队任务
+  The URL import cancel button was decorative: clicking it only closed the frontend progress bar while the server-side yt-dlp kept downloading in the background. Added a `DELETE /api/import-url` endpoint; the frontend now retains the jobId and actually calls it, SIGTERM'ing the running yt-dlp or dropping the queued task on cancel
+- 并发导入两个链接会各自启动 yt-dlp，破坏「一次只跑一个」契约：队列执行槽现在在第一个 `await` 之前就被同步占用，两次并发的 `ensureTask()` 只有一个能 spawn 进程
+  Two concurrent imports could each spawn yt-dlp, breaking the one-at-a-time contract: the queue's execution slot is now reserved synchronously before the first `await`, so only one of two concurrent `ensureTask()` calls gets to spawn a process
+- 取消在「槽位已预占但 yt-dlp 还没 spawn」的窗口内仍会失效：`runTaskInner` 现在在每个 `await` 之后重新检查 `task.phase`，cancel 在此窗口到达时不会继续 spawn
+  Cancel still failed in the window between slot reservation and yt-dlp spawn: `runTaskInner` now re-checks `task.phase` after each `await`, so a cancel arriving in that window no longer proceeds to spawn
+- URL 导入的媒体一律存成 `.mp4`，导致音频被以错误 Content-Type 提供并破坏播放器：现在按下载文件的真实扩展名（`.m4a`/`.webm`/`.mp3` 等）落盘并入库
+  URL-imported media was always stored as `.mp4`, so audio was served with the wrong Content-Type and broke the player: files are now persisted under their real extension (`.m4a`/`.webm`/`.mp3` etc.) as produced by yt-dlp
+- URL 导入没有大小上限，本地 2GB 上限可被绕过：yt-dlp 加 `--max-filesize 2G`，落盘后再做 `statSync` 二次校验
+  URL import had no size cap, allowing the local 2GB ceiling to be bypassed: yt-dlp now gets `--max-filesize 2G`, plus a post-download `statSync` re-check
+- 链接 slug 已带扩展名时原文件名出现 `video.mp3.mp3`：`buildOriginalName` 在拼接真实扩展名前先剥掉已知媒体后缀
+  When the URL slug already carried an extension, the original name came out as `video.mp3.mp3`: `buildOriginalName` now strips a known media suffix before appending the real extension
+- 部分 CDN（IPv6 路径）下载报 `SSL: UNEXPECTED_EOF_WHILE_READING`、10 次重试全失败：yt-dlp 加 `--force-ipv4` 绕开 IPv6 路径，并加 `--retry-sleep http:5,exponential` 退避重试避免被 CDN 限流加重
+  Some CDNs (IPv6 path) failed with `SSL: UNEXPECTED_EOF_WHILE_READING` and exhausted all 10 retries: yt-dlp now pins IPv4 with `--force-ipv4` to avoid the flaky IPv6 route, and backs off with `--retry-sleep http:5,exponential` so rapid reconnects don't get rate-limited harder
+
 ## 0.4.5 — 2026-06-21
 
 ### 新增 / Added

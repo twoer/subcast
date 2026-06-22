@@ -442,6 +442,12 @@
     "changelog": {
       "title": "更新日志",
       "body": "最近版本的重要变化。完整提交记录以代码仓库为准。",
+      "v046": {
+        "cancel": "取消按钮现在真的会取消：通知服务端 SIGTERM 运行中的 yt-dlp（或丢弃排队中的导入），而不是只隐藏进度条、让下载在后台继续跑。",
+        "concurrency": "修复快速连续粘贴两个导入链接时会同时启动两个 yt-dlp 进程的竞态：单飞队列现在在第一个 await 之前就同步占用执行槽。",
+        "realExt": "导入的音频不再被错误存成 .mp4：使用下载的真实扩展名(.m4a / .webm / .mp3 …),/api/video 因此返回正确的 Content-Type,播放器正常工作。",
+        "ipv4": "在走 IPv6 的 CDN 上因 SSL UNEXPECTED_EOF_WHILE_READING 失败的下载,现在固定走 IPv4(--force-ipv4),并在重试之间退避(--retry-sleep exponential),而不是连续 10 次猛打被 CDN 限流。"
+      },
       "v045": {
         "urlImport": "首页拖拽区新增「导入链接」：粘贴 ScreenPal / B 站 / YouTube 等 1500+ 站点的网页地址，内置 yt-dlp 自动下载，实时显示百分比进度，完成后跳转播放器开始转写。",
         "dedup": "重复导入同一链接自动命中已下载的视频，零网络开销、瞬时跳转；不同来源同一内容按 SHA-256 兜底去重，不重复占用磁盘。",
