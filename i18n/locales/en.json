@@ -442,6 +442,10 @@
     "changelog": {
       "title": "Changelog",
       "body": "Important changes in recent versions. The repository remains the source of truth for the full commit history.",
+      "v047": {
+        "retrySleep": "Fixed 0.4.6 failing every URL import instantly: the retry-sleep argument was invalid syntax (yt-dlp rejected 'http:5,exponential'). Now uses 'http:exponential' for proper backoff.",
+        "errExtract": "yt-dlp error messages in the log/UI no longer dump the whole 'Usage: yt-dlp [OPTIONS]…' help banner — only the actionable 'error:' / 'ERROR:' line is kept."
+      },
       "v046": {
         "cancel": "The cancel button now actually cancels: it signals the server to SIGTERM the running yt-dlp (or drop a queued import) instead of only hiding the progress bar while the download kept running in the background.",
         "concurrency": "Fixed a race where pasting two import links in quick succession could spawn two yt-dlp processes at once; the single-flight queue now reserves its execution slot synchronously before the first await.",

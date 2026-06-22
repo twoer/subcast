@@ -442,6 +442,10 @@
     "changelog": {
       "title": "更新紀錄",
       "body": "近期版本的重要變更。完整提交紀錄以程式碼倉庫為準。",
+      "v047": {
+        "retrySleep": "修復 0.4.6 對任何 URL 匯入都立即失敗的問題:retry-sleep 引數語法無效(yt-dlp 拒絕 'http:5,exponential')。改用 'http:exponential' 做指數退避。",
+        "errExtract": "yt-dlp 報錯時記錄/UI 不再把整段 'Usage: yt-dlp [OPTIONS]…' 說明文字塞進訊息,只保留可操作的 'error:' / 'ERROR:' 行。"
+      },
       "v046": {
         "cancel": "取消按鈕現在真的會取消:通知伺服器 SIGTERM 執行中的 yt-dlp(或丟棄排隊中的匯入),而不是只隱藏進度條、讓下載在背景繼續跑。",
         "concurrency": "修復快速連續貼上兩個匯入連結時會同時啟動兩個 yt-dlp 行程的競態:單飛佇列現在在第一個 await 之前就同步佔用執行槽。",

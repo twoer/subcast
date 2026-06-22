@@ -12,6 +12,14 @@ const { t } = useI18n();
 
 const CHANGELOG = [
   {
+    version: '0.4.7',
+    date: '2026-06-22',
+    items: [
+      'help.changelog.v047.retrySleep',
+      'help.changelog.v047.errExtract',
+    ],
+  },
+  {
     version: '0.4.6',
     date: '2026-06-22',
     items: [

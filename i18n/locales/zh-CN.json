@@ -442,6 +442,10 @@
     "changelog": {
       "title": "更新日志",
       "body": "最近版本的重要变化。完整提交记录以代码仓库为准。",
+      "v047": {
+        "retrySleep": "修复 0.4.6 对任何 URL 导入都立即失败的问题:retry-sleep 参数语法无效(yt-dlp 拒绝 'http:5,exponential')。改用 'http:exponential' 做指数退避。",
+        "errExtract": "yt-dlp 报错时日志/UI 不再把整段 'Usage: yt-dlp [OPTIONS]…' 帮助文本塞进消息,只保留可操作的 'error:' / 'ERROR:' 行。"
+      },
       "v046": {
         "cancel": "取消按钮现在真的会取消：通知服务端 SIGTERM 运行中的 yt-dlp（或丢弃排队中的导入），而不是只隐藏进度条、让下载在后台继续跑。",
         "concurrency": "修复快速连续粘贴两个导入链接时会同时启动两个 yt-dlp 进程的竞态：单飞队列现在在第一个 await 之前就同步占用执行槽。",

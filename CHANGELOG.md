@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.7 — 2026-06-22
+
+### 修复 / Fixed
+- 0.4.6 的 URL 导入对任何链接都立即失败：`--retry-sleep http:5,exponential` 是无效语法（yt-dlp 的每个重试类型只接受一个表达式，不能把固定值和模式用逗号组合），yt-dlp 报 `invalid http retry sleep expression` 后直接退出。改为 `--retry-sleep http:exponential`（1s→2s→4s…）
+  URL import in 0.4.6 failed instantly for every link: `--retry-sleep http:5,exponential` is invalid syntax (yt-dlp accepts a single expression per retry type — a fixed delay and a mode can't be combined with a comma), and yt-dlp exited with `invalid http retry sleep expression`. Changed to `--retry-sleep http:exponential` (1s→2s→4s…)
+- yt-dlp 报错时日志和错误条把整段 `Usage: yt-dlp [OPTIONS]...` 帮助文本也塞进了 message，可读性差：新增 `extractYtDlpError` 提取 `yt-dlp: error:` / `ERROR:` / `error:` 标记行，丢弃 usage banner
+  When yt-dlp errored, the log and error banner inlined the entire `Usage: yt-dlp [OPTIONS]...` help text into the message, hurting readability: added `extractYtDlpError` to pull out the `yt-dlp: error:` / `ERROR:` / `error:` marker line and drop the usage banner
+
 ## 0.4.6 — 2026-06-22
 
 ### 修复 / Fixed

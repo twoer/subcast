@@ -53,6 +53,54 @@ export function buildOriginalName(url: string, ext: string): string {
 }
 
 /**
+ * Extract a one-line human-readable error message from yt-dlp's combined
+ * stderr. yt-dlp's failure output usually looks like one of:
+ *
+ *   Usage: yt-dlp [OPTIONS] URL [URL...]
+ *   yt-dlp: error: invalid http retry sleep expression '5,exponential'
+ *
+ *   ERROR: [download] ... HTTP Error 503 ...
+ *
+ * The old code joined the last 6 lines, which for argv errors captured the
+ * whole "Usage:" banner verbatim and made diagnostics/log banners unreadable
+ * ("Usage: yt-dlp [OPTIONS] URL [URL...] yt-dlp: error: ..."). Prefer the
+ * explicit `yt-dlp: error:` / `ERROR:` / `error:` markers; fall back to the
+ * last non-empty line that isn't part of the usage banner.
+ */
+export function extractYtDlpError(stderr: string): string {
+  const lines = stderr.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return '';
+  // Iterate from the end so we find the terminal error first. lines[i] is
+  // typed `string | undefined` under noUncheckedIndexedAccess, so skip gaps.
+  // 1. Explicit error markers — yt-dlp uses these for actionable failures.
+  //    `yt-dlp: error:` is the argparse form; `ERROR:` is the runtime form;
+  //    lowercase `error:` covers some extractors. Take the LAST occurrence
+  //    (a download attempt can emit several, the last is the terminal one).
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (!line) continue;
+    const m = line.match(/^(?:yt-dlp:\s*error:\s*|ERROR:\s*|error:\s*)(.*)$/i);
+    if (m) {
+      const rest = (m[1] ?? '').trim();
+      // Keep the marker prefix so users recognise it as a yt-dlp error and
+      // not our own message, but drop redundant whitespace.
+      const prefix = line.match(/^(yt-dlp:\s*error:|ERROR:|error:)/i)?.[1] ?? '';
+      return `${prefix} ${rest}`.trim();
+    }
+  }
+  // 2. Fall back to the last non-Usage, non-empty line.
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (!line) continue;
+    if (line.startsWith('Usage:') || line.startsWith('usage:')) continue;
+    return line;
+  }
+  // Unreachable for a non-empty input with at least one non-Usage line, but
+  // satisfy the return type under noUncheckedIndexedAccess.
+  return '';
+}
+
+/**
  * URL-import queue. Mirrors the transcribeQueue shape (single in-flight
  * task, attach() returns an async iterator of progress frames, SSE
  * endpoints subscribe to it) but is much simpler: one yt-dlp process at
@@ -420,12 +468,15 @@ class UrlImportQueue {
       // attempt the flaky route. (Reported by a 0.4.5 user hitting this
       // against a hosted-video CDN; standard yt-dlp mitigation.)
       '--force-ipv4',
-      // Back off between retries instead of hammering the server. A fixed
-      // 5s pause on HTTP errors then exponential growth (5s -> 10s -> 20s
-      // ...) avoids getting rate-limited harder by the CDN, which the old
-      // bare --retries 10 was triggering (10 rapid reconnects looked like
-      // abuse and the server closed every retry with the SSL EOF above).
-      '--retry-sleep', 'http:5,exponential',
+      // Back off between retries instead of hammering the server. yt-dlp's
+      // --retry-sleep takes the form <TYPE>:<EXPR> where TYPE is singular
+      // (http / extractor / fragment) and EXPR is *one* expression — you
+      // cannot combine a fixed delay and a mode with a comma. We use
+      // exponential (1s -> 2s -> 4s ...) so rapid reconnects don't look
+      // like abuse and trigger harder rate-limiting / SSL EOF from the CDN.
+      // (The previous 'http:5,exponential' made yt-dlp reject every argv
+      // with "invalid http retry sleep expression".)
+      '--retry-sleep', 'http:exponential',
       // P2.3: hard cap at the same 2GB the local upload path enforces.
       // yt-dlp aborts the download once the *streamed* byte count crosses
       // this; we re-verify the merged file size on disk below because some
@@ -505,8 +556,7 @@ class UrlImportQueue {
       return;
     }
     if (code !== 0) {
-      const tail = stderrBuf.join('').trim().split('\n').slice(-6).join(' ');
-      const msg = tail || `yt-dlp exited with code ${code}`;
+      const msg = extractYtDlpError(stderrBuf.join('')) || `yt-dlp exited with code ${code}`;
       throw new Error(msg);
     }
 

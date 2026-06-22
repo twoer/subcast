@@ -442,6 +442,10 @@
     "changelog": {
       "title": "Novedades",
       "body": "Cambios importantes en versiones recientes. El historial completo de commits se encuentra en el repositorio.",
+      "v047": {
+        "retrySleep": "Corregido el fallo de 0.4.6 que hacía fallar toda importación de URL al instante: el argumento retry-sleep tenía una sintaxis inválida (yt-dlp rechazaba 'http:5,exponential'). Ahora usa 'http:exponential' para un retroceso adecuado.",
+        "errExtract": "Los mensajes de error de yt-dlp en el registro/UI ya no vuelcan todo el banner de ayuda 'Usage: yt-dlp [OPTIONS]…' — solo se conserva la línea accionable 'error:' / 'ERROR:'."
+      },
       "v046": {
         "cancel": "El botón cancelar ahora cancela de verdad: indica al servidor que envíe SIGTERM al yt-dlp en ejecución (o descarte una importación en cola) en lugar de solo ocultar la barra de progreso mientras la descarga seguía en segundo plano.",
         "concurrency": "Corregida una condición de carrera por la que pegar dos enlaces de importación muy rápido podía lanzar dos procesos yt-dlp a la vez; la cola de un solo vuelo ahora reserva su ranura de ejecución de forma sincrónica antes del primer await.",

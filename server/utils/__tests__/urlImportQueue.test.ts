@@ -6,6 +6,7 @@ import {
   parseEta,
   guessExtFromUrl,
   buildOriginalName,
+  extractYtDlpError,
   urlImportQueue,
 } from '../urlImportQueue';
 
@@ -162,6 +163,61 @@ describe('buildOriginalName', () => {
 
   it('uses "video" when the path has no trailing segment', () => {
     expect(buildOriginalName('https://example.com/', '.mp4')).toBe('video.mp4');
+  });
+});
+
+describe('extractYtDlpError', () => {
+  it('returns the argparse error line and drops the Usage banner', () => {
+    // Exact shape reported by a 0.4.6 user: yt-dlp rejects a bad argv and
+    // prints Usage + a "yt-dlp: error:" line. The old tail-6 logic emitted
+    // the whole thing; we must return only the actionable error line.
+    const stderr =
+      'Usage: yt-dlp [OPTIONS] URL [URL...]\n' +
+      'yt-dlp: error: invalid http retry sleep expression \'5,exponential\'\n';
+    expect(extractYtDlpError(stderr)).toBe(
+      "yt-dlp: error: invalid http retry sleep expression '5,exponential'",
+    );
+  });
+
+  it('extracts a runtime ERROR: line', () => {
+    const stderr =
+      '[generic] Extracting URL\n' +
+      '[generic] video: Downloading webpage\n' +
+      'ERROR: [download] Got error: HTTP Error 503: Service Unavailable\n';
+    expect(extractYtDlpError(stderr)).toBe(
+      'ERROR: [download] Got error: HTTP Error 503: Service Unavailable',
+    );
+  });
+
+  it('extracts a lowercase error: line', () => {
+    expect(extractYtDlpError('some context\nerror: unable to extract')).toBe(
+      'error: unable to extract',
+    );
+  });
+
+  it('keeps the LAST error line when several are emitted (terminal cause)', () => {
+    const stderr =
+      'ERROR: first attempt failed\n' +
+      'ERROR: retry failed\n' +
+      'ERROR:Giving up after 10 retries\n';
+    // Note: the marker is normalized to 'ERROR: ' (single trailing space)
+    // even when the source had no space, so the UI shows a consistent form.
+    expect(extractYtDlpError(stderr)).toBe('ERROR: Giving up after 10 retries');
+  });
+
+  it('falls back to the last non-Usage line when no error marker is present', () => {
+    const stderr = '[download] 50.0%\n[download] 100.0%\nConnection reset by peer';
+    expect(extractYtDlpError(stderr)).toBe('Connection reset by peer');
+  });
+
+  it('skips trailing Usage banner lines in the fallback path', () => {
+    const stderr = 'Connection reset by peer\nUsage: yt-dlp [OPTIONS] URL [URL...]';
+    expect(extractYtDlpError(stderr)).toBe('Connection reset by peer');
+  });
+
+  it('returns empty string for blank stderr', () => {
+    expect(extractYtDlpError('')).toBe('');
+    expect(extractYtDlpError('   \n  \n')).toBe('');
   });
 });
 
