@@ -1,0 +1,33 @@
+/* 默认主题把 hero 图限制在 320×320，截图是 1600×913 高清图，放大展示更大气 */
+:root {
+  --vp-home-hero-image-background-image: linear-gradient(-45deg, #3b82f6 50%, #93c5fd 50%);
+  --vp-home-hero-image-filter: blur(96px);
+}
+
+/* 光斑只作点缀，避免喧宾夺主 */
+.VPHero .image-bg {
+  opacity: 0.4;
+}
+
+.dark .VPHero .image-bg {
+  opacity: 0.32;
+}
+
+@media (min-width: 960px) {
+  .VPHero .image-src {
+    max-width: 520px;
+    max-height: 520px;
+  }
+
+  .VPHero .image-bg {
+    width: 420px;
+    height: 420px;
+  }
+}
+
+.VPHero .image-src {
+  border-radius: 12px;
+  box-shadow:
+    0 28px 64px -16px rgba(2, 8, 20, 0.32),
+    0 8px 24px -8px rgba(2, 8, 20, 0.18);
+}

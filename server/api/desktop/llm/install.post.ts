@@ -19,6 +19,7 @@ import {
   startLlmInstall,
 } from '../../../utils/llmInstallTask';
 import type { LlmMirror, LlmModelId } from '#shared/llmModels';
+import { isLlmModelId } from '#shared/llmModels';
 import {
   INSTALL_KINDS,
   isInstallKind,
@@ -34,7 +35,6 @@ interface InstallBody {
 }
 
 const VALID_KINDS: ReadonlySet<InstallKind> = new Set(INSTALL_KINDS);
-const VALID_MODELS: ReadonlySet<LlmModelId> = new Set(['3b', '7b', '14b']);
 
 export default defineEventHandler(async (event) => {
   if (process.env.SUBCAST_DESKTOP !== 'true') {
@@ -45,7 +45,7 @@ export default defineEventHandler(async (event) => {
   if (!body || !isInstallKind(body.kind) || !VALID_KINDS.has(body.kind)) {
     throw createError({ statusCode: 400, statusMessage: 'BAD_KIND' });
   }
-  if (!body.model || !VALID_MODELS.has(body.model)) {
+  if (typeof body.model !== 'string' || !isLlmModelId(body.model)) {
     throw createError({ statusCode: 400, statusMessage: 'BAD_MODEL' });
   }
   if ((body.kind === 'symlink' || body.kind === 'copy') && !body.srcPath) {

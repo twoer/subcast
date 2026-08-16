@@ -19,6 +19,7 @@ import { Button } from '~/components/ui/button';
 
 interface SetupStatus {
   hasWhisperModel: boolean;
+  sensevoiceReady?: boolean;
 }
 interface LlmStatusResp {
   installed: Array<{ name: string }>;
@@ -28,20 +29,39 @@ const { t } = useI18n();
 const error = ref<string | null>(null);
 const probing = ref(true);
 
+async function probe(): Promise<{ status: SetupStatus; llmStatus: LlmStatusResp }> {
+  // Two probes, in parallel: engine readiness (whisper or SenseVoice) and
+  // LLM installed-count. The wizard's own resume logic uses the same
+  // responses, so the user lands on the right step either way.
+  const [status, llmStatus] = await Promise.all([
+    $fetch<SetupStatus>('/api/desktop/setup-status'),
+    $fetch<LlmStatusResp>('/api/desktop/llm/status'),
+  ]);
+  return { status, llmStatus };
+}
+
+function isReady(status: SetupStatus, llmStatus: LlmStatusResp): boolean {
+  // Step 1 is done when EITHER engine is usable — matches the wizard's
+  // own resume logic (svReady || hasWhisperModel). SenseVoice-only
+  // users (the packaged default) must not be looped back to the wizard.
+  return (status.hasWhisperModel || status.sensevoiceReady === true)
+    && llmStatus.installed.length > 0;
+}
+
 async function check(): Promise<void> {
   error.value = null;
   probing.value = true;
   try {
-    // Two probes, in parallel: Whisper readiness (unchanged) and LLM
-    // installed-count (replaces the old `hasQwen` flag from setup-status).
-    // The wizard's own resume logic uses the same llm/status response, so
-    // the user lands on the right step either way.
-    const [status, llmStatus] = await Promise.all([
-      $fetch<SetupStatus>('/api/desktop/setup-status'),
-      $fetch<LlmStatusResp>('/api/desktop/llm/status'),
-    ]);
-    const ready = status.hasWhisperModel && llmStatus.installed.length > 0;
-    await navigateTo(ready ? '/' : '/setup-wizard', { replace: true });
+    let { status, llmStatus } = await probe();
+    if (!isReady(status, llmStatus)) {
+      // Cold-start races (token injection / first-scan timing) can
+      // transiently report an installed model as missing — the wizard
+      // would auto-dismiss seconds later anyway. Re-probe once before
+      // bouncing the user through it.
+      await new Promise((r) => setTimeout(r, 1500));
+      ({ status, llmStatus } = await probe());
+    }
+    await navigateTo(isReady(status, llmStatus) ? '/' : '/setup-wizard', { replace: true });
   } catch (e) {
     const err = e as { statusCode?: number; message?: string };
     if (err.statusCode === 404) {

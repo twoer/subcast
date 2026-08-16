@@ -13,7 +13,11 @@
     "manageModels": "Gestionar modelos",
     "modelNotInstalled": "No instalado: {name}",
     "llmNotInstalled": "Modelo de IA no instalado",
-    "llmLabel": "IA"
+    "llmLabel": "IA",
+    "sensevoiceNotInstalled": "Modelo SenseVoice no instalado",
+    "noEngineInstalled": "Ningún motor de transcripción disponible — instala un modelo en Ajustes",
+    "transcribeEngineLabel": "Motor de transcripción",
+    "engineAutoName": "Auto"
   },
   "fileStatus": {
     "transcribing": "Transcribiendo {pct}%",
@@ -66,6 +70,7 @@
     "translating": "Traduciendo",
     "kindTranscribe": "Transcripción",
     "kindTranslate": "Traducción",
+    "kindPolish": "Pulido IA",
     "kindInsightZh": "Resumen IA (chino)",
     "kindInsightEn": "Resumen IA (inglés)",
     "kindDiarize": "Identificación de hablantes",
@@ -182,7 +187,8 @@
       "BATCH_RETRY_EXHAUSTED": "La traducción se reintentó varias veces y aún falló. Vuelve a intentarlo o cambia de modelo.",
       "PARSE_FAILED": "No se pudo analizar la salida de la IA. Inténtalo de nuevo.",
       "fallback": "La operación falló. Inténtalo de nuevo.",
-      "retry": "Reintentar"
+      "retry": "Reintentar",
+      "SENSE_VOICE_NOT_CONFIGURED": "El modelo SenseVoice no está listo. Descárgalo en Ajustes → Modelos."
     },
     "cancelTranslation": "Cancelar traducción",
     "cancelTranslationTitle": "¿Cancelar esta traducción?",
@@ -273,6 +279,20 @@
         "NETWORK": "Se perdió la conexión durante la generación.",
         "fallback": "Error al generar el resumen. Inténtalo de nuevo."
       }
+    },
+    "polish": {
+      "layerLabel": "Pulida",
+      "originalLabel": "Original",
+      "polishedLabel": "Pulida",
+      "runButton": "Pulir con IA",
+      "runningLabel": "Puliendo {pct}%"
+    },
+    "whisperHint": {
+      "text": "Este vídeo es principalmente en inglés y se transcribió con SenseVoice porque no hay ningún modelo Whisper instalado. Whisper reconoce el inglés bastante mejor. ¿Descargar uno?",
+      "action": "Descargar Whisper",
+      "dismiss": "Descartar",
+      "retranscribeText": "Este vídeo en inglés se transcribió con SenseVoice antes de instalar Whisper. Whisper reconoce el inglés bastante mejor. ¿Volver a transcribir ahora? (se borrarán las traducciones y el pulido existentes)",
+      "retranscribeAction": "Volver a transcribir"
     }
   },
   "batch": {
@@ -333,27 +353,39 @@
       "models": "Modelos"
     },
     "models": {
+      "noEngineInstalled": "Ningún modelo de motor instalado — descarga SenseVoice o un modelo Whisper abajo, o la transcripción fallará.",
+      "whisper": "Modelos Whisper",
+      "sensevoice": "SenseVoice",
+      "llm": "Modelos de IA (Qwen3)",
       "activeTitle": "Modelos activos",
-      "notInstalledWarn": "{name} no está completamente instalado — la transcripción fallará. Usa «Descargar más» o elige un modelo instalado de la lista.",
-      "whisper": "Modelos de transcripción Whisper",
-      "llm": "Modelo de IA (Qwen 2.5)",
-      "size": "{size}",
       "active": "Activo",
-      "activeFile": "Activo: {name}",
-      "notConfigured": "Sin configurar — configura un modelo de IA mediante el asistente de configuración.",
-      "switch": "Usar",
-      "delete": "Eliminar",
-      "downloadMore": "Descargar más",
-      "loading": "Cargando…",
-      "empty": "Sin modelos instalados — haz clic en «Descargar más» arriba",
-      "emptyLlm": "Sin modelos de IA instalados — haz clic en «Descargar más» arriba",
-      "refresh": "Actualizar",
-      "deleteTitle": "¿Eliminar este modelo?",
-      "deleteDesc": "{name} ({size}) se eliminará de este equipo. Tendrás que descargarlo de nuevo la próxima vez.",
-      "cancel": "Cancelar",
-      "confirm": "Eliminar",
+      "switch": "Cambiar",
       "switchFailed": "Error al cambiar: {error}",
-      "deleteFailed": "Error al eliminar: {error}"
+      "delete": "Eliminar",
+      "deleteTitle": "Eliminar modelo",
+      "deleteDesc": "¿Eliminar {name} ({size})? Puedes volver a descargarlo más tarde.",
+      "deleteFailed": "Error al eliminar: {error}",
+      "confirm": "Eliminar",
+      "cancel": "Cancelar",
+      "refresh": "Actualizar",
+      "downloadMore": "Descargar más",
+      "empty": "Aún no hay modelos Whisper instalados.",
+      "emptyLlm": "Aún no hay modelos de IA instalados.",
+      "loading": "Cargando…",
+      "notConfigured": "Sin configurar",
+      "notInstalledWarn": "{name} no está instalado; la transcripción fallará hasta descargarlo.",
+      "sensevoiceNotInstalled": "SenseVoice no está listo: descárgalo en la sección de abajo.",
+      "sensevoiceFastCn": "RÁPIDO EN CHINO",
+      "sensevoiceEmpty": "SenseVoice no está instalado.",
+      "sensevoiceDownload": "Descargar SenseVoice (~250 MB)",
+      "sensevoiceDownloading": "Descargando SenseVoice…",
+      "sensevoiceInstallFailed": "Error de descarga: {error}",
+      "sensevoiceIsActive": "SenseVoice es el motor de transcripción activo y no se puede eliminar.",
+      "llmNeedsDownload": "Falta en disco el modelo de IA activo {model}: vuelve a descargarlo para restaurar traducción y resúmenes.",
+      "llmDownloadNow": "Descargar ahora",
+      "legacyLlmTitle": "Archivos de modelos Qwen2.5 antiguos",
+      "legacyLlmHint": "Puedes eliminarlos para liberar espacio.",
+      "legacyLlmNone": "No hay archivos de modelos antiguos para eliminar."
     },
     "hardware": "Hardware",
     "tier": "Nivel",
@@ -368,7 +400,7 @@
     "whisperModel": "Modelo Whisper",
     "whisperHint": "Más grande = más preciso pero más lento. Los cambios se aplican a las nuevas tareas de transcripción.",
     "llmModel": "Modelo de IA",
-    "llmHint": "Cuantización local de Qwen 2.5 servida por un llama-server en proceso. Recomendado: {model}.",
+    "llmHint": "Cuantización local de Qwen 3 servida por un llama-server en proceso. Recomendado: {model}.",
     "cacheLimit": "Límite de tamaño de caché",
     "silenceThreshold": "Umbral de silencio",
     "silenceHint": "Los intervalos entre líneas ≥ esta duración añaden un separador «── sin audio ──» en la lista.",
@@ -429,6 +461,17 @@
       "showing": "Mostrando las últimas {count} de {total} líneas",
       "truncatedNote": "Hay líneas más antiguas. Aumenta el número de líneas o exporta el ZIP completo.",
       "writerUnhealthy": "La escritura de registros falla de forma continua — los eventos recientes pueden no estar guardados en disco."
+    },
+    "transcribeEngine": "Motor de transcripción",
+    "transcribeEngineHint": "Auto: audio CJK → SenseVoice, inglés → Whisper (si está instalado). SenseVoice/Whisper fijan un motor.",
+    "polish": {
+      "title": "Pulido IA de transcripciones",
+      "autoTitle": "Pulir transcripciones automáticamente",
+      "autoDesc": "Tras la transcripción, la IA local corrige erratas, normaliza tokens mixtos chino/inglés y añade puntuación. El original se conserva: vuelve a él cuando quieras en el reproductor.",
+      "needsLlm": "Instala antes un modelo de IA en la pestaña Modelos.",
+      "hintsTitle": "Pista de nombres propios (opcional)",
+      "hintsPlaceholder": "p. ej. Luzhou Fuxue, operación booleana, nombres…",
+      "hintsHint": "Ayuda a la IA a escribir bien términos y nombres."
     }
   },
   "help": {
@@ -440,6 +483,13 @@
       "changelog": "Novedades"
     },
     "changelog": {
+      "v050": {
+        "qwen3": "LLM actualizado a Qwen3: gran mejora de calidad multilingüe en traducción, pulido y resúmenes de IA, con la mitad del tamaño del modelo por nivel: el nivel 8B ahora cabe en máquinas de 8 GB.",
+        "sensevoice": "Nuevo motor de transcripción SenseVoice (modo «automático» por defecto): reconocimiento CJK rápido y preciso, con distribución automática entre SenseVoice y Whisper según el idioma del audio; el inglés va a Whisper para marcas de tiempo por palabra.",
+        "polish": "Nuevo pulido de transcripciones con IA: tras transcribir, el LLM local corrige erratas homófonas, recompone tokens ingleses partidos («a i» → «AI») y añade puntuación. Añade pistas de términos en Ajustes y alterna la capa pulida en el reproductor.",
+        "speed": "Transcripción y traducción más rápidas: whisper ahora corre como servidor de inferencia residente con corte en memoria (25-60% más rápido por fragmento en producción), y las tareas de LLM arrancan sin espera de carga del modelo.",
+        "stability": "Traducción/pulido más fiables: la salida del LLM queda restringida por un JSON Schema, eliminando de raíz los reintentos por recuento erróneo y las líneas caídas; un servidor LLM bloqueado ahora falla en segundos con la causa real en vez de un timeout silencioso de 30 s."
+      },
       "title": "Novedades",
       "body": "Cambios importantes en versiones recientes. El historial completo de commits se encuentra en el repositorio.",
       "v048": {
@@ -500,9 +550,9 @@
     "setupWizard": {
       "welcome": "Configuración inicial",
       "manageTitle": "Gestionar modelos",
-      "stepLabel1": "Whisper",
+      "stepLabel1": "Transcripción",
       "stepLabel2": "Modelo de IA",
-      "subtitleStep1": "Elige el modelo de transcripción (Whisper)",
+      "subtitleStep1": "Elige un motor de transcripción y modelo",
       "subtitleStep2": "Elige el modelo de IA (traducción y resumen)",
       "recommended": "Recomendado",
       "foundAt": "Archivo existente encontrado en",
@@ -531,7 +581,17 @@
       "remainingMins": "{m} min {s} s restantes",
       "perSecond": "/s",
       "checkingEvery5s": "Comprobando cada 5 segundos — mantén esta ventana abierta.",
-      "installedAt": "{name} instalado en"
+      "installedAt": "{name} instalado en",
+      "engineChoiceTitle": "Motor de transcripción",
+      "engineWhisperName": "Whisper",
+      "engineWhisperDesc": "99 idiomas · marcas de tiempo por palabra · modelos de 77 MB a 1,6 GB",
+      "engineSensevoiceName": "SenseVoice",
+      "engineSensevoiceBadge": "Recomendado",
+      "engineSensevoiceDesc": "zh/en/ja/ko/yue · ~15x más rápido en CPU · modelo único de 166 MB",
+      "svModelMeta": "Modelo int8 fijo · ~166 MB · detección automática de idioma (zh/en/ja/ko/yue)",
+      "svReadyHint": "Instalado y listo — pulsa Siguiente para continuar.",
+      "svNotInstalledHint": "No instalado — pulsa Descargar abajo (~166 MB).",
+      "installed": "Instalado"
     },
     "llm": {
       "selectModel": "Selecciona el modelo de IA",
@@ -558,6 +618,7 @@
       "depsHeader": "Construido con estos componentes de código abierto",
       "licenseLine": "© 2026 twoer · Bajo licencia",
       "buttons": {
+        "documentation": "Documentación",
         "repository": "Repositorio",
         "license": "Licencia",
         "reportIssue": "Reportar problema"

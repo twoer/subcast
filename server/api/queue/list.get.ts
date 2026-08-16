@@ -5,6 +5,7 @@ import { getDb, SUBCAST_PATHS } from '../../utils/db';
 import { logEvent } from '../../utils/log';
 import type {
   InsightTaskRow,
+  PolishTaskRow,
   TranscribeTaskRow,
   TranslateTaskRow,
 } from '../../types/db';
@@ -42,8 +43,12 @@ type InsightJoinRow =
   & Pick<InsightTaskRow, 'id' | 'video_sha' | 'status' | 'model' | 'ui_language' | 'created_at' | 'error_msg' | 'error_code'>
   & VideoJoinFields;
 
+type PolishJoinRow =
+  & Pick<PolishTaskRow, 'id' | 'video_sha' | 'status' | 'model' | 'progress_pct' | 'created_at' | 'error_msg' | 'error_code'>
+  & VideoJoinFields;
+
 interface QueueItem {
-  kind: 'transcribe' | 'translate' | 'insight' | 'diarize';
+  kind: 'transcribe' | 'translate' | 'insight' | 'diarize' | 'polish';
   id: string;
   videoSha: string;
   videoName: string;
@@ -99,6 +104,17 @@ export default defineEventHandler(() => {
        ORDER BY t.created_at DESC`,
     )
     .all(cutoff) as InsightJoinRow[];
+
+  const polishes = db
+    .prepare(
+      `SELECT t.id, t.video_sha, t.status, t.model, t.progress_pct,
+              t.created_at, t.error_msg, t.error_code, v.original_name, v.display_name
+       FROM polish_tasks t
+       LEFT JOIN videos v ON v.sha256 = t.video_sha
+       WHERE t.status IN ('queued','running') OR t.created_at > ?
+       ORDER BY t.created_at DESC`,
+    )
+    .all(cutoff) as PolishJoinRow[];
 
   const diarizes = db
     .prepare(
@@ -157,6 +173,20 @@ export default defineEventHandler(() => {
       model: t.model,
       progressPct: t.status === 'done' ? 100 : 0,
       uiLanguage: t.ui_language,
+      createdAt: t.created_at,
+      errorMsg: t.error_msg,
+      errorCode: t.error_code,
+    });
+  }
+  for (const t of polishes) {
+    items.push({
+      kind: 'polish',
+      id: t.id,
+      videoSha: t.video_sha,
+      videoName: t.display_name ?? t.original_name ?? t.video_sha.slice(0, 12),
+      status: t.status,
+      model: t.model,
+      progressPct: t.progress_pct,
       createdAt: t.created_at,
       errorMsg: t.error_msg,
       errorCode: t.error_code,

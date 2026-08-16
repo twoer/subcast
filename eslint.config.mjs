@@ -12,10 +12,22 @@ import withNuxt from './.nuxt/eslint.config.mjs';
 // Tests are exempt because vi.hoisted() runs before ES module imports and
 // can only use require() at that point; vitest provides require() in its
 // CJS-style test harness regardless of "type": "module".
-export default withNuxt({
-  files: ['desktop/**/*.ts', 'server/**/*.ts'],
-  ignores: ['**/__tests__/**', '**/*.test.ts'],
-  rules: {
-    '@typescript-eslint/no-require-imports': 'error',
+export default withNuxt(
+  {
+    // 文档站（website/）是独立 VitePress 工程：dev 依赖预构建缓存与构建
+    // 产物里的第三方压缩 JS 不属于本仓库 lint 范围，不忽略会报出几百
+    // 个与源码无关的错误。
+    ignores: [
+      'website/.vitepress/cache/**',
+      'website/.vitepress/dist/**',
+      'website/node_modules/**',
+    ],
   },
-});
+  {
+    files: ['desktop/**/*.ts', 'server/**/*.ts'],
+    ignores: ['**/__tests__/**', '**/*.test.ts'],
+    rules: {
+      '@typescript-eslint/no-require-imports': 'error',
+    },
+  },
+);

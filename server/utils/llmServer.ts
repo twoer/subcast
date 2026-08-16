@@ -3,6 +3,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { llmModelPath } from '../../desktop/modelManager/llmInstall';
 import { loadSettings } from './settings';
+import { waitForSidecarListening } from './sidecarAnnounce';
 
 export type LlmServerState = 'idle' | 'starting' | 'running' | 'stopping';
 
@@ -175,6 +176,27 @@ export class LlmServer {
       '--port', String(this.opts.preferredPort ?? 0),
       '--keep', '-1',
       '--n-gpu-layers', '999',
+      // llama-server defaults to a 4096 ctx. Doubled to 8192 so the
+      // insights path (maxTokens=4096) isn't squeezed by typical prompt
+      // sizes (~3-6k tokens for an hour of subtitles). Not higher:
+      // Qwen3's KV cache is fat (36 layers × 8 kv-heads ≈ 144KB/token
+      // on 4B), and the entry tier must fit weights + cache inside 8 GB
+      // RAM. Prompts that still overflow slide via llama-server's
+      // context-shift — same behavior as the old 4096 default.
+      '--ctx-size', '8192',
+      // NOTE: do NOT pass `-fa`/`--flash-attn` — current llama.cpp builds
+      // take a required value (`-fa on|off|auto`) and a bare `-fa` makes
+      // the next flag its value, killing the process at argv parse
+      // (b10435: `unknown value for --flash-attn: '--cache-reuse'`).
+      // The build's default is `auto` = enabled wherever the backend
+      // supports it, which is exactly what we want.
+      //
+      // Reuse the KV prefix across requests that share one (the
+      // translate/polish system prompt) instead of re-prefilling it.
+      '--cache-reuse', '256',
+      // Pin weights in RAM so a backgrounded app doesn't page them out
+      // mid-task (`--mlock`'s modern spelling).
+      '--load-mode', 'mmap+mlock',
     ]);
     const port = await this.waitForListeningPort(proc, 30_000);
     // The "listening" log line fires the moment the HTTP socket binds —
@@ -207,43 +229,13 @@ export class LlmServer {
 
   /**
    * Resolve with the TCP port llama-server announces on stdout/stderr.
-   * Upstream llama.cpp prints two listening lines per spawn — we match
-   * the first one to fire:
-   *
-   *   `main: HTTP server is listening, hostname: 127.0.0.1, port: 52157, ...`
-   *   `srv  update_slots: server is listening on http://127.0.0.1:52157 - ...`
-   *
    * The bind happens AFTER model load (which dominates the spawn latency
    * for 7B+ Q4), so a 30s budget is generous on cold mmap of a 4-9 GB
-   * weights file. Rejects after `timeoutMs` — caller treats that as a
-   * spawn failure.
+   * weights file. See `sidecarAnnounce.ts` for the shared semantics
+   * (listening-line match + fast-fail with stderr tail on early exit).
    */
   private waitForListeningPort(proc: ChildProcess, timeoutMs: number): Promise<number> {
-    return new Promise((resolve, reject) => {
-      // Two formats accepted: `listening, ... port: 52157` and
-      // `listening on http://127.0.0.1:52157`. The `.*?` is non-greedy so
-      // the port capture is the first numeric port-like token after
-      // `listening`, not some unrelated number elsewhere in the line.
-      const re = /listening[^\n]*?(?:port[:\s]+|:\/\/[^:]+:|[0-9.]+:)(\d{2,5})/i;
-      const timer = setTimeout(() => {
-        cleanup();
-        reject(new Error(`llama-server did not announce listening port within ${timeoutMs}ms`));
-      }, timeoutMs);
-      const onChunk = (chunk: Buffer | string) => {
-        const m = re.exec(String(chunk));
-        if (m) {
-          cleanup();
-          resolve(Number(m[1]));
-        }
-      };
-      const cleanup = () => {
-        clearTimeout(timer);
-        proc.stdout?.off('data', onChunk);
-        proc.stderr?.off('data', onChunk);
-      };
-      proc.stdout?.on('data', onChunk);
-      proc.stderr?.on('data', onChunk);
-    });
+    return waitForSidecarListening(proc, timeoutMs, 'llama-server');
   }
 
   private armIdleTimer(): void {

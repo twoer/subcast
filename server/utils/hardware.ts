@@ -48,16 +48,16 @@ function classifyTier(memGB: number, gpu: HardwareInfo['gpu']): HardwareTier {
 }
 
 function recommendModels(tier: HardwareTier): HardwareInfo['recommended'] {
-  // LLM tier mapping intentionally caps `standard` (8 GB) at the 3B
-  // model: a 4-bit-quantized 7B GGUF + working set comfortably exceeds
+  // LLM tier mapping intentionally caps `standard` (8 GB) at the 4B
+  // model: a 4-bit-quantized 8B GGUF + working set comfortably exceeds
   // the headroom an 8 GB Mac has after macOS + Chromium + Subcast itself.
   switch (tier) {
     case 'entry':
-      return { whisperModel: 'base', llmModel: '3b' };
+      return { whisperModel: 'base', llmModel: '4b' };
     case 'standard':
-      return { whisperModel: 'small', llmModel: '3b' };
+      return { whisperModel: 'small', llmModel: '4b' };
     case 'recommended':
-      return { whisperModel: 'medium', llmModel: '7b' };
+      return { whisperModel: 'medium', llmModel: '8b' };
     case 'high':
       return { whisperModel: 'large-v3-turbo', llmModel: '14b' };
   }

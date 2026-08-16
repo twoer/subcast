@@ -9,14 +9,20 @@ import type { WhisperModelName } from '#shared/whisperModels';
 import type { LlmModelId } from '#shared/llmModels';
 
 export type ChunkingStrategy = 'vad' | 'fixed-time';
+export type TranscribeEngine = 'auto' | 'whisper' | 'sensevoice';
 
 export interface Settings {
   whisperModel: WhisperModelName;
+  transcribeEngine: TranscribeEngine;
   llmModel: LlmModelId | undefined;
   cacheLimitGB: number;
   silenceThresholdMs: number;
   debugMode: boolean;
   chunkingStrategy: ChunkingStrategy;
+  /** Auto LLM polish of finished transcripts; inert until llmModel is installed. */
+  transcriptPolish: boolean;
+  /** Optional domain hints (names/places/jargon) fed to the polish prompt. */
+  polishHints: string;
 }
 
 export interface Hardware {

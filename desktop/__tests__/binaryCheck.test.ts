@@ -37,7 +37,20 @@ describe('checkBundledBinaries', () => {
     const r = checkBundledBinaries(dir);
     expect(r.ok).toBe(true);
     expect(r.missing).toHaveLength(0);
-    expect(r.statuses).toHaveLength(4);
+    // 4 required + whisper-server (optional accelerator).
+    expect(r.statuses).toHaveLength(5);
+  });
+
+  it('treats a missing whisper-server as degraded-but-ok', () => {
+    makeBinary('whisper-cli');
+    makeBinary('ffmpeg');
+    makeBinary('ffprobe');
+    makeBinary('llama-server');
+    const r = checkBundledBinaries(dir);
+    const ws = r.statuses.find((s) => s.name === 'whisper-server');
+    expect(ws?.exists).toBe(false);
+    expect(r.ok).toBe(true);
+    expect(r.missing.map((m) => m.name)).not.toContain('whisper-server');
   });
 
   it('flags individual binaries when missing from disk', () => {

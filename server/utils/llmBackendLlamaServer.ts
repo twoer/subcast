@@ -1,6 +1,17 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import type { LLMBackend, LLMChatOptions, LLMChunk } from './llmClient';
 import { getLlmServer } from './llmServer';
+import { stripThinkBlocks, ThinkStreamFilter } from './thinkFilter';
+
+/**
+ * Disables Qwen3's default `<think>` reasoning at the chat-template
+ * level. llama-server (>= 2025-05) forwards this kwarg into the GGUF's
+ * embedded template. Belt-and-suspenders: even when the server ignores
+ * it, `thinkFilter.ts` strips leaked think blocks from content — and
+ * reasoning surfaced via the separate `reasoning_content` field is
+ * never read in the first place.
+ */
+const DISABLE_THINKING_KWARGS = { chat_template_kwargs: { enable_thinking: false } };
 
 /**
  * Dynamic-timeout knobs.
@@ -65,12 +76,43 @@ function composeSignal(opts: LLMChatOptions): AbortSignal {
 }
 
 interface ChatChoice {
+  /**
+   * Reasoning tokens on Qwen3 thinking-mode responses. Deliberately
+   * never read — we only consume `content`.
+   */
+  reasoning_content?: string;
   message?: { content?: string };
   delta?: { content?: string };
   finish_reason?: string | null;
 }
 interface ChatResponseBody {
   choices?: ChatChoice[];
+}
+
+/**
+ * Shared request body for chat/chatStream. When `responseSchema` is set,
+ * constrain decoding via llama-server's json_schema response_format
+ * (GBNF grammar) — the model physically cannot emit anything that
+ * violates the schema, which is what lets translate/polish trust
+ * attempt 1 instead of descending the count-mismatch retry ladder.
+ */
+function buildBody(opts: LLMChatOptions, stream: boolean): Record<string, unknown> {
+  return {
+    model: 'subcast-local',
+    messages: opts.messages,
+    max_tokens: opts.maxTokens ?? 2048,
+    temperature: opts.temperature ?? 0.2,
+    stream,
+    ...DISABLE_THINKING_KWARGS,
+    ...(opts.responseSchema
+      ? {
+          response_format: {
+            type: 'json_schema',
+            json_schema: { name: 'subcast_response', schema: opts.responseSchema },
+          },
+        }
+      : {}),
+  };
 }
 
 /**
@@ -85,13 +127,7 @@ export class LlamaServerBackend implements LLMBackend {
     const res = await fetch(endpoint('/v1/chat/completions'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        model: 'subcast-local',
-        messages: opts.messages,
-        max_tokens: opts.maxTokens ?? 2048,
-        temperature: opts.temperature ?? 0.2,
-        stream: false,
-      }),
+      body: JSON.stringify(buildBody(opts, false)),
       signal: composeSignal(opts),
     });
     if (!res.ok) {
@@ -106,7 +142,7 @@ export class LlamaServerBackend implements LLMBackend {
     // single recovered crash earlier in the session doesn't latch us into
     // MODEL_UNUSABLE on the next spawn cycle.
     getLlmServer().noteSuccess();
-    return body.choices?.[0]?.message?.content ?? '';
+    return stripThinkBlocks(body.choices?.[0]?.message?.content ?? '');
   }
 
   async *chatStream(opts: LLMChatOptions): AsyncIterable<LLMChunk> {
@@ -114,13 +150,7 @@ export class LlamaServerBackend implements LLMBackend {
     const res = await fetch(endpoint('/v1/chat/completions'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        model: 'subcast-local',
-        messages: opts.messages,
-        max_tokens: opts.maxTokens ?? 2048,
-        temperature: opts.temperature ?? 0.2,
-        stream: true,
-      }),
+      body: JSON.stringify(buildBody(opts, true)),
       signal: composeSignal(opts),
     });
     if (!res.ok || !res.body) {
@@ -131,6 +161,9 @@ export class LlamaServerBackend implements LLMBackend {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
+    // Drops any `<think>…</think>` block that leaks into content deltas
+    // despite DISABLE_THINKING_KWARGS (marker may straddle deltas).
+    const thinkFilter = new ThinkStreamFilter();
     try {
       while (true) {
         let chunk: ReadableStreamReadResult<Uint8Array>;
@@ -161,7 +194,7 @@ export class LlamaServerBackend implements LLMBackend {
             // a server that streams to completion is healthy regardless of
             // whether an explicit `finish_reason: stop` event preceded it.
             getLlmServer().noteSuccess();
-            yield { delta: '', finishReason: 'stop' };
+            yield { delta: thinkFilter.flush(), finishReason: 'stop' };
             return;
           }
           let parsed: ChatResponseBody;
@@ -173,11 +206,14 @@ export class LlamaServerBackend implements LLMBackend {
             continue;
           }
           const choice = parsed.choices?.[0];
-          const delta = choice?.delta?.content ?? '';
+          const rawDelta = choice?.delta?.content ?? '';
+          const delta = rawDelta ? thinkFilter.push(rawDelta) : '';
           const finish = choice?.finish_reason;
           const finishReason: LLMChunk['finishReason'] =
             finish === 'length' ? 'length' : finish === 'stop' ? 'stop' : undefined;
-          if (delta || finishReason) {
+          if (finishReason) {
+            const tail = thinkFilter.flush();
+            const merged = delta + tail;
             // Only `'stop'` (natural completion) counts as success — a
             // `'length'` finish means we hit max_tokens, which still
             // indicates a healthy server but the spec calls for resetting
@@ -185,7 +221,11 @@ export class LlamaServerBackend implements LLMBackend {
             if (finishReason === 'stop') {
               getLlmServer().noteSuccess();
             }
-            yield finishReason ? { delta, finishReason } : { delta };
+            yield { delta: merged, finishReason };
+            return;
+          }
+          if (delta) {
+            yield { delta };
           }
         }
       }

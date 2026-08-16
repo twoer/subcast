@@ -12,6 +12,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    globalSetup: './vitest.global-setup.mjs',
     include: [
       'server/**/__tests__/**/*.test.ts',
       'desktop/**/__tests__/**/*.test.ts',

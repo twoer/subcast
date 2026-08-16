@@ -29,6 +29,7 @@ const SIMPLE_VIDEO_DEPENDENTS: TableSpec[] = [
   { name: 'subtitles', videoColumns: ['video_sha'] },
   { name: 'transcribe_tasks', videoColumns: ['video_sha'] },
   { name: 'translate_tasks', videoColumns: ['video_sha'] },
+  { name: 'polish_tasks', videoColumns: ['video_sha'] },
   { name: 'insight_tasks', videoColumns: ['video_sha'] },
   { name: 'speakers', videoColumns: ['video_sha'] },
   { name: 'diarize_raw_speakers', videoColumns: ['video_sha'] },

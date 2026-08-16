@@ -11,6 +11,7 @@ import { loadSettings } from '../utils/settings';
 import { setupSseStream } from '../utils/sseStream';
 import { isValidHash } from '../utils/validate';
 import { isWhisperModelReady } from '../utils/whisperInstalled';
+import { isSenseVoiceReady } from '../utils/sensevoice';
 import type { VideoRow } from '../types/db';
 
 export default defineEventHandler(async (event) => {
@@ -32,9 +33,32 @@ export default defineEventHandler(async (event) => {
 
   // Settings may point at a model that isn't fully on disk (cancelled
   // download / fresh install). Refuse the job up front with a clear
-  // error rather than failing mid-chunk inside whisper-cli.
-  const activeModel = loadSettings().whisperModel;
-  if (!(await isWhisperModelReady(activeModel))) {
+  // error rather than failing mid-chunk inside the engine.
+  // Engine dispatch point #3 (migrate into the engine registry when the
+  // lite branch's abstraction lands). `auto` may dispatch to either
+  // engine at runtime — pass when at least one is usable.
+  const settings = loadSettings();
+  const activeModel = settings.whisperModel;
+  if (settings.transcribeEngine === 'sensevoice') {
+    if (!isSenseVoiceReady()) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'SENSE_VOICE_NOT_INSTALLED',
+      });
+    }
+  } else if (settings.transcribeEngine === 'auto') {
+    const [svReady, whisperReady] = await Promise.all([
+      Promise.resolve(isSenseVoiceReady()),
+      isWhisperModelReady(activeModel),
+    ]);
+    if (!svReady && !whisperReady) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'WHISPER_MODEL_NOT_INSTALLED',
+        data: { model: activeModel },
+      });
+    }
+  } else if (!(await isWhisperModelReady(activeModel))) {
     throw createError({
       statusCode: 409,
       statusMessage: 'WHISPER_MODEL_NOT_INSTALLED',

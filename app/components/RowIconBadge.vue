@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Film, AudioLines, Captions, Languages, Sparkles, UsersRound } from 'lucide-vue-next';
+import { Film, AudioLines, Captions, Languages, Sparkles, UsersRound, WandSparkles } from 'lucide-vue-next';
 
 /**
  * Unified 36×36 leading icon block used across all three home-page lists
@@ -20,7 +20,7 @@ import { Film, AudioLines, Captions, Languages, Sparkles, UsersRound } from 'luc
  */
 
 type MediaKind = { kind: 'media'; ext?: string };
-type TaskKind = { kind: 'transcribe' | 'translate' | 'insight' | 'diarize' };
+type TaskKind = { kind: 'transcribe' | 'translate' | 'polish' | 'insight' | 'diarize' };
 
 const props = defineProps<MediaKind | TaskKind>();
 
@@ -48,6 +48,12 @@ const config = computed(() => {
     return {
       icon: UsersRound,
       tint: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+    };
+  }
+  if (props.kind === 'polish') {
+    return {
+      icon: WandSparkles,
+      tint: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
     };
   }
   // insight

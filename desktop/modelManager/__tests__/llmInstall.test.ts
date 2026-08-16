@@ -21,7 +21,7 @@ describe('llmInstall', () => {
     process.env.SUBCAST_DESKTOP = 'true';
   });
   afterEach(async () => {
-    LLM_MODELS['3b'].sizeBytes = 1_930_000_000;
+    LLM_MODELS['4b'].sizeBytes = 1_930_000_000;
     await rm(dir, { recursive: true, force: true });
     delete process.env.SUBCAST_HOME;
     delete process.env.SUBCAST_DESKTOP;
@@ -30,7 +30,7 @@ describe('llmInstall', () => {
   it('symlinks src to canonical install path', async () => {
     const src = join(dir, 'fake.gguf');
     await writeFile(src, 'X');
-    const { destPath } = await installLlmBySymlink(src, '7b');
+    const { destPath } = await installLlmBySymlink(src, '8b');
     const st = await lstat(destPath);
     expect(st.isSymbolicLink()).toBe(true);
   });
@@ -38,15 +38,15 @@ describe('llmInstall', () => {
   it('copy makes a real file', async () => {
     const src = join(dir, 'fake.gguf');
     await writeFile(src, 'XYZ');
-    const { destPath } = await installLlmByCopy(src, '3b');
+    const { destPath } = await installLlmByCopy(src, '4b');
     const content = await readFile(destPath, 'utf8');
     expect(content).toBe('XYZ');
   });
 
   it('falls back to the other auto mirror when the preferred source fails', async () => {
-    LLM_MODELS['3b'].sizeBytes = 16;
+    LLM_MODELS['4b'].sizeBytes = 16;
     const urls: string[] = [];
-    const destPath = join(dir, 'models', 'llm', LLM_MODELS['3b'].filename);
+    const destPath = join(dir, 'models', 'llm', LLM_MODELS['4b'].filename);
     await downloadLlmFromCandidates({
       urls: ['https://example.invalid/primary.gguf', 'https://example.invalid/backup.gguf'],
       destPath,

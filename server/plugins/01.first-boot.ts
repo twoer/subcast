@@ -5,18 +5,17 @@
 //   * Web mode  — keep the original hardware-tier whisper recommendation;
 //                 web devs have whatever models they manually pulled, and
 //                 the home health banner surfaces mismatches.
-//   * Desktop   — boot with a conservative whisper default (base) so the
-//                 setup wizard's first-run check doesn't end up pointing
-//                 at a model the user hasn't installed yet. The wizard
+//   * Desktop   — boot with a conservative whisper tier (base) as the
+//                 fallback-engine default. The active engine itself
+//                 defaults to `sensevoice` (DEFAULT_SETTINGS) and its
+//                 model is bundled + seeded on first boot, so first-run
+//                 transcription works before the wizard runs. The wizard
 //                 then writes the user's actual choice
-//                 (`persistWhisperChoice` on Step 1 "Next") and overrides
-//                 the default.
+//                 (`persistWhisperChoice` on Step 1 "Next").
 //
 // `llmModel` is intentionally left undefined here — the setup wizard
 // step 2 picks the tier explicitly and saves it; until then the LLM
-// backend stays dormant. The legacy SUBCAST_OLLAMA_MODEL env override is
-// retired with the 0.2 settings shape (it referred to an Ollama tag, not
-// a tier id).
+// backend stays dormant.
 import { detectHardware } from '../utils/hardware';
 import { isFirstBoot, saveSettings } from '../utils/settings';
 

@@ -22,7 +22,7 @@
  *      child cleanly. Force-exit if it doesn't die in 2s.
  */
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
@@ -144,14 +144,55 @@ function shutdown(code) {
 process.on('SIGINT', () => shutdown(0));
 process.on('SIGTERM', () => shutdown(0));
 
+// A stale server on 127.0.0.1:3000 breaks the health probe silently:
+// macOS lets our 0.0.0.0 bind coexist with an existing loopback bind (no
+// EADDRINUSE), so the probe hits the WRONG server and spins until the
+// 90s timeout. Fail fast with the owning process instead.
+function assertDevPortFree() {
+  try {
+    const probe = spawnSync('curl', ['-s', '-m', '1', '-o', '/dev/null', '-w', '%{http_code}', `${DEV_URL}/`], { encoding: 'utf8' });
+    const code = (probe.stdout ?? '').trim();
+    if (code && code !== '000') {
+      const lsof = spawnSync('lsof', ['-nP', `-iTCP:${DEV_PORT}`, '-sTCP:LISTEN'], { encoding: 'utf8' });
+      const listeners = String(lsof.stdout ?? '').split('\n').filter((l) => l.includes('LISTEN'));
+      console.error(
+        `[hot] Port ${DEV_PORT} already has a server (HTTP ${code}) — the health probe would hit it instead of the dev server we're about to start.\n` +
+        (listeners.length ? listeners.join('\n') + '\n' : '') +
+        `Stop that process first (or raise DEV_PORT in this script).`,
+      );
+      process.exit(1);
+    }
+  } catch {
+    // curl/lsof failures are best-effort; the health-wait below still guards.
+  }
+}
+
 async function waitForHealth() {
   const deadline = Date.now() + READY_TIMEOUT_MS;
+  let diagnosed = false;
   while (Date.now() < deadline) {
     try {
       const r = await fetch(`${DEV_URL}/api/health`, {
         signal: AbortSignal.timeout(800),
       });
       if (r.ok || r.status === 401) return true;
+      // 5xx means the server is up but the handler is failing — usually a
+      // native-module ABI mismatch (better-sqlite3 rebuilt under a
+      // different Node by pnpm install / another shell). Surface the real
+      // cause once instead of silently spinning until the timeout.
+      if (!diagnosed) {
+        diagnosed = true;
+        let hint = '';
+        try {
+          const body = await r.json();
+          const msg = typeof body?.message === 'string' ? body.message : '';
+          const abis = msg.match(/NODE_MODULE_VERSION \d+/g);
+          hint = abis
+            ? `${abis.join(' vs ')} — native ABI mismatch. Re-run this script (its electron-rebuild step fixes it), or: pnpm exec electron-rebuild -w better-sqlite3`
+            : msg.slice(0, 160);
+        } catch { /* non-JSON body */ }
+        console.error(`[hot] /api/health returned ${r.status}${hint ? `: ${hint}` : ''}`);
+      }
     } catch {
       /* not yet */
     }
@@ -159,6 +200,8 @@ async function waitForHealth() {
   }
   return false;
 }
+
+assertDevPortFree();
 
 console.log('[hot] rebuilding native modules for Electron ABI (better-sqlite3)…');
 console.log('[hot]   (fast on subsequent runs; runs `pnpm rebuild better-sqlite3` after web-mode dev to restore Node ABI)');

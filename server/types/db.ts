@@ -74,6 +74,18 @@ export interface TranslateTaskRow {
   completed_at: number | null;
 }
 
+export interface PolishTaskRow {
+  id: string;
+  video_sha: string;
+  status: TaskStatus;
+  model: string;
+  progress_pct: number;
+  error_msg: string | null;
+  error_code: string | null;
+  created_at: number;
+  completed_at: number | null;
+}
+
 export interface SettingsRow {
   key: string;
   value: string;

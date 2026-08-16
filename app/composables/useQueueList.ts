@@ -10,7 +10,7 @@
  * via structural compatibility.
  */
 export interface QueueItem {
-  kind: 'transcribe' | 'translate' | 'insight' | 'diarize';
+  kind: 'transcribe' | 'translate' | 'insight' | 'diarize' | 'polish';
   id: string;
   videoSha: string;
   videoName: string;

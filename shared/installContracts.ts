@@ -40,6 +40,11 @@ export interface LlmInstallSnapshot extends InstallTaskSnapshotBase {
   mirror?: LlmMirror;
 }
 
+/** SenseVoice is download-only (single fixed model, no symlink/copy source). */
+export interface SenseVoiceInstallSnapshot extends InstallTaskSnapshotBase {
+  kind: 'download';
+}
+
 export function isInstallKind(value: unknown): value is InstallKind {
   return typeof value === 'string' && (INSTALL_KINDS as readonly string[]).includes(value);
 }

@@ -24,6 +24,14 @@ export interface LLMChatOptions {
   /** Sampling temperature; default 0.2 for analytical tasks. */
   temperature?: number;
   signal?: AbortSignal;
+  /**
+   * Constrain decoding to this JSON Schema (llama-server compiles it to a
+   * GBNF grammar). Callers demanding a strict output shape — translate /
+   * polish's "exactly N strings" array — pass this so count mismatches
+   * and parse failures are prevented at generation time instead of
+   * triggering the batch-degradation retry ladder.
+   */
+  responseSchema?: Record<string, unknown>;
 }
 
 export interface LLMChunk {

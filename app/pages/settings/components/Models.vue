@@ -31,10 +31,10 @@ import {
 } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { WHISPER_MODEL_NAMES } from '#shared/whisperModels';
-import { LLM_MODELS, type LlmModelId } from '#shared/llmModels';
+import { LLM_MODELS, llmDisplayName, type LlmModelId } from '#shared/llmModels';
 import { Badge } from '~/components/ui/badge';
 import { fmtBytes } from '~/utils/format';
-import type { Settings, Hardware } from '@/types/settings';
+import type { Settings, Hardware, TranscribeEngine } from '@/types/settings';
 
 const draft = defineModel<Settings | null>('draft', { required: true });
 const settings = defineModel<Settings | null>('settings', { required: true });
@@ -51,13 +51,43 @@ const emit = defineEmits<{
 
 interface WhisperModelRow { name: string; sizeBytes: number }
 interface LlmModelRow { name: LlmModelId; filename: string; sizeBytes: number }
+interface LegacyLlmRow { filename: string; sizeBytes: number }
 interface ModelsResp {
+  transcribeEngine?: TranscribeEngine;
   whisper: { active: string; installed: WhisperModelRow[] };
-  llm: { active: LlmModelId | undefined; installed: LlmModelRow[] };
+  sensevoice?: { ready: boolean };
+  llm: {
+    active: LlmModelId | undefined;
+    installed: LlmModelRow[];
+    needsDownload?: boolean;
+    legacy?: LegacyLlmRow[];
+  };
 }
 type DeleteTarget =
   | { kind: 'whisper'; name: string; sizeBytes: number }
-  | { kind: 'llm'; name: LlmModelId; sizeBytes: number };
+  | { kind: 'llm'; name: LlmModelId; sizeBytes: number }
+  | { kind: 'legacyLlm'; name: string; sizeBytes: number };
+
+interface LlmInstallSnapshot {
+  id: number;
+  kind: string;
+  model: LlmModelId;
+  state: 'running' | 'success' | 'error' | 'canceled';
+  progress?: { bytesDownloaded: number; bytesTotal: number | null };
+  error?: string;
+  startedAt: number;
+  finishedAt?: number;
+}
+
+interface SenseVoiceInstallSnapshot {
+  id: number;
+  kind: 'download';
+  state: 'running' | 'success' | 'error' | 'canceled';
+  progress?: { bytesDownloaded: number; bytesTotal: number | null };
+  error?: string;
+  startedAt: number;
+  finishedAt?: number;
+}
 
 const { t } = useI18n();
 const { set: setActiveModelsCache, refresh: refreshActiveModels } = useActiveModels();
@@ -70,6 +100,47 @@ const modelsLoading = ref(false);
 const modelsErr = ref<string | null>(null);
 const pendingDelete = ref<DeleteTarget | null>(null);
 
+// SenseVoice install state (download-only, single fixed model).
+const svInstall = ref<SenseVoiceInstallSnapshot | null>(null);
+let svPollTimer: ReturnType<typeof setInterval> | null = null;
+
+// LLM re-download state (Qwen3 upgrade guidance: active tier file missing).
+const llmInstall = ref<LlmInstallSnapshot | null>(null);
+let llmPollTimer: ReturnType<typeof setInterval> | null = null;
+
+const llmNeedsDownload = computed(() => modelsData.value?.llm.needsDownload === true);
+const legacyLlmFiles = computed(() => modelsData.value?.llm.legacy ?? []);
+const legacyLlmTotal = computed(() =>
+  legacyLlmFiles.value.reduce((sum, f) => sum + f.sizeBytes, 0),
+);
+
+const ENGINE_OPTIONS: ReadonlyArray<{ id: TranscribeEngine }> = [
+  { id: 'auto' },
+  { id: 'sensevoice' },
+  { id: 'whisper' },
+];
+
+/** User-facing engine name — brand casing for the engines, localized
+ *  label for `auto`. Raw ids stay storage-only. */
+function engineName(id: TranscribeEngine): string {
+  if (id === 'auto') return t('app.engineAutoName');
+  if (id === 'sensevoice') return 'SenseVoice';
+  return 'Whisper';
+}
+
+const senseVoiceReady = computed(() => modelsData.value?.sensevoice?.ready ?? false);
+const anyWhisperInstalled = computed(() => (modelsData.value?.whisper.installed.length ?? 0) > 0);
+const engineHint = computed(() => {
+  const engine = draft.value?.transcribeEngine;
+  if (engine === 'sensevoice' && !senseVoiceReady.value) {
+    return t('settings.models.sensevoiceNotInstalled');
+  }
+  if (engine === 'auto' && !senseVoiceReady.value && !anyWhisperInstalled.value) {
+    return t('settings.models.noEngineInstalled');
+  }
+  return null;
+});
+
 const installedWhisperNames = computed<Set<string>>(
   () => new Set(modelsData.value?.whisper.installed.map((m) => m.name) ?? []),
 );
@@ -79,6 +150,7 @@ const dirtyModels = computed(() => {
   return (
     draft.value.whisperModel !== settings.value.whisperModel
     || draft.value.llmModel !== settings.value.llmModel
+    || (draft.value.transcribeEngine ?? 'sensevoice') !== (settings.value.transcribeEngine ?? 'sensevoice')
   );
 });
 
@@ -103,7 +175,7 @@ async function setActiveWhisper(name: string): Promise<void> {
     settings.value = res.settings;
     draft.value = { ...res.settings };
     if (modelsData.value) modelsData.value.whisper.active = res.settings.whisperModel;
-    setActiveModelsCache(res.settings.whisperModel, res.settings.llmModel);
+    setActiveModelsCache(res.settings.whisperModel, res.settings.llmModel, res.settings.transcribeEngine);
     void refreshActiveModels();
   } catch (e) {
     modelsErr.value = t('settings.models.switchFailed', { error: e instanceof Error ? e.message : 'unknown' });
@@ -119,7 +191,7 @@ async function setActiveLlm(name: LlmModelId): Promise<void> {
     settings.value = res.settings;
     draft.value = { ...res.settings };
     if (modelsData.value) modelsData.value.llm.active = name;
-    setActiveModelsCache(res.settings.whisperModel, res.settings.llmModel);
+    setActiveModelsCache(res.settings.whisperModel, res.settings.llmModel, res.settings.transcribeEngine);
     void refreshActiveModels();
   } catch (e) {
     modelsErr.value = t('settings.models.switchFailed', { error: e instanceof Error ? e.message : 'unknown' });
@@ -131,6 +203,17 @@ async function confirmDelete(): Promise<void> {
   if (!target) return;
   pendingDelete.value = null;
   try {
+    if (target.kind === 'legacyLlm') {
+      const res = await $fetch<{ deleted: string[]; freedBytes: number }>(
+        '/api/desktop/llm/legacy',
+        { method: 'DELETE' },
+      );
+      if (res.deleted.length === 0) {
+        modelsErr.value = t('settings.models.legacyLlmNone');
+      }
+      await loadModels();
+      return;
+    }
     const url =
       target.kind === 'whisper'
         ? `/api/desktop/whisper/${encodeURIComponent(target.name)}`
@@ -147,6 +230,107 @@ function applyRecommended(): void {
   draft.value.whisperModel = props.hardware.recommended.whisperModel as Settings['whisperModel'];
   draft.value.llmModel = props.hardware.recommended.llmModel;
 }
+
+// --- SenseVoice install ----------------------------------------------------
+
+async function pollSenseVoiceInstall(): Promise<void> {
+  try {
+    const res = await $fetch<{ install: SenseVoiceInstallSnapshot | null }>(
+      '/api/desktop/sensevoice/install',
+    );
+    svInstall.value = res.install;
+    if (res.install && res.install.state === 'running') return;
+  } catch {
+    // Poll errors are non-fatal; next tick retries.
+  }
+  if (svPollTimer) {
+    clearInterval(svPollTimer);
+    svPollTimer = null;
+  }
+  await loadModels();
+}
+
+async function startSenseVoiceInstall(): Promise<void> {
+  modelsErr.value = null;
+  try {
+    const res = await $fetch<SenseVoiceInstallSnapshot>('/api/desktop/sensevoice/install', {
+      method: 'POST',
+    });
+    svInstall.value = res;
+    if (res.state === 'running' && !svPollTimer) {
+      svPollTimer = setInterval(() => { void pollSenseVoiceInstall(); }, 1000);
+    }
+  } catch (e) {
+    modelsErr.value = t('settings.models.sensevoiceInstallFailed', {
+      error: e instanceof Error ? e.message : 'unknown',
+    });
+  }
+}
+
+async function cancelSenseVoiceInstall(): Promise<void> {
+  try {
+    await $fetch('/api/desktop/sensevoice/install', { method: 'DELETE' });
+  } catch {
+    // Ignore — the poll loop will converge on the final state anyway.
+  }
+}
+
+async function deleteSenseVoice(): Promise<void> {
+  try {
+    await $fetch('/api/desktop/sensevoice/model', { method: 'DELETE' });
+    await loadModels();
+  } catch (e) {
+    modelsErr.value = t('settings.models.deleteFailed', {
+      error: e instanceof Error ? e.message : 'unknown',
+    });
+  }
+}
+
+// --- Qwen3 upgrade guidance --------------------------------------------------
+
+async function pollLlmInstall(): Promise<void> {
+  try {
+    const res = await $fetch<LlmInstallSnapshot | null>('/api/desktop/llm/install');
+    llmInstall.value = res;
+    if (res && res.state === 'running') return;
+  } catch {
+    // Non-fatal; next tick retries.
+  }
+  if (llmPollTimer) {
+    clearInterval(llmPollTimer);
+    llmPollTimer = null;
+  }
+  await loadModels();
+}
+
+async function downloadActiveLlm(): Promise<void> {
+  const model = modelsData.value?.llm.active ?? draft.value?.llmModel;
+  if (!model) return;
+  modelsErr.value = null;
+  try {
+    const res = await $fetch<LlmInstallSnapshot>('/api/desktop/llm/install', {
+      method: 'POST',
+      body: { kind: 'download', model },
+    });
+    llmInstall.value = res;
+    if (res.state === 'running' && !llmPollTimer) {
+      llmPollTimer = setInterval(() => { void pollLlmInstall(); }, 1000);
+    }
+  } catch (e) {
+    modelsErr.value = t('settings.models.sensevoiceInstallFailed', {
+      error: e instanceof Error ? e.message : 'unknown',
+    });
+  }
+}
+
+async function deleteLegacyLlm(): Promise<void> {
+  pendingDelete.value = { kind: 'legacyLlm', name: 'Qwen2.5', sizeBytes: legacyLlmTotal.value };
+}
+
+onBeforeUnmount(() => {
+  if (svPollTimer) clearInterval(svPollTimer);
+  if (llmPollTimer) clearInterval(llmPollTimer);
+});
 
 function resetActiveModelsDraft(): void {
   if (!draft.value || !settings.value) return;
@@ -172,10 +356,39 @@ onMounted(() => {
       </h2>
 
       <div class="space-y-1.5">
+        <Label class="text-sm font-medium">{{ t('settings.transcribeEngine') }}</Label>
+        <Select v-model="draft.transcribeEngine">
+          <SelectTrigger class="w-full">
+            <!-- 显式插槽：SelectValue 默认取选中项 textContent，
+                 会把选项里的徽标文字（如「中文更快」）一起带进触发器 -->
+            <SelectValue>
+              <span>{{ engineName(draft.transcribeEngine ?? 'sensevoice') }}</span>
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem v-for="e in ENGINE_OPTIONS" :key="e.id" :value="e.id">
+              <span>{{ engineName(e.id) }}</span>
+              <span
+                v-if="senseVoiceReady && e.id === 'sensevoice'"
+                class="ml-2 rounded-sm bg-primary/10 px-1.5 py-0.5 text-3xs font-medium uppercase tracking-wider text-primary"
+              >{{ t('settings.models.sensevoiceFastCn') }}</span>
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        <p class="text-xs text-muted-foreground">{{ t('settings.transcribeEngineHint') }}</p>
+        <Alert v-if="engineHint" variant="destructive" class="mt-2">
+          <AlertTriangle class="h-4 w-4" />
+          <AlertDescription>{{ engineHint }}</AlertDescription>
+        </Alert>
+      </div>
+
+      <div v-if="draft.transcribeEngine !== 'sensevoice'" class="space-y-1.5">
         <Label class="text-sm font-medium">{{ t('settings.whisperModel') }}</Label>
         <Select v-model="draft.whisperModel">
           <SelectTrigger class="w-full">
-            <SelectValue />
+            <SelectValue>
+              <span class="font-mono">{{ draft.whisperModel }}</span>
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem v-for="m in WHISPER_MODELS" :key="m" :value="m">
@@ -189,7 +402,7 @@ onMounted(() => {
         </Select>
         <p class="text-xs text-muted-foreground">{{ t('settings.whisperHint') }}</p>
         <Alert
-          v-if="modelsData && !installedWhisperNames.has(draft.whisperModel)"
+          v-if="modelsData && draft.transcribeEngine === 'whisper' && !installedWhisperNames.has(draft.whisperModel)"
           variant="destructive"
           class="mt-2"
         >
@@ -204,11 +417,14 @@ onMounted(() => {
         <Label class="text-sm font-medium">{{ t('settings.llmModel') }}</Label>
         <Select v-model="draft.llmModel">
           <SelectTrigger class="w-full">
-            <SelectValue :placeholder="t('settings.models.notConfigured')" />
+            <SelectValue>
+              <span v-if="draft.llmModel" class="font-mono">{{ llmDisplayName(draft.llmModel) }}</span>
+              <span v-else class="text-muted-foreground">{{ t('settings.models.notConfigured') }}</span>
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem v-for="id in LLM_MODEL_IDS" :key="id" :value="id">
-              <span class="font-mono">{{ id }}</span>
+              <span class="font-mono">{{ llmDisplayName(id) }}</span>
               <span
                 v-if="hardware && id === hardware.recommended.llmModel"
                 class="ml-2 rounded-sm bg-primary/10 px-1.5 py-0.5 text-3xs font-medium uppercase tracking-wider text-primary"
@@ -287,8 +503,11 @@ onMounted(() => {
           <div class="flex min-w-0 flex-1 items-center gap-3">
             <span class="font-mono text-sm font-medium text-foreground">{{ m.name }}</span>
             <span class="font-mono text-xs text-muted-foreground">{{ fmtBytes(m.sizeBytes) }}</span>
+            <!-- `auto` dispatches per audio (CJK→SenseVoice, en→Whisper), so
+                 the configured tier counts as in use unless SenseVoice is
+                 the pinned engine. -->
             <Badge
-              v-if="m.name === modelsData.whisper.active"
+              v-if="m.name === modelsData.whisper.active && modelsData.transcribeEngine !== 'sensevoice'"
               variant="active"
               size="sm"
               class="uppercase tracking-wider"
@@ -331,8 +550,103 @@ onMounted(() => {
       <div class="mb-4 flex items-center justify-between gap-3">
         <h2 class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           <Boxes class="h-3.5 w-3.5" />
+          {{ t('settings.models.sensevoice') }}
+        </h2>
+      </div>
+
+      <div v-if="svInstall && svInstall.state === 'running'" class="space-y-2 px-2 py-2">
+        <div class="flex items-center justify-between text-sm">
+          <span class="font-mono">{{ t('settings.models.sensevoiceDownloading') }}</span>
+          <span class="font-mono text-xs text-muted-foreground">
+            {{
+              svInstall.progress?.bytesTotal
+                ? `${fmtBytes(svInstall.progress.bytesDownloaded)} / ${fmtBytes(svInstall.progress.bytesTotal)}`
+                : fmtBytes(svInstall.progress?.bytesDownloaded ?? 0)
+            }}
+          </span>
+        </div>
+        <Button variant="ghost" size="xs" @click="cancelSenseVoiceInstall">
+          {{ t('settings.models.cancel') }}
+        </Button>
+      </div>
+
+      <ul v-else-if="senseVoiceReady" class="-mx-2 space-y-1 px-2">
+        <li class="group flex items-center justify-between gap-3 rounded-md px-2 py-2 transition-colors hover:bg-accent/50">
+          <div class="flex min-w-0 flex-1 items-center gap-3">
+            <span class="font-mono text-sm font-medium text-foreground">SenseVoice-Small (int8)</span>
+            <span class="font-mono text-xs text-muted-foreground">~247 MB</span>
+            <!-- In use under both `auto` (CJK route) and the pinned engine —
+                 only idle when Whisper is the pinned engine. -->
+            <Badge
+              v-if="modelsData?.transcribeEngine !== 'whisper'"
+              variant="active"
+              size="sm"
+              class="uppercase tracking-wider"
+            >
+              <CheckCircle2 class="h-3 w-3" />
+              {{ t('settings.models.active') }}
+            </Badge>
+          </div>
+          <div class="flex items-center gap-1">
+            <Button
+              :disabled="modelsData?.transcribeEngine === 'sensevoice'"
+              variant="ghost"
+              size="xs"
+              class="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              :title="modelsData?.transcribeEngine === 'sensevoice' ? t('settings.models.sensevoiceIsActive') : undefined"
+              @click="deleteSenseVoice"
+            >
+              <Trash2 />
+              {{ t('settings.models.delete') }}
+            </Button>
+          </div>
+        </li>
+      </ul>
+
+      <div v-else class="flex flex-col items-center gap-3 px-2 py-4">
+        <p class="text-center text-sm text-muted-foreground">
+          {{ t('settings.models.sensevoiceEmpty') }}
+        </p>
+        <Button size="sm" @click="startSenseVoiceInstall">
+          {{ t('settings.models.sensevoiceDownload') }}
+        </Button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="mb-4 flex items-center justify-between gap-3">
+        <h2 class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <Boxes class="h-3.5 w-3.5" />
           {{ t('settings.models.llm') }}
         </h2>
+
+        <Alert
+          v-if="llmNeedsDownload && !(llmInstall && llmInstall.state === 'running')"
+          variant="destructive"
+          class="flex-1"
+        >
+          <AlertTriangle class="h-4 w-4" />
+          <AlertDescription class="flex items-center gap-3">
+            <span class="flex-1">
+              {{ t('settings.models.llmNeedsDownload', { model: modelsData?.llm.active ?? '' }) }}
+            </span>
+            <Button size="xs" @click="downloadActiveLlm">
+              {{ t('settings.models.llmDownloadNow') }}
+            </Button>
+          </AlertDescription>
+        </Alert>
+
+        <div
+          v-if="llmInstall && llmInstall.state === 'running'"
+          class="flex items-center gap-2 font-mono text-xs text-muted-foreground"
+        >
+          <RefreshCw class="h-3.5 w-3.5 animate-spin" />
+          {{
+            llmInstall.progress?.bytesTotal
+              ? `${fmtBytes(llmInstall.progress.bytesDownloaded)} / ${fmtBytes(llmInstall.progress.bytesTotal)}`
+              : fmtBytes(llmInstall.progress?.bytesDownloaded ?? 0)
+          }}
+        </div>
         <div class="flex items-center gap-3">
           <Tooltip>
             <TooltipTrigger as-child>
@@ -369,7 +683,7 @@ onMounted(() => {
           class="group flex items-center justify-between gap-3 rounded-md px-2 py-2 transition-colors hover:bg-accent/50"
         >
           <div class="flex min-w-0 flex-1 items-center gap-3">
-            <span class="truncate font-mono text-sm font-medium text-foreground">{{ m.filename }}</span>
+            <span class="truncate font-mono text-sm font-medium text-foreground" :title="m.filename">{{ llmDisplayName(m.name) }}</span>
             <span class="font-mono text-xs text-muted-foreground">{{ fmtBytes(m.sizeBytes) }}</span>
             <Badge
               v-if="m.name === modelsData.llm.active"
@@ -409,6 +723,29 @@ onMounted(() => {
         v-else
         class="py-4 text-center text-sm text-muted-foreground"
       >{{ t('settings.models.loading') }}</p>
+
+      <div
+        v-if="legacyLlmFiles.length > 0"
+        class="mt-4 flex items-center justify-between gap-3 rounded-md border border-border/50 bg-accent/30 px-3 py-2.5"
+      >
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-medium">{{ t('settings.models.legacyLlmTitle') }}</p>
+          <p class="text-xs text-muted-foreground">
+            {{ legacyLlmFiles.length }} × Qwen2.5 ·
+            {{ fmtBytes(legacyLlmTotal) }} ·
+            {{ t('settings.models.legacyLlmHint') }}
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="xs"
+          class="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          @click="deleteLegacyLlm"
+        >
+          <Trash2 />
+          {{ t('settings.models.delete') }}
+        </Button>
+      </div>
     </section>
 
     <Dialog

@@ -58,6 +58,21 @@ export const WHISPER_CLI_PATH = IS_DESKTOP
       'whisper-cli' + EXE_SUFFIX,
     );
 
+/**
+ * whisper.cpp's server example (same source tree / build as whisper-cli).
+ * Keeps the model resident so the per-chunk loop skips spawn + mmap.
+ * Missing in older stagings — transcription falls back to the CLI path.
+ */
+export const WHISPER_SERVER_PATH = IS_DESKTOP
+  ? join(desktopResourcesPath(), 'whisper-server' + EXE_SUFFIX)
+  : join(
+      webModeNwRoot(),
+      'build',
+      'bin',
+      ...(IS_WIN ? ['Release'] : []),
+      'whisper-server' + EXE_SUFFIX,
+    );
+
 export const WHISPER_MODELS_DIR = IS_DESKTOP
   ? desktopModelsDir()
   : join(webModeNwRoot(), 'models');

@@ -5,7 +5,7 @@
  *
  *   Step 1 — Whisper transcription model: pick a tier and install
  *            (symlink existing file / copy / download from HF).
- *   Step 2 — Local LLM (Qwen 2.5 GGUF) for AI translation / insights:
+ *   Step 2 — Local LLM (Qwen 3 GGUF) for AI translation / insights:
  *            pick a tier, mirror, and install (symlink / copy / download
  *            from the same three mirror options Whisper offers).
  *
@@ -20,10 +20,12 @@ import { fmtBytes } from '~/utils/format';
 import type {
   InstallKind,
   LlmInstallSnapshot,
+  SenseVoiceInstallSnapshot,
   WhisperInstallSnapshot,
 } from '#shared/installContracts';
 import { useInstallTask } from './useInstallTask';
 import WhisperInstallStep from './components/WhisperInstallStep.vue';
+import SenseVoiceInstallStep from './components/SenseVoiceInstallStep.vue';
 import LlmInstallStep from './components/LlmInstallStep.vue';
 import SetupWizardFooter from './components/SetupWizardFooter.vue';
 import type {
@@ -58,8 +60,8 @@ const MODELS: Array<{ id: WhisperModelName; sizeLabel: string }> = [
 // insertion order, but spelling it out keeps the UI immune to a future
 // reorder in the catalog).
 const LLM_TIERS: ReadonlyArray<{ id: LlmModelId }> = [
-  { id: '3b' },
-  { id: '7b' },
+  { id: '4b' },
+  { id: '8b' },
   { id: '14b' },
 ];
 
@@ -70,13 +72,94 @@ const status = ref<SetupStatus | null>(null);
 const statusError = ref<string | null>(null);
 
 // Step 1
+const selectedEngine = ref<'whisper' | 'sensevoice'>('whisper');
 const selectedModel = ref<WhisperModelName>('base');
 const scanAction = ref<ScanAction>('symlink');
 const mirror = ref<WhisperMirror>('auto');
 
+// --- SenseVoice (step 1 alternate engine) ----------------------------------
+
+interface ModelsAggregate {
+  sensevoice?: { ready: boolean };
+}
+const svReady = ref(false);
+const svTask = ref<SenseVoiceInstallSnapshot | null>(null);
+const svActionError = ref<string | null>(null);
+let svPollTimer: ReturnType<typeof setInterval> | null = null;
+
+const svRunning = computed(() => svTask.value?.state === 'running');
+const svSucceeded = computed(() => svTask.value?.state === 'success');
+const svFailed = computed(() => svTask.value?.state === 'error');
+const svCanceled = computed(() => svTask.value?.state === 'canceled');
+const svProgressPercent = computed<number>(() => {
+  const p = svTask.value?.progress;
+  if (!p || !p.bytesTotal) return 0;
+  return Math.min(100, Math.floor((p.bytesDownloaded / p.bytesTotal) * 100));
+});
+
+async function loadSvStatus(): Promise<void> {
+  try {
+    const agg = await $fetch<ModelsAggregate>('/api/desktop/models');
+    svReady.value = agg.sensevoice?.ready === true;
+    return;
+  } catch {
+    // Web-mode 404 or probe failure — treat as "not installed"; the
+    // whisper flow below still works in that case.
+    svReady.value = false;
+  }
+}
+
+function svStopPolling(): void {
+  if (svPollTimer !== null) {
+    clearInterval(svPollTimer);
+    svPollTimer = null;
+  }
+}
+
+async function svPollOnce(): Promise<void> {
+  try {
+    const res = await $fetch<{ install: SenseVoiceInstallSnapshot | null }>(
+      '/api/desktop/sensevoice/install',
+    );
+    svTask.value = res.install ?? null;
+  } catch {
+    // Next tick retries; the install endpoints are authoritative.
+  }
+  if (svTask.value && svTask.value.state !== 'running') {
+    svStopPolling();
+    if (svTask.value.state === 'success') await loadSvStatus();
+  }
+}
+
+async function startSenseVoiceInstall(): Promise<void> {
+  svActionError.value = null;
+  try {
+    svTask.value = await $fetch<SenseVoiceInstallSnapshot>('/api/desktop/sensevoice/install', {
+      method: 'POST',
+    });
+    if (svTask.value.state === 'running') {
+      svPollOnce();
+      svStopPolling();
+      svPollTimer = setInterval(() => { void svPollOnce(); }, 1000);
+    } else if (svTask.value.state === 'success') {
+      await loadSvStatus();
+    }
+  } catch (e) {
+    const err = e as { statusMessage?: string; message?: string };
+    svActionError.value =
+      err.statusMessage ?? err.message ?? t('desktop.setupWizard.installStartFailed');
+  }
+}
+
+async function cancelSenseVoiceInstall(): Promise<void> {
+  try {
+    await $fetch('/api/desktop/sensevoice/install', { method: 'DELETE' });
+  } catch { /* surface via next poll */ }
+}
+
 // Step 2 (LLM)
 const llmStatus = ref<LlmStatusResp | null>(null);
-const selectedLlm = ref<LlmModelId>('7b');
+const selectedLlm = ref<LlmModelId>('8b');
 const llmMirror = ref<LlmMirror>('auto');
 const llmScanAction = ref<ScanAction>('symlink');
 
@@ -169,6 +252,10 @@ function externalSource(name: WhisperModelName): string | null {
 }
 
 async function startInstall(): Promise<void> {
+  if (selectedEngine.value === 'sensevoice') {
+    await startSenseVoiceInstall();
+    return;
+  }
   const useScanned = scannedMatch.value !== null && scanAction.value !== 'ignore';
   const kind: InstallKind = useScanned
     ? (scanAction.value as 'symlink' | 'copy')
@@ -182,6 +269,10 @@ async function startInstall(): Promise<void> {
 }
 
 async function cancelInstall(): Promise<void> {
+  if (selectedEngine.value === 'sensevoice') {
+    await cancelSenseVoiceInstall();
+    return;
+  }
   await whisper.cancelInstall();
 }
 
@@ -236,11 +327,11 @@ async function cancelLlmInstall(): Promise<void> {
  * recommendation.
  */
 function pickLlmDefault(): LlmModelId {
-  const order: LlmModelId[] = ['14b', '7b', '3b'];
+  const order: LlmModelId[] = ['14b', '8b', '4b'];
   for (const id of order) if (installedLlmIds.value.has(id)) return id;
   for (const id of order) if (scannedLlmFor(id) !== null) return id;
   if (llmStatus.value?.migrationHint) return llmStatus.value.migrationHint;
-  return llmStatus.value?.recommended ?? '7b';
+  return llmStatus.value?.recommended ?? '8b';
 }
 
 /**
@@ -289,14 +380,37 @@ const wizardTitle = computed<string>(() =>
 );
 
 onMounted(async () => {
-  await Promise.all([loadStatus(), loadLlmStatus()]);
+  await Promise.all([loadStatus(), loadLlmStatus(), loadSvStatus()]);
   await whisper.pollOnce();
   if (whisper.task.value?.state === 'running') whisper.startPolling();
+  await svPollOnce();
+  if (svTask.value?.state === 'running') {
+    svStopPolling();
+    svPollTimer = setInterval(() => { void svPollOnce(); }, 1000);
+  }
 
   // Default to the most useful Whisper model based on what's already
   // on disk — largest installed → largest reusable → base.
   if (status.value) selectedModel.value = pickWhisperDefault();
   if (llmStatus.value) selectedLlm.value = pickLlmDefault();
+
+  // Engine default for step 1 — decides which model card to show, NOT the
+  // runtime engine (the wizard always persists `auto`; see
+  // persistWhisperChoice). Prefer what's already usable: SenseVoice
+  // installed → its card (one click through); otherwise a whisper model
+  // on disk → whisper card; fresh install → SenseVoice card (bundled in
+  // packaged builds, smallest download otherwise).
+  if (svReady.value || !status.value?.hasWhisperModel) {
+    selectedEngine.value = 'sensevoice';
+  } else {
+    selectedEngine.value = 'whisper';
+  }
+  // `?engine=whisper` from the player's "Download Whisper" hint: the user
+  // already knows what they came for — preselect that card instead of the
+  // usable-engine default (which would show SenseVoice).
+  if (route.query.engine === 'whisper') {
+    selectedEngine.value = 'whisper';
+  }
 
   // `?step=1|2` from Settings → Models "Download more" buttons forces
   // landing on that step even when first-run setup is fully complete —
@@ -312,20 +426,31 @@ onMounted(async () => {
   // the old `hasQwen` flag is `llmStatus.installed.length > 0`.
   if (!status.value) return;
   const hasAnyLlm = (llmStatus.value?.installed.length ?? 0) > 0;
-  if (status.value.hasWhisperModel && hasAnyLlm) {
+  // Step 1 is satisfied by EITHER engine's model being usable — `auto`
+  // dispatches at runtime and falls back to whatever is installed.
+  const step1Done = status.value.hasWhisperModel || svReady.value;
+  if (step1Done && hasAnyLlm) {
     await navigateTo('/', { replace: true });
     return;
   }
-  if (status.value.hasWhisperModel) {
+  if (step1Done) {
     await enterStep(2);
   }
 });
 
-// Polling cleanup is handled by `useInstallTask`'s own onBeforeUnmount.
+// Polling cleanup: whisper/llm handled by `useInstallTask`'s own
+// onBeforeUnmount; the SenseVoice timer is ours.
+onBeforeUnmount(() => {
+  svStopPolling();
+});
 
 // --- Navigation -----------------------------------------------------------
 
 const canAdvanceStep1 = computed<boolean>(() => {
+  if (selectedEngine.value === 'sensevoice') {
+    // Ready from a previous session, or just finished downloading here.
+    return svReady.value || svSucceeded.value;
+  }
   // Selected model is already canonically installed — no further action.
   if (installedMatch.value !== null) return true;
   // Or we just finished installing the selected model this session.
@@ -340,17 +465,31 @@ const canFinish = computed<boolean>(
 );
 
 /**
- * Persist the currently-selected Whisper / LLM model to user settings
- * when advancing past the relevant step. Without this, first-boot
- * defaults (set by hardware tier in `01.first-boot.ts`) win and the
- * transcribe handler later looks for a model the wizard never
- * actually installed — yielding "Model not downloaded" mid-flow.
+ * Persist the whisper tier + engine choice when advancing past step 1.
+ * Without this, first-boot defaults (set by hardware tier in
+ * `01.first-boot.ts`) win and the transcribe handler later looks for a
+ * model the wizard never actually installed — yielding "Model not
+ * downloaded" mid-flow.
+ *
+ * The engine is always persisted as `auto` regardless of which card the
+ * user filled: the cards decide WHICH models are on disk, `auto` picks
+ * per audio (CJK → SenseVoice, English → Whisper when installed).
+ * Users who want a pinned engine set it in Settings → Models.
  */
 async function persistWhisperChoice(): Promise<void> {
   try {
     await $fetch('/api/settings', {
       method: 'PUT',
-      body: { whisperModel: selectedModel.value },
+      body: {
+        // Only carry the whisper tier over when the Whisper card is the one
+        // being completed. On the SenseVoice path `selectedModel` still
+        // holds the hardware-recommended tier (e.g. large-v3-turbo) that
+        // the user never installed — persisting it leaves Settings →
+        // Models pointing at a missing model. The PUT is a merge, so
+        // omitting the key keeps the existing (first-boot) default.
+        ...(selectedEngine.value === 'whisper' ? { whisperModel: selectedModel.value } : {}),
+        transcribeEngine: 'auto',
+      },
     });
   } catch {
     // Non-fatal: a settings write failure shouldn't block the wizard.
@@ -382,6 +521,25 @@ async function goPrevStep(): Promise<void> {
 }
 
 // --- UI helpers -----------------------------------------------------------
+
+// Footer bindings for step 1 are engine-aware: the SenseVoice branch
+// maps onto the same props (no scan flow → always the "download" button;
+// "installed" = model files present).
+const footerStep1 = computed(() =>
+  selectedEngine.value === 'sensevoice'
+    ? {
+        hasScannedWhisper: false,
+        hasInstalledWhisper: svReady.value,
+        installRunning: svRunning.value,
+        installFinished: svSucceeded.value,
+      }
+    : {
+        hasScannedWhisper: scannedMatch.value !== null,
+        hasInstalledWhisper: installedMatch.value !== null,
+        installRunning: installRunning.value,
+        installFinished: installFinished.value,
+      },
+);
 
 function formatProgressBytes(n: number | null): string {
   if (n === null) return '?';
@@ -455,10 +613,52 @@ function formatEta(s: number | null): string {
         {{ statusError }}
       </div>
 
-      <!-- ===== Step 1 — Whisper ===== -->
+      <!-- ===== Step 1 — transcription engine + model ===== -->
       <template v-if="currentStep === 1">
+        <!-- Engine choice: Whisper (broad) vs SenseVoice (fast zh/en). -->
+        <section class="space-y-2">
+          <p class="text-sm font-medium">{{ t('desktop.setupWizard.engineChoiceTitle') }}</p>
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              class="rounded-lg border p-3 text-left transition-colors"
+              :class="selectedEngine === 'sensevoice'
+                ? 'border-primary bg-primary/[0.04]'
+                : 'border-border hover:border-primary/40'"
+              :aria-pressed="selectedEngine === 'sensevoice'"
+              @click="selectedEngine = 'sensevoice'"
+            >
+              <span class="block text-sm font-medium">
+                {{ t('desktop.setupWizard.engineSensevoiceName') }}
+                <span
+                  class="ml-1 rounded-sm bg-primary/10 px-1.5 py-0.5 text-3xs font-medium uppercase tracking-wider text-primary"
+                >{{ t('desktop.setupWizard.engineSensevoiceBadge') }}</span>
+              </span>
+              <span class="mt-0.5 block text-xs text-muted-foreground">
+                {{ t('desktop.setupWizard.engineSensevoiceDesc') }}
+              </span>
+            </button>
+            <button
+              type="button"
+              class="rounded-lg border p-3 text-left transition-colors"
+              :class="selectedEngine === 'whisper'
+                ? 'border-primary bg-primary/[0.04]'
+                : 'border-border hover:border-primary/40'"
+              :aria-pressed="selectedEngine === 'whisper'"
+              @click="selectedEngine = 'whisper'"
+            >
+              <span class="block text-sm font-medium">
+                {{ t('desktop.setupWizard.engineWhisperName') }}
+              </span>
+              <span class="mt-0.5 block text-xs text-muted-foreground">
+                {{ t('desktop.setupWizard.engineWhisperDesc') }}
+              </span>
+            </button>
+          </div>
+        </section>
+
         <WhisperInstallStep
-          v-if="status"
+          v-if="status && selectedEngine === 'whisper'"
           v-model:selected-model="selectedModel"
           v-model:scan-action="scanAction"
           v-model:mirror="mirror"
@@ -480,9 +680,23 @@ function formatEta(s: number | null): string {
           :format-eta="formatEta"
           @cancel="cancelInstall"
         />
+        <SenseVoiceInstallStep
+          v-else-if="selectedEngine === 'sensevoice'"
+          :ready="svReady"
+          :task="svTask"
+          :running="svRunning"
+          :finished="svSucceeded"
+          :failed="svFailed"
+          :canceled="svCanceled"
+          :progress-percent="svProgressPercent"
+          :action-error="svActionError"
+          :format-progress-bytes="formatProgressBytes"
+          :format-eta="formatEta"
+          @cancel="cancelSenseVoiceInstall"
+        />
       </template>
 
-      <!-- ===== Step 2 — LLM (Qwen 2.5 GGUF) ===== -->
+      <!-- ===== Step 2 — LLM (Qwen 3 GGUF) ===== -->
       <template v-else-if="currentStep === 2">
         <LlmInstallStep
           v-if="llmStatus"
@@ -512,10 +726,10 @@ function formatEta(s: number | null): string {
         :current-step="currentStep"
         :status-ready="!!status"
         :scan-action="scanAction"
-        :has-scanned-whisper="scannedMatch !== null"
-        :has-installed-whisper="installedMatch !== null"
-        :install-running="installRunning"
-        :install-finished="installFinished"
+        :has-scanned-whisper="footerStep1.hasScannedWhisper"
+        :has-installed-whisper="footerStep1.hasInstalledWhisper"
+        :install-running="footerStep1.installRunning"
+        :install-finished="footerStep1.installFinished"
         :can-advance-step1="canAdvanceStep1"
         :llm-status-ready="!!llmStatus"
         :llm-scan-action="llmScanAction"

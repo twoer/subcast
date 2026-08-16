@@ -42,7 +42,7 @@ import {
   installManualUpdater,
 } from './manualUpdater.js';
 import { installAppMenu } from './menu.js';
-import { seedBundledBaseModel } from './modelManager/seedBundledModel.js';
+import { seedBundledSenseVoice } from './modelManager/seedBundledSenseVoice.js';
 import { connectToDevServer, startNitro } from './nitroEmbed.js';
 import { killOrphans } from './orphanCleanup.js';
 import { resolveResourcesPath } from './paths.js';
@@ -301,16 +301,16 @@ async function bootstrap(): Promise<void> {
     );
   }
 
-  // Seed the bundled ggml-base.bin into userData if it isn't already
+  // Seed the bundled SenseVoice model into userData if it isn't already
   // installed and the user hasn't explicitly dismissed it. Runs before
-  // Nitro so the setup wizard's first /api/desktop/setup-status response
-  // already sees the model as installed.
-  const seedResult = seedBundledBaseModel(binCheck.resourcesPath, app.getPath('userData'));
+  // Nitro so the setup wizard's first /api/desktop/models probe already
+  // sees the default engine as ready.
+  const seedResult = seedBundledSenseVoice(binCheck.resourcesPath, app.getPath('userData'));
   if (seedResult.status === 'seeded') {
-    console.log(`[subcast] bundled ggml-base.bin symlinked into ${seedResult.destPath}`);
+    console.log(`[subcast] bundled SenseVoice model symlinked into ${seedResult.destDir}`);
   } else if (seedResult.status === 'failed') {
     console.warn(
-      `[subcast] failed to seed bundled ggml-base.bin (${seedResult.reason}); ` +
+      `[subcast] failed to seed bundled SenseVoice model (${seedResult.reason}); ` +
       'setup wizard will fall back to download.',
     );
   }

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://twoer.github.io/subcast/sitemap.xml

@@ -39,6 +39,25 @@ Any reds → investigate before publishing the tag. If a regression is
 intentional (e.g. new feature traded for slower launch), document the
 trade in the release notes.
 
+### v0.5.0 — 2026-08-16（模型调用链路专项）
+
+> 范围:本块只记录模型调用链路的实测（生产日志推导 + 同机 A/B），完整六项基线未测。
+
+环境:M3 Pro(12 核)· macOS · large-v3-turbo(ASR)+ Qwen3-8B Q4_K_M(LLM)· 生产日志(`.dev-userdata/logs/2026-08-16.jsonl`)与同机 A/B。
+
+| 指标 | 数值 | 说明 |
+|------|------|------|
+| whisper 每 chunk(常驻 server,生产) | **2.0s** / 30s chunk | 27 chunks / 54s,批量导入 4 视频期间 |
+| whisper 每 chunk(whisper-cli spawn,同机基线) | 2.75s(轻载)– 4.9s(重载) | 同一切片 A/B + 生产日志 spawn durationMs |
+| 提速幅度 | **25–60%**(负载越高越大) | spawn+模型加载成本消除 |
+| SenseVoice(常驻 worker) | ~0.24s / 10s chunk | 29 chunks / 7s |
+| chunk 间循环开销(切片+DB+SSE) | p50 = **7ms** | P2.1 内存切片后;P2.2 流水线由此关闭 |
+| 润色批次(Qwen3-8B,25 条/批) | 8–10s | LLM 队列串行,json_schema 约束零 mismatch |
+| llama-server 冷启动 | 0.76–1.5s(热页缓存)/ ~20s(冷盘) | 转写尾段预热对冲 |
+| whisper-server 冷启动 | 0.76–1.5s(热) / ~20s(1.6GB 冷盘) | 任务前预热对冲 |
+
+遗留观察:批量导入时 LLM 队列单并发为瓶颈(4 个润色任务串行排空)——P4(`--parallel 2`)的依据,见 `docs/plans/2026-08-16-model-invocation-efficiency.md` 待办。
+
 ---
 
 ## Recipes

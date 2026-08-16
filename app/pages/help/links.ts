@@ -6,6 +6,7 @@
  */
 
 export const REPO_URL = 'https://github.com/twoer/subcast';
-export const DOCS_URL = 'https://github.com/twoer/subcast#readme';
+// VitePress 文档站（.github/workflows/docs.yml 部署到 GitHub Pages）
+export const DOCS_URL = 'https://twoer.github.io/subcast/';
 export const ISSUES_URL = 'https://github.com/twoer/subcast/issues/new';
 export const LICENSE_URL = 'https://github.com/twoer/subcast/blob/main/LICENSE';

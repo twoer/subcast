@@ -68,6 +68,8 @@ let healthHandle: ReturnType<typeof setInterval> | null = null;
  */
 interface DesktopSetupStatus {
   hasWhisperModel: boolean;
+  /** SenseVoice bundled model present — step 1 satisfied without Whisper. */
+  sensevoiceReady?: boolean;
 }
 interface LlmStatusResp {
   installed: Array<{ name: string }>;
@@ -93,7 +95,9 @@ const desktopSetupGaps = computed<string[]>(() => {
   const s = desktopSetup.value;
   if (!s) return [];
   const gaps: string[] = [];
-  if (!s.hasWhisperModel) gaps.push(t('desktop.home.gapWhisper'));
+  // Step 1 is satisfied by EITHER engine (mirrors setup-check + the
+  // wizard's own resume logic) — SenseVoice-only installs are complete.
+  if (!s.hasWhisperModel && s.sensevoiceReady !== true) gaps.push(t('desktop.home.gapWhisper'));
   if ((llmStatus.value?.installed.length ?? 0) === 0) gaps.push(t('desktop.home.gapLlm'));
   return gaps;
 });
@@ -253,20 +257,36 @@ function friendlyTaskError(item: QueueItem): string {
 // Kind label: noun form regardless of status. The status badge already
 // conveys queued/running/done/failed via colour, so the line just names
 // the task ("what was/is being done") plus its parameters.
+//
+// Task rows store internal ids in the model column (engine name for
+// transcribe, the 'llm' placeholder for every Qwen3-backed task) — map
+// them to user-facing names before joining into the description.
+function displayModel(model: string): string {
+  switch (model) {
+    case 'sensevoice': return 'SenseVoice';
+    case 'whisper': return 'Whisper';
+    case 'llm': return 'Qwen3';
+    default: return model;
+  }
+}
+
 function fmtKindLabel(item: QueueItem): string {
   if (item.kind === 'insight') {
-    return `${insightLabel(item.uiLanguage)} · ${item.model}`;
+    return `${insightLabel(item.uiLanguage)} · ${displayModel(item.model)}`;
   }
   if (item.kind === 'transcribe') {
-    return `${t('index.kindTranscribe')} · whisper:${item.model}`;
+    return `${t('index.kindTranscribe')} · ${displayModel(item.model)}`;
   }
   if (item.kind === 'diarize') {
     // Show K parameter when the task has progressed past Stage 2;
     // pending/running tasks don't have it yet.
     const suffix = item.topK ? ` · K=${item.topK}` : '';
-    return `${t('index.kindDiarize')}${suffix} · ${item.model}`;
+    return `${t('index.kindDiarize')}${suffix} · ${displayModel(item.model)}`;
   }
-  return `${t('index.kindTranslate')} ${item.targetLang} · ${item.model}`;
+  if (item.kind === 'polish') {
+    return `${t('index.kindPolish')} · ${displayModel(item.model)}`;
+  }
+  return `${t('index.kindTranslate')} ${item.targetLang} · ${displayModel(item.model)}`;
 }
 
 function statusBadgeClass(s: QueueItem['status']) {

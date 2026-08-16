@@ -13,7 +13,11 @@
     "manageModels": "モデルを管理",
     "modelNotInstalled": "未インストール：{name}",
     "llmNotInstalled": "AI モデルが未インストールです",
-    "llmLabel": "AI"
+    "llmLabel": "AI",
+    "sensevoiceNotInstalled": "SenseVoice モデル未インストール",
+    "noEngineInstalled": "利用可能な文字起こしエンジンがありません — 設定からモデルをインストールしてください",
+    "transcribeEngineLabel": "文字起こしエンジン",
+    "engineAutoName": "自動"
   },
   "fileStatus": {
     "transcribing": "文字起こし中 {pct}%",
@@ -66,6 +70,7 @@
     "translating": "翻訳中",
     "kindTranscribe": "文字起こし",
     "kindTranslate": "翻訳",
+    "kindPolish": "AI 校正",
     "kindInsightZh": "AI 要約（中国語）",
     "kindInsightEn": "AI 要約（英語）",
     "kindDiarize": "話者識別",
@@ -182,7 +187,8 @@
       "BATCH_RETRY_EXHAUSTED": "翻訳を複数回再試行しましたが失敗しました。後ほど試すか、モデルを切り替えてください。",
       "PARSE_FAILED": "AI の出力を解析できませんでした。再度お試しください。",
       "fallback": "操作に失敗しました。再度お試しください。",
-      "retry": "再試行"
+      "retry": "再試行",
+      "SENSE_VOICE_NOT_CONFIGURED": "SenseVoice モデルが未準備です。設定 → モデル からダウンロードしてください。"
     },
     "cancelTranslation": "翻訳をキャンセル",
     "cancelTranslationTitle": "現在の翻訳をキャンセルしますか？",
@@ -273,6 +279,20 @@
         "NETWORK": "生成中にネットワーク接続が切れました。",
         "fallback": "生成に失敗しました。再度お試しください。"
       }
+    },
+    "polish": {
+      "layerLabel": "校正版",
+      "originalLabel": "原文",
+      "polishedLabel": "校正",
+      "runButton": "AI 校正",
+      "runningLabel": "校正中 {pct}%"
+    },
+    "whisperHint": {
+      "text": "この動画は主に英語で、Whisper モデル未インストールのため SenseVoice で文字起こししました。Whisper は英語の精度が格段に高いです。ダウンロードしますか？",
+      "action": "Whisper をダウンロード",
+      "dismiss": "閉じる",
+      "retranscribeText": "この英語中心の動画は、Whisper 導入前に SenseVoice で文字起こしされたものです。Whisper は英語の精度が格段に高いです。今すぐやり直しますか？（既存の翻訳・校正レイヤーは削除されます）",
+      "retranscribeAction": "再文字起こし"
     }
   },
   "batch": {
@@ -333,27 +353,39 @@
       "models": "モデル"
     },
     "models": {
-      "activeTitle": "現在使用中のモデル",
-      "notInstalledWarn": "{name} は完全にインストールされていないため、文字起こしは失敗します。「もっとダウンロード」をクリックするか、下のリストからインストール済みのモデルに切り替えてください。",
-      "whisper": "Whisper 文字起こしモデル",
-      "llm": "AI モデル (Qwen 2.5)",
-      "size": "{size}",
+      "noEngineInstalled": "エンジンモデルが未インストールです — 下の SenseVoice または Whisper モデルをダウンロードしないと文字起こしに失敗します。",
+      "whisper": "Whisper モデル",
+      "sensevoice": "SenseVoice モデル",
+      "llm": "AI モデル（Qwen3）",
+      "activeTitle": "使用中のモデル",
       "active": "使用中",
-      "activeFile": "使用中：{name}",
-      "notConfigured": "未設定 — セットアップウィザードから AI モデルを設定してください。",
       "switch": "切り替え",
-      "delete": "削除",
-      "downloadMore": "もっとダウンロード",
-      "loading": "読み込み中…",
-      "empty": "インストール済みモデルがありません。右上からダウンロードしてください",
-      "emptyLlm": "インストール済みの AI モデルがありません。右上からダウンロードしてください",
-      "refresh": "更新",
-      "deleteTitle": "このモデルを削除しますか？",
-      "deleteDesc": "「{name}」（{size}）がこの端末から削除されます。次回使用時に再ダウンロードが必要です。",
-      "cancel": "キャンセル",
-      "confirm": "削除",
       "switchFailed": "切り替えに失敗しました：{error}",
-      "deleteFailed": "削除に失敗しました：{error}"
+      "delete": "削除",
+      "deleteTitle": "モデルを削除",
+      "deleteDesc": "{name}（{size}）を削除しますか？後から再ダウンロードできます。",
+      "deleteFailed": "削除に失敗しました：{error}",
+      "confirm": "削除",
+      "cancel": "キャンセル",
+      "refresh": "更新",
+      "downloadMore": "さらにダウンロード",
+      "empty": "Whisper モデルは未インストールです。",
+      "emptyLlm": "AI モデルは未インストールです。",
+      "loading": "読み込み中…",
+      "notConfigured": "未設定",
+      "notInstalledWarn": "{name} が未インストールです。ダウンロードしないと文字起こしに失敗します。",
+      "sensevoiceNotInstalled": "SenseVoice が未準備です。下のセクションからダウンロードしてください。",
+      "sensevoiceFastCn": "中国語高速",
+      "sensevoiceEmpty": "SenseVoice は未インストールです。",
+      "sensevoiceDownload": "SenseVoice をダウンロード（約 250 MB）",
+      "sensevoiceDownloading": "SenseVoice をダウンロード中…",
+      "sensevoiceInstallFailed": "ダウンロードに失敗しました：{error}",
+      "sensevoiceIsActive": "SenseVoice は現在の文字起こしエンジンのため削除できません。",
+      "llmNeedsDownload": "現在使用中の AI モデル {model} のファイルが見つかりません。再ダウンロードしてください。",
+      "llmDownloadNow": "今すぐダウンロード",
+      "legacyLlmTitle": "旧 Qwen2.5 モデルファイル",
+      "legacyLlmHint": "削除しても安全です（ディスク容量を解放します）。",
+      "legacyLlmNone": "削除できる旧モデルファイルはありません。"
     },
     "hardware": "ハードウェア",
     "tier": "ティア",
@@ -368,7 +400,7 @@
     "whisperModel": "Whisper モデル",
     "whisperHint": "大きいほど精度が高く、遅くなります。変更は新しい文字起こしタスクに適用されます。",
     "llmModel": "AI モデル",
-    "llmHint": "プロセス内 llama-server が提供するローカル Qwen 2.5 量子化モデル。推奨：{model}。",
+    "llmHint": "プロセス内 llama-server が提供するローカル Qwen 3 量子化モデル。推奨：{model}。",
     "cacheLimit": "キャッシュサイズ上限",
     "silenceThreshold": "無音しきい値",
     "chunkingStrategy": {
@@ -429,6 +461,17 @@
       "showing": "最近の {count} / {total} 行を表示中",
       "truncatedNote": "さらに古い行があります。行数を増やすか、完全な ZIP をエクスポートしてください。",
       "writerUnhealthy": "ログ書き込みが継続的に失敗しています — 最近のイベントがディスクに保存されていない可能性があります。"
+    },
+    "transcribeEngine": "文字起こしエンジン",
+    "transcribeEngineHint": "自動：中日韓の音声は SenseVoice、英語は Whisper（インストール済みの場合）。SenseVoice/Whisper はエンジンを固定します。",
+    "polish": {
+      "title": "AI 文字起こし校正",
+      "autoTitle": "文字起こし後に自動で校正",
+      "autoDesc": "ローカル AI が誤字を修正し、中英混在表記を整え、句読点を補います。元テキストは保持され、プレイヤーでいつでも切り替えられます。",
+      "needsLlm": "先に「モデル」タブで AI モデルをインストールしてください。",
+      "hintsTitle": "固有名詞ヒント（任意）",
+      "hintsPlaceholder": "例：廬州府学、ブール演算、話者名…",
+      "hintsHint": "固有名詞・用語・人名の正しい表記に役立ちます。"
     }
   },
   "help": {
@@ -440,6 +483,13 @@
       "changelog": "更新履歴"
     },
     "changelog": {
+      "v050": {
+        "qwen3": "LLM を Qwen3 にアップグレード：翻訳・推敲・AI サマリーの多言語品質が大幅向上。同階層のモデルサイズはほぼ半分になり、8GB メモリのマシンでも 8B 階層が動作します。",
+        "sensevoice": "新しい SenseVoice 書き起こしエンジン（デフォルトは「自動」モード）：中国語の認識が高速かつ高精度。音声の言語に応じて SenseVoice / Whisper を自動切り替えし、英語音声は Whisper で単語レベルのタイムスタンプを取得します。",
+        "polish": "AI 字幕推敲を追加：書き起こし後、ローカル LLM が同音異字の誤字、分断された英字（\"a i\" → \"AI\"）、句読点を自動修正。設定で専門用語ヒントを追加でき、プレイヤーで推敲レイヤーのオン/オフが可能です。",
+        "speed": "書き起こしと翻訳が高速化：whisper を常駐推論サーバー + メモリスライスに変更（実測で チャンクあたり 25-60% 高速）。翻訳/推敲の開始もモデル読み込み待ちゼロに。",
+        "stability": "翻訳/推敲の安定性向上：LLM 出力に JSON Schema による構造制約を追加し、行数不一致によるリトライ・訳漏れを根本から解消。LLM サーバー異常時は数秒で原因付きエラーを出し、30 秒の無音待機は廃止。"
+      },
       "title": "更新履歴",
       "body": "最近のバージョンでの重要な変更。コミット全履歴はリポジトリを参照してください。",
       "v048": {
@@ -500,9 +550,9 @@
     "setupWizard": {
       "welcome": "初回セットアップ",
       "manageTitle": "モデルを管理",
-      "stepLabel1": "Whisper",
+      "stepLabel1": "文字起こし",
       "stepLabel2": "AI モデル",
-      "subtitleStep1": "文字起こしモデル (Whisper) を選択",
+      "subtitleStep1": "文字起こしエンジンとモデルを選択",
       "subtitleStep2": "AI モデル（翻訳 & 要約）を選択",
       "recommended": "推奨",
       "foundAt": "既存のファイルが見つかりました：",
@@ -531,7 +581,17 @@
       "remainingMins": "残り {m} 分 {s} 秒",
       "perSecond": "/秒",
       "checkingEvery5s": "5 秒ごとに自動チェックします — このウィンドウを開いたままにしてください。",
-      "installedAt": "{name} のインストール先："
+      "installedAt": "{name} のインストール先：",
+      "engineChoiceTitle": "文字起こしエンジン",
+      "engineWhisperName": "Whisper",
+      "engineWhisperDesc": "99 言語 · 単語レベルのタイムスタンプ · 77MB–1.6GB モデル",
+      "engineSensevoiceName": "SenseVoice",
+      "engineSensevoiceBadge": "おすすめ",
+      "engineSensevoiceDesc": "中/英/日/韓/粤 · CPU で約 15 倍高速 · 単一 166MB モデル",
+      "svModelMeta": "固定 int8 モデル · 約 166MB · 言語自動判定（中/英/日/韓/粤）",
+      "svReadyHint": "インストール済み — 「次へ」で続行します。",
+      "svNotInstalledHint": "未インストール — 下の「ダウンロード」で取得（約 166MB）。",
+      "installed": "インストール済み"
     },
     "llm": {
       "selectModel": "AI モデルを選択",
@@ -558,6 +618,7 @@
       "depsHeader": "以下のオープンソースコンポーネントを使用",
       "licenseLine": "© 2026 twoer ·",
       "buttons": {
+        "documentation": "ドキュメント",
         "repository": "リポジトリ",
         "license": "ライセンス",
         "reportIssue": "問題を報告"

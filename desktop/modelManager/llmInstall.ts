@@ -27,7 +27,8 @@ import type { LlmMirror, LlmModelId } from './llmConfig';
 import { LLM_MODELS, llmDownloadUrl, llmDownloadUrls } from './llmConfig';
 import { assertGgufModelIntegrity } from './modelIntegrity';
 
-function llmModelsDir(): string {
+/** Canonical LLM models dir (`$SUBCAST_HOME/models/llm`). Desktop-only. */
+export function llmModelsDir(): string {
   if (process.env.SUBCAST_DESKTOP !== 'true') {
     throw new Error('llm install is desktop-only');
   }
@@ -189,7 +190,7 @@ export async function installLlmByDownload(
     fetchImpl: options.fetchImpl,
     validate: () => assertGgufModelIntegrity(destPath, {
       sizeBytes: LLM_MODELS[id].sizeBytes,
-      label: `Qwen2.5 ${id}`,
+      label: `Qwen3 ${id}`,
     }),
   });
   return { destPath };

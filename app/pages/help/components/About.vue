@@ -6,7 +6,7 @@
  * unavailable (web build / pre-mount).
  */
 import { ExternalLink } from 'lucide-vue-next';
-import { REPO_URL, ISSUES_URL, LICENSE_URL } from '../links';
+import { REPO_URL, DOCS_URL, ISSUES_URL, LICENSE_URL } from '../links';
 
 const { t } = useI18n();
 const desktop = useDesktop();
@@ -14,8 +14,11 @@ const desktop = useDesktop();
 const appVersion = computed<string>(() => desktop.appVersion ?? '0.4.0');
 
 const aboutDependencies: Array<{ name: string; version: string; license: string }> = [
+  { name: 'SenseVoice', version: 'Small · int8', license: 'Model License' },
   { name: 'Whisper.cpp', version: 'v1.8.4', license: 'MIT' },
-  { name: 'llama.cpp', version: 'bundled', license: 'MIT' },
+  { name: 'Qwen3', version: '4B – 14B · GGUF', license: 'Apache-2.0' },
+  { name: 'llama.cpp', version: 'b10435', license: 'MIT' },
+  { name: 'Diarization: pyannote · 3D-Speaker', version: 'via sherpa-onnx', license: 'MIT / Apache-2.0' },
   { name: 'FFmpeg', version: 'LGPL build', license: 'LGPL' },
   { name: 'Silero VAD', version: 'v4.0', license: 'MIT' },
   { name: 'ONNX Runtime', version: 'v1.26', license: 'MIT' },
@@ -102,6 +105,15 @@ const aboutDependencies: Array<{ name: string; version: string; license: string 
     </section>
 
     <div class="flex flex-wrap gap-2">
+      <a
+        :href="DOCS_URL"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+      >
+        <ExternalLink class="h-3 w-3 opacity-70" />
+        {{ t('desktop.about.buttons.documentation') }}
+      </a>
       <a
         :href="REPO_URL"
         target="_blank"

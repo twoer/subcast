@@ -61,20 +61,21 @@ jobs:
               dist-electron/*.dmg
               dist-electron/*.blockmap
               dist-electron/latest-mac.yml
+          # Windows 发布暂缓（当前仅发布 macOS）——恢复 Windows 构建时整体取消注释。
           # Pin windows-2022 to match build-whisper.yml (which produces
           # whisper-cli-windows-2022-x64). windows-latest now ships VS 2026
           # and breaks the VS 2022 build chain; see build-whisper.yml.
-          - os: windows-2022
-            arch: x64
-            whisper_artifact_name: whisper-cli-windows-2022-x64
-            whisper_dest: binaries/win32-x64/whisper-cli.exe
-            llama_artifact_name: llama-server-windows-2022-x64
-            llama_dest: binaries/win32-x64/llama-server.exe
-            build_script: build:desktop:win
-            artifact_glob: |
-              dist-electron/*.exe
-              dist-electron/*.blockmap
-              dist-electron/latest.yml
+          # - os: windows-2022
+          #   arch: x64
+          #   whisper_artifact_name: whisper-cli-windows-2022-x64
+          #   whisper_dest: binaries/win32-x64/whisper-cli.exe
+          #   llama_artifact_name: llama-server-windows-2022-x64
+          #   llama_dest: binaries/win32-x64/llama-server.exe
+          #   build_script: build:desktop:win
+          #   artifact_glob: |
+          #     dist-electron/*.exe
+          #     dist-electron/*.blockmap
+          #     dist-electron/latest.yml
 
     runs-on: ${{ matrix.os }}
 
@@ -187,9 +188,10 @@ jobs:
       - name: Build desktop artifacts
         env:
           # Windows code-signing — empty on macOS (electron-builder
-          # ignores them on that platform).
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          # ignores them on that platform). Windows 发布暂缓，一并注释；
+          # 恢复 Windows 构建时取消注释。
+          # WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          # WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
           # electron-updater wants this to know which Release feed to write to.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # GitHub-hosted runners sit in US datacenters — bypass the

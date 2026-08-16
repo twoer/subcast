@@ -64,6 +64,10 @@ function seedVideoGraph(hash: string): void {
      VALUES (?, ?, 'zh-CN', 'completed', 'qwen', ?)`,
   ).run(`tr-${hash[0]}`, hash, now);
   db.prepare(
+    `INSERT INTO polish_tasks (id, video_sha, status, model, created_at)
+     VALUES (?, ?, 'completed', 'llm', ?)`,
+  ).run(`pl-${hash[0]}`, hash, now);
+  db.prepare(
     `INSERT INTO insight_tasks (id, video_sha, status, model, ui_language, created_at)
      VALUES (?, ?, 'done', 'qwen', 'zh-CN', ?)`,
   ).run(`in-${hash[0]}`, hash, now);
@@ -122,6 +126,7 @@ beforeEach(() => {
     DELETE FROM subtitles;
     DELETE FROM transcribe_tasks;
     DELETE FROM translate_tasks;
+    DELETE FROM polish_tasks;
     DELETE FROM insight_tasks;
     DELETE FROM batch_items;
     DELETE FROM batch_jobs;
@@ -147,6 +152,7 @@ describe('media graph delete helpers', () => {
       'subtitles',
       'transcribe_tasks',
       'translate_tasks',
+      'polish_tasks',
       'insight_tasks',
       'diarize_tasks',
       'diarize_raw_speakers',
@@ -172,6 +178,7 @@ describe('media graph delete helpers', () => {
       'subtitles',
       'transcribe_tasks',
       'translate_tasks',
+      'polish_tasks',
       'insight_tasks',
       'diarize_tasks',
       'diarize_raw_speakers',
@@ -196,6 +203,7 @@ describe('media graph delete helpers', () => {
       'subtitles',
       'transcribe_tasks',
       'translate_tasks',
+      'polish_tasks',
       'insight_tasks',
       'batch_items',
       'batch_jobs',

@@ -3,7 +3,7 @@
 /**
  * DELETE /api/desktop/llm/:model
  *
- * Removes the Qwen2.5-<size>-Instruct-Q4_K_M.gguf file from the canonical
+ * Removes the Qwen3-<size>-Q4_K_M.gguf file from the canonical
  * LLM models dir. Refuses with 409 if the requested model is currently set
  * as active in settings (deleting the active model would leave the next
  * insight generation with no usable file). 404 if the file isn't installed
@@ -14,9 +14,7 @@ import { createError, defineEventHandler, getRouterParam } from 'h3';
 import { unlink } from 'node:fs/promises';
 import { loadSettings } from '../../../utils/settings';
 import { llmModelPath } from '../../../../desktop/modelManager/llmInstall';
-import type { LlmModelId } from '#shared/llmModels';
-
-const VALID_MODELS: ReadonlySet<LlmModelId> = new Set(['3b', '7b', '14b']);
+import { isLlmModelId, type LlmModelId } from '#shared/llmModels';
 
 export default defineEventHandler(async (event) => {
   if (process.env.SUBCAST_DESKTOP !== 'true') {
@@ -24,10 +22,10 @@ export default defineEventHandler(async (event) => {
   }
 
   const model = getRouterParam(event, 'model');
-  if (!model || !VALID_MODELS.has(model as LlmModelId)) {
+  if (typeof model !== 'string' || !isLlmModelId(model)) {
     throw createError({ statusCode: 400, statusMessage: 'BAD_MODEL' });
   }
-  const id = model as LlmModelId;
+  const id: LlmModelId = model;
 
   const settings = loadSettings();
   if (settings.llmModel === id) {

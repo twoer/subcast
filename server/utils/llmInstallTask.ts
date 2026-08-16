@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
 /**
- * Singleton tracker for the in-progress LLM (Qwen 2.5 GGUF) install
+ * Singleton tracker for the in-progress LLM (Qwen 3 GGUF) install
  * (symlink / copy / download). The setup wizard polls `getLlmInstallStatus()`
  * from the renderer while a task runs and gates the "Next →" button on
  * its state.

@@ -222,7 +222,8 @@ for (const name of ['app.asar', 'ffmpeg', 'ffprobe', 'whisper-cli']) {
 }
 
 const requiredModels = [
-  ['Whisper base model', 'models/ggml-base.bin', 130 * 1024 * 1024],
+  ['SenseVoice bundled model', 'models/sensevoice/model.int8.onnx', 200 * 1024 * 1024],
+  ['SenseVoice tokens', 'models/sensevoice/tokens.txt', 100 * 1024],
   [
     'diarize segmentation model',
     'models/diarization/sherpa-onnx-pyannote-segmentation-3-0/model.onnx',
@@ -277,6 +278,35 @@ if (!existsSync(libsDir)) {
   }
   for (const dylib of dylibs) {
     checkWhisperMachO(join(libsDir, dylib), '@loader_path');
+  }
+}
+
+// llama-server (dynamic since llama.cpp ~b5xxx): mirror the whisper checks.
+const llamaServer = join(resourcesDir, 'llama-server');
+if (existsSync(llamaServer)) {
+  const version = run(llamaServer, ['--version']);
+  if (version.status === 0) {
+    pass('llama-server --version exits 0');
+  } else {
+    fail(`llama-server --version failed (${version.status ?? version.signal}): ${output(version).trim()}`);
+  }
+  checkWhisperMachO(llamaServer, '@loader_path/llama-libs');
+
+  const llamaLibsDir = join(resourcesDir, 'llama-libs');
+  if (!existsSync(llamaLibsDir)) {
+    fail(`llama-libs missing at ${llamaLibsDir}`);
+  } else {
+    const llamaDylibs = readdirSync(llamaLibsDir)
+      .filter((entry) => entry.endsWith('.dylib'))
+      .sort();
+    if (llamaDylibs.length === 0) {
+      fail('no llama dylibs found in llama-libs');
+    } else {
+      pass(`found ${llamaDylibs.length} llama dylib(s)`);
+    }
+    for (const dylib of llamaDylibs) {
+      checkWhisperMachO(join(llamaLibsDir, dylib), '@loader_path');
+    }
   }
 }
 

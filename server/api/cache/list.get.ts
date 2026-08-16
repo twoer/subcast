@@ -2,6 +2,7 @@
 import { existsSync, statSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { getDb, SUBCAST_PATHS } from '../../utils/db';
+import { POLISH_LAYER_LANG } from '#shared/polishLayer';
 import type { VideoRow } from '../../types/db';
 
 interface CacheEntry {
@@ -16,6 +17,8 @@ interface CacheEntry {
   lastOpenedAt: number;
   hasInsights: boolean;
   hasRunningInsight: boolean;
+  /** AI-polished transcript layer exists (polished.vtt). */
+  hasPolished: boolean;
 }
 
 function dirSize(dir: string): number {
@@ -70,7 +73,12 @@ export default defineEventHandler(() => {
     const cacheDir = join(SUBCAST_PATHS.cache, r.sha256);
     const videoBytes = existsSync(videoPath) ? statSync(videoPath).size : 0;
     const cacheBytes = dirSize(cacheDir);
-    const langs = langsBySha.get(r.sha256) ?? [];
+    const rawLangs = langsBySha.get(r.sha256) ?? [];
+    // The polish layer rides the same subtitles registry but is not a
+    // translation language — surface it as an explicit flag instead so
+    // language dropdowns don't grow a bogus "polished" entry.
+    const hasPolished = rawLangs.includes(POLISH_LAYER_LANG);
+    const langs = rawLangs.filter((l) => l !== POLISH_LAYER_LANG);
     const hasInsights = existsSync(join(SUBCAST_PATHS.cache, r.sha256, 'insights.json'));
     const hasRunningInsight = (
       hasRunningInsightStmt.get(r.sha256) as { has_running: number }
@@ -87,6 +95,7 @@ export default defineEventHandler(() => {
       lastOpenedAt: r.last_opened_at,
       hasInsights,
       hasRunningInsight,
+      hasPolished,
     });
     totalBytes += videoBytes + cacheBytes;
     totalVideoBytes += videoBytes;

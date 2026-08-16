@@ -18,6 +18,7 @@ import { defineEventHandler, createError } from 'h3';
 import { scanWhisperModels } from '../../../desktop/modelManager/whisperScan';
 import { detectHardware } from '../../utils/hardware';
 import { whisperModelPath } from '../../utils/whisperPaths';
+import { isSenseVoiceReady } from '../../utils/sensevoice';
 
 export default defineEventHandler(async (event) => {
   if (process.env.SUBCAST_DESKTOP !== 'true') {
@@ -48,6 +49,10 @@ export default defineEventHandler(async (event) => {
 
   return {
     hasWhisperModel: taggedModels.some((m) => m.installed),
+    // Step 1 of the wizard is satisfied by EITHER engine — surface
+    // SenseVoice readiness so setup-check can apply the same rule
+    // instead of bouncing SenseVoice-only users back to the wizard.
+    sensevoiceReady: isSenseVoiceReady(),
     whisperModels: taggedModels,
     recommendedWhisperModel: hw.recommended.whisperModel,
   };

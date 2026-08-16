@@ -1,9 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { isWhisperModelName } from '#shared/whisperModels';
-import type { LlmModelId } from '#shared/llmModels';
-import { saveSettings, type SubcastSettings } from '../utils/settings';
-
-const LLM_MODEL_IDS: ReadonlySet<LlmModelId> = new Set(['3b', '7b', '14b']);
+import { isLlmModelId } from '#shared/llmModels';
+import { saveSettings, isTranscribeEngine, isChunkingStrategy, type SubcastSettings } from '../utils/settings';
 
 export default defineEventHandler(async (event) => {
   const body = (await readBody(event)) as Partial<SubcastSettings>;
@@ -15,12 +13,18 @@ export default defineEventHandler(async (event) => {
     }
     patch.whisperModel = body.whisperModel;
   }
+  if (body.transcribeEngine !== undefined) {
+    if (!isTranscribeEngine(body.transcribeEngine)) {
+      throw createError({ statusCode: 400, statusMessage: 'BAD_TRANSCRIBE_ENGINE' });
+    }
+    patch.transcribeEngine = body.transcribeEngine;
+  }
   if (body.llmModel !== undefined) {
     // Accept either a valid tier id or `null` (=> clear the active model).
     if (body.llmModel === null) {
       patch.llmModel = undefined;
-    } else if (typeof body.llmModel === 'string' && LLM_MODEL_IDS.has(body.llmModel as LlmModelId)) {
-      patch.llmModel = body.llmModel as LlmModelId;
+    } else if (typeof body.llmModel === 'string' && isLlmModelId(body.llmModel)) {
+      patch.llmModel = body.llmModel;
     } else {
       throw createError({ statusCode: 400, statusMessage: 'BAD_LLM_MODEL' });
     }
@@ -33,6 +37,20 @@ export default defineEventHandler(async (event) => {
   }
   if (typeof body.debugMode === 'boolean') {
     patch.debugMode = body.debugMode;
+  }
+  // ChunkingStrategy previously slipped through unvalidated here, so the
+  // frontend's PUT was silently dropped — same guard as the other enums.
+  if (body.chunkingStrategy !== undefined) {
+    if (!isChunkingStrategy(body.chunkingStrategy)) {
+      throw createError({ statusCode: 400, statusMessage: 'BAD_CHUNKING_STRATEGY' });
+    }
+    patch.chunkingStrategy = body.chunkingStrategy;
+  }
+  if (typeof body.transcriptPolish === 'boolean') {
+    patch.transcriptPolish = body.transcriptPolish;
+  }
+  if (typeof body.polishHints === 'string') {
+    patch.polishHints = body.polishHints.trim().slice(0, 500);
   }
 
   const merged = saveSettings(patch);

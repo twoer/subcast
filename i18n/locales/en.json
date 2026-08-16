@@ -13,7 +13,11 @@
     "manageModels": "Manage models",
     "modelNotInstalled": "Not installed: {name}",
     "llmNotInstalled": "AI model not installed",
-    "llmLabel": "AI"
+    "llmLabel": "AI",
+    "sensevoiceNotInstalled": "SenseVoice model not installed",
+    "noEngineInstalled": "No transcription engine ready — install a model in Settings",
+    "transcribeEngineLabel": "Transcription engine",
+    "engineAutoName": "Auto"
   },
   "fileStatus": {
     "transcribing": "Transcribing {pct}%",
@@ -66,6 +70,7 @@
     "translating": "Translating",
     "kindTranscribe": "Transcribe",
     "kindTranslate": "Translate",
+    "kindPolish": "AI polish",
     "kindInsightZh": "AI Summary (Chinese)",
     "kindInsightEn": "AI Summary (English)",
     "kindDiarize": "Speaker identification",
@@ -182,7 +187,8 @@
       "BATCH_RETRY_EXHAUSTED": "Translation retried several times and still failed. Try again or switch models.",
       "PARSE_FAILED": "The AI output couldn't be parsed. Please try again.",
       "fallback": "Operation failed. Please try again.",
-      "retry": "Retry"
+      "retry": "Retry",
+      "SENSE_VOICE_NOT_CONFIGURED": "SenseVoice model is not ready. Open Settings → Models to download it."
     },
     "cancelTranslation": "Cancel translation",
     "cancelTranslationTitle": "Cancel this translation?",
@@ -273,6 +279,20 @@
         "NETWORK": "Lost connection while generating insights.",
         "fallback": "Failed to generate insights. Please try again."
       }
+    },
+    "polish": {
+      "layerLabel": "Polished",
+      "originalLabel": "Original",
+      "polishedLabel": "Polished",
+      "runButton": "AI polish",
+      "runningLabel": "Polishing {pct}%"
+    },
+    "whisperHint": {
+      "text": "This video is mostly English and was transcribed with SenseVoice because no Whisper model is installed. Whisper recognizes English noticeably better — download one?",
+      "action": "Download Whisper",
+      "dismiss": "Dismiss",
+      "retranscribeText": "This English-heavy video was transcribed with SenseVoice before Whisper was installed. Whisper recognizes English noticeably better — re-transcribe now?",
+      "retranscribeAction": "Re-transcribe"
     }
   },
   "batch": {
@@ -333,27 +353,39 @@
       "models": "Models"
     },
     "models": {
+      "noEngineInstalled": "No engine model installed — download SenseVoice below or a Whisper tier, or transcription will fail.",
+      "whisper": "Whisper models",
+      "sensevoice": "SenseVoice",
+      "llm": "AI models (Qwen3)",
       "activeTitle": "Active models",
-      "notInstalledWarn": "{name} is not fully installed — transcription will fail. Use \"Download more\" or pick an installed model from the list below.",
-      "whisper": "Whisper transcription models",
-      "llm": "AI model (Qwen 2.5)",
-      "size": "{size}",
       "active": "Active",
-      "activeFile": "Active: {name}",
-      "notConfigured": "Not configured — set up an AI model via the setup wizard.",
-      "switch": "Use",
-      "delete": "Delete",
-      "downloadMore": "Download more",
-      "loading": "Loading…",
-      "empty": "No models installed — click Download more above",
-      "emptyLlm": "No AI model installed — click Download more above",
-      "refresh": "Refresh",
-      "deleteTitle": "Delete this model?",
-      "deleteDesc": "{name} ({size}) will be removed from this machine. You'll need to re-download it next time.",
-      "cancel": "Cancel",
-      "confirm": "Delete",
+      "switch": "Switch",
       "switchFailed": "Switch failed: {error}",
-      "deleteFailed": "Delete failed: {error}"
+      "delete": "Delete",
+      "deleteTitle": "Delete model",
+      "deleteDesc": "Delete {name} ({size})? This cannot be undone — the model can be re-downloaded later.",
+      "deleteFailed": "Delete failed: {error}",
+      "confirm": "Delete",
+      "cancel": "Cancel",
+      "refresh": "Refresh",
+      "downloadMore": "Download more",
+      "empty": "No Whisper models installed yet.",
+      "emptyLlm": "No AI models installed yet.",
+      "loading": "Loading…",
+      "notConfigured": "Not configured",
+      "notInstalledWarn": "{name} is not installed — transcription will fail until it is downloaded.",
+      "sensevoiceNotInstalled": "SenseVoice is not ready — download it in the section below.",
+      "sensevoiceFastCn": "FAST FOR CHINESE",
+      "sensevoiceEmpty": "SenseVoice is not installed.",
+      "sensevoiceDownload": "Download SenseVoice (~250 MB)",
+      "sensevoiceDownloading": "Downloading SenseVoice…",
+      "sensevoiceInstallFailed": "Download failed: {error}",
+      "sensevoiceIsActive": "SenseVoice is the active transcription engine and cannot be deleted.",
+      "llmNeedsDownload": "The active AI model {model} is missing on disk — re-download it to restore translation and summaries.",
+      "llmDownloadNow": "Download now",
+      "legacyLlmTitle": "Legacy Qwen2.5 model files",
+      "legacyLlmHint": "Safe to delete to free up disk space.",
+      "legacyLlmNone": "No legacy model files to delete."
     },
     "hardware": "Hardware",
     "tier": "Tier",
@@ -368,7 +400,7 @@
     "whisperModel": "Whisper model",
     "whisperHint": "Bigger = more accurate but slower. Changes apply to new transcribe tasks.",
     "llmModel": "AI model",
-    "llmHint": "Local Qwen 2.5 quantization served by an in-process llama-server. Recommended: {model}.",
+    "llmHint": "Local Qwen 3 quantization served by an in-process llama-server. Recommended: {model}.",
     "cacheLimit": "Cache size limit",
     "silenceThreshold": "Silence threshold",
     "silenceHint": "Inter-cue gaps ≥ this duration get a 「── no audio ──」divider in the cue list.",
@@ -429,6 +461,17 @@
       "showing": "Showing last {count} of {total} lines",
       "truncatedNote": "Older lines exist. Increase the tail count or export the full ZIP.",
       "writerUnhealthy": "Log writer is failing — recent events may not be persisted to disk."
+    },
+    "transcribeEngine": "Transcription engine",
+    "transcribeEngineHint": "Auto: CJK audio → SenseVoice, English → Whisper (when installed). SenseVoice/Whisper pin one engine.",
+    "polish": {
+      "title": "AI transcript polish",
+      "autoTitle": "Polish transcripts automatically",
+      "autoDesc": "After transcription, the local AI fixes typos, normalizes mixed Chinese/English tokens, and adds punctuation. The original text is kept — switch back anytime in the player.",
+      "needsLlm": "Install an AI model on the Models tab first.",
+      "hintsTitle": "Proper-noun hints (optional)",
+      "hintsPlaceholder": "e.g. Luzhou Fuxue, boolean operation, speaker names…",
+      "hintsHint": "Helps the AI spell domain terms and names correctly."
     }
   },
   "help": {
@@ -440,6 +483,13 @@
       "changelog": "Changelog"
     },
     "changelog": {
+      "v050": {
+        "qwen3": "LLM upgraded to Qwen3: big multilingual quality gains for translation, polish and AI insights, with roughly half the model size per tier — the 8B tier now fits 8 GB machines.",
+        "sensevoice": "New SenseVoice transcription engine (default \"auto\" mode): fast, accurate CJK recognition, dispatched automatically between SenseVoice and Whisper by audio language; English content goes to Whisper for word-level timestamps.",
+        "polish": "New AI transcript polish: after transcription, the local LLM fixes homophone typos, re-joins split English tokens (\"a i\" → \"AI\") and adds punctuation. Add domain-term hints in Settings; toggle the polished layer in the player.",
+        "speed": "Faster transcription and translation: whisper now runs as a resident inference server with in-memory slicing (25-60% faster per chunk in production), and LLM tasks start with zero model-load wait.",
+        "stability": "More reliable translation/polish: LLM output is constrained by a JSON Schema, eliminating count-mismatch retries and dropped lines at the source; a wedged LLM server now fails in seconds with the actual cause instead of a silent 30s timeout."
+      },
       "title": "Changelog",
       "body": "Important changes in recent versions. The repository remains the source of truth for the full commit history.",
       "v048": {
@@ -500,9 +550,9 @@
     "setupWizard": {
       "welcome": "First-run setup",
       "manageTitle": "Manage models",
-      "stepLabel1": "Whisper",
+      "stepLabel1": "Transcription",
       "stepLabel2": "AI model",
-      "subtitleStep1": "Choose transcription model (Whisper)",
+      "subtitleStep1": "Choose a transcription engine and model",
       "subtitleStep2": "Choose AI model (translation & insights)",
       "recommended": "Recommended",
       "foundAt": "Found existing file at",
@@ -531,7 +581,17 @@
       "remainingMins": "{m}m {s}s left",
       "perSecond": "/s",
       "checkingEvery5s": "Checking every 5 seconds — keep this window open.",
-      "installedAt": "{name} installed at"
+      "installedAt": "{name} installed at",
+      "engineChoiceTitle": "Transcription engine",
+      "engineWhisperName": "Whisper",
+      "engineWhisperDesc": "99 languages · word-level timestamps · 77 MB–1.6 GB models",
+      "engineSensevoiceName": "SenseVoice",
+      "engineSensevoiceBadge": "Recommended",
+      "engineSensevoiceDesc": "zh/en/ja/ko/yue · ~15x faster on CPU · single 166 MB model",
+      "svModelMeta": "Fixed int8 model · ~166 MB · auto language detect (zh/en/ja/ko/yue)",
+      "svReadyHint": "Installed and ready — click Next to continue.",
+      "svNotInstalledHint": "Not installed — click Download below (~166 MB).",
+      "installed": "Installed"
     },
     "llm": {
       "selectModel": "Select AI model",
@@ -558,6 +618,7 @@
       "depsHeader": "Built with these open-source components",
       "licenseLine": "© 2026 twoer · Licensed under",
       "buttons": {
+        "documentation": "Documentation",
         "repository": "Repository",
         "license": "License",
         "reportIssue": "Report Issue"

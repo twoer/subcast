@@ -19,7 +19,7 @@ import {
   rmSync,
   statSync,
 } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import process from 'node:process';
 import { spawnSync } from 'node:child_process';
 
@@ -33,20 +33,33 @@ const ext = isWin ? '.exe' : '';
 
 const destDir = join(REPO, 'binaries', target);
 const destBinary = join(destDir, `whisper-cli${ext}`);
+const destServerBinary = join(destDir, `whisper-server${ext}`);
 const destLibs = join(destDir, 'whisper-libs');
 
-// Skip the fetch/rebuild when a complete whisper-cli was already staged
-// (e.g. by release.yml's download-artifact step, or by a prior local run).
-// On mac the staged layout must include whisper-libs/*.dylib because the
-// binary is dynamically linked — without them electron-builder would warn
-// and the packaged app would fail to load whisper-cli on another machine.
+// Skip the fetch/rebuild when a complete whisper staging was already
+// laid down (e.g. by release.yml's download-artifact step, or by a prior
+// local run). On mac the staged layout must include whisper-libs/*.dylib
+// because the binaries are dynamically linked — without them
+// electron-builder would warn and the packaged app would fail to load
+// whisper-cli on another machine. whisper-server is part of the complete
+// staging (resident-model accelerator); an older staging without it
+// re-runs so the server lands too.
 // This guard prevents the on-the-fly cmake rebuild from clobbering a
 // pre-built CI artifact.
 const hasStagedLibs = !isDarwin
   || (existsSync(destLibs)
     && readdirSync(destLibs).some((e) => /^lib(?:whisper|ggml).*\.dylib$/.test(e)));
-if (existsSync(destBinary) && hasStagedLibs) {
-  console.log(`[fetch-whisper-cli] ${destBinary} already staged, skipping fetch/rebuild`);
+if (
+  existsSync(destBinary)
+  && existsSync(destServerBinary)
+  && hasStagedLibs
+) {
+  console.log(`[fetch-whisper-cli] ${destBinary} + whisper-server already staged, skipping fetch/rebuild`);
+  // A staged CI artifact still carries the BUILD machine's absolute rpaths
+  // (release.yml's afterPack only fixes the copy inside the .app). Dev mode
+  // spawns this file directly, so normalize rpaths here — idempotent.
+  ensureMacSidecarRpaths(destBinary, destLibs);
+  ensureMacSidecarRpaths(destServerBinary, destLibs);
   process.exit(0);
 }
 
@@ -56,29 +69,35 @@ if (isDarwin) {
   rebuildDarwinWhisperWithStableFilePaths();
 }
 
-const binaryCandidates = isWin
-  ? [
-      join(WHISPER_BUILD_DIR, 'bin', 'Release', `whisper-cli${ext}`),
-      join(WHISPER_BUILD_DIR, 'bin', `whisper-cli${ext}`),
-    ]
-  : [join(WHISPER_BUILD_DIR, 'bin', `whisper-cli${ext}`)];
-const sourceBinary = binaryCandidates.find((p) => existsSync(p));
-
-if (!sourceBinary) {
+const binaryCandidates = (name) =>
+  isWin
+    ? [
+        join(WHISPER_BUILD_DIR, 'bin', 'Release', `${name}${ext}`),
+        join(WHISPER_BUILD_DIR, 'bin', `${name}${ext}`),
+      ]
+    : [join(WHISPER_BUILD_DIR, 'bin', `${name}${ext}`)];
+const binaries = ['whisper-cli', 'whisper-server'].map((name) => {
+  const source = binaryCandidates(name).find((p) => existsSync(p));
+  return { name, source, dest: join(destDir, `${name}${ext}`) };
+});
+const missing = binaries.filter((b) => !b.source);
+if (missing.length > 0) {
   console.error(
-    `[fetch-whisper-cli] whisper-cli not found. Build it first:\n` +
+    `[fetch-whisper-cli] ${missing.map((b) => b.name).join(', ')} not found. Build them first:\n` +
       `  cd node_modules/nodejs-whisper/cpp/whisper.cpp\n` +
       `  cmake -S . -B build -DWHISPER_METAL=ON -DWHISPER_ACCELERATE=ON\n` +
-      `  cmake --build build --target whisper-cli -j`,
+      `  cmake --build build --target whisper-cli --target whisper-server -j`,
   );
   process.exit(1);
 }
 
 mkdirSync(destDir, { recursive: true });
-copyFileSync(sourceBinary, destBinary);
-chmodSync(destBinary, 0o755);
-stripMachODebugSymbols(destBinary);
-console.log(`[fetch-whisper-cli] copied ${sourceBinary} -> ${destBinary}`);
+for (const { source, dest } of binaries) {
+  copyFileSync(source, dest);
+  chmodSync(dest, 0o755);
+  stripMachODebugSymbols(dest);
+  console.log(`[fetch-whisper-cli] copied ${source} -> ${dest}`);
+}
 
 if (isDarwin) {
   const libDirs = [
@@ -107,10 +126,62 @@ if (isDarwin) {
   }
 
   if (count === 0) {
-    console.error(`[fetch-whisper-cli] no whisper dylibs found under ${dirname(sourceBinary)}`);
+    console.error(`[fetch-whisper-cli] no whisper dylibs found under ${join(WHISPER_BUILD_DIR, 'src')}`);
     process.exit(1);
   }
   console.log(`[fetch-whisper-cli] copied ${count} dylib(s) -> ${libsDir}`);
+  // A local cmake build has the same problem as a CI artifact: rpaths point
+  // at the build tree, which only exists on this machine for as long as
+  // node_modules survives. Normalize for portable dev-mode spawning.
+  ensureMacSidecarRpaths(destBinary, destLibs);
+  ensureMacSidecarRpaths(destServerBinary, destLibs);
+}
+
+/**
+ * Rewrite the sidecar's rpath layout to the self-contained form the
+ * packaged app uses (afterPack's fixSidecarDylibs): binary →
+ * `@loader_path/whisper-libs`, dylibs → `@loader_path` + `@rpath/<name>`
+ * install ids, then re-apply the ad-hoc signature (install_name_tool
+ * invalidates it). Idempotent — exits early when the binary already has
+ * the desired rpath. Best-effort: failures warn but don't fail staging,
+ * mirroring afterPack's tolerance.
+ */
+function ensureMacSidecarRpaths(binary, libsDir) {
+  if (!isDarwin) return;
+  const rpathsOf = (file) => {
+    const res = spawnSync('otool', ['-l', file], { encoding: 'utf8' });
+    if (res.status !== 0) return null;
+    return [...String(res.stdout).matchAll(/LC_RPATH[\s\S]*?path (.+?) \(offset \d+\)/g)].map(
+      (m) => m[1],
+    );
+  };
+  const run = (cmd, args) => {
+    const r = spawnSync(cmd, args, { encoding: 'utf8' });
+    if (r.status !== 0) {
+      console.warn(`[fetch-whisper-cli] ${cmd} ${args.join(' ')} failed: ${(r.stderr || '').trim()}`);
+      return false;
+    }
+    return true;
+  };
+
+  const rpaths = rpathsOf(binary);
+  if (rpaths === null) return;
+  if (rpaths.includes('@loader_path/whisper-libs') && rpaths.length === 1) return; // already normalized
+
+  for (const rp of rpaths) run('install_name_tool', ['-delete_rpath', rp, binary]);
+  if (!rpaths.includes('@loader_path/whisper-libs')) {
+    run('install_name_tool', ['-add_rpath', '@loader_path/whisper-libs', binary]);
+  }
+  for (const entry of readdirSync(libsDir)) {
+    if (!entry.endsWith('.dylib')) continue;
+    const lib = join(libsDir, entry);
+    for (const rp of rpathsOf(lib) ?? []) run('install_name_tool', ['-delete_rpath', rp, lib]);
+    run('install_name_tool', ['-add_rpath', '@loader_path', lib]);
+    run('install_name_tool', ['-id', `@rpath/${entry}`, lib]);
+    run('codesign', ['--force', '--sign', '-', lib]);
+  }
+  run('codesign', ['--force', '--sign', '-', binary]);
+  console.log('[fetch-whisper-cli] normalized sidecar rpaths for dev-mode spawning');
 }
 
 function stripMachODebugSymbols(file) {
@@ -137,7 +208,12 @@ function rebuildDarwinWhisperWithStableFilePaths() {
     `-DCMAKE_CXX_FLAGS=${prefixFlags}`,
   ];
   run('cmake', common);
-  run('cmake', ['--build', WHISPER_BUILD_DIR, '--target', 'whisper-cli', '-j']);
+  run('cmake', [
+    '--build', WHISPER_BUILD_DIR,
+    '--target', 'whisper-cli',
+    '--target', 'whisper-server',
+    '-j',
+  ]);
 }
 
 function run(command, args) {

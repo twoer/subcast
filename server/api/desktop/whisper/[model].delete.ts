@@ -45,11 +45,10 @@ export default defineEventHandler(async (event) => {
     throw e;
   }
 
-  // 'base' is shipped pre-seeded as a symlink into the .app bundle (see
-  // desktop/modelManager/seedBundledModel.ts). Without a marker the next
-  // app launch would silently re-create it — which would make this
-  // delete look like it didn't take. Drop a sentinel so the seed step
-  // skips on subsequent boots.
+  // Legacy: 'base' used to ship pre-seeded as a symlink into the .app
+  // bundle (desktop/modelManager/seedBundledBaseModel, retired when the
+  // bundled model switched to SenseVoice). The marker stays so installs
+  // upgraded from those builds don't see base resurrect on old seeds.
   if (model === 'base') {
     try {
       await writeFile(join(dirname(filePath), '.bundled-base-dismissed'), '');

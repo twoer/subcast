@@ -4,6 +4,7 @@ import type { EventEmitter } from 'node:events';
 import type { Cue } from './vtt';
 import type {
   InsightTaskRow,
+  PolishTaskRow,
   TranscribeTaskRow,
   TranslateTaskRow,
 } from '../types/db';
@@ -31,6 +32,10 @@ export type QueueInsightTaskSummary = Pick<
   InsightTaskRow,
   'id' | 'video_sha' | 'status' | 'model' | 'ui_language' | 'error_msg'
 >;
+export type QueuePolishTaskSummary = Pick<
+  PolishTaskRow,
+  'id' | 'video_sha' | 'status' | 'model' | 'progress_pct' | 'error_msg'
+>;
 
 export interface QueueActiveTask {
   taskId: string;
@@ -44,7 +49,7 @@ export interface QueueActiveTask {
   donePromise: Promise<void>;
 }
 
-export type QueueLLMTaskKind = 'translate' | 'insight';
+export type QueueLLMTaskKind = 'translate' | 'insight' | 'polish';
 
 export interface QueueActiveLLMTask {
   taskId: string;

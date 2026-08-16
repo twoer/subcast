@@ -21,15 +21,19 @@ export default defineEventHandler(async (event) => {
   if (!row) {
     throw createError({ statusCode: 404, statusMessage: 'NOT_FOUND' });
   }
-  // Cancel any in-flight insight tasks before tearing the cache dir down,
-  // otherwise they would try to write into a directory we're about to delete.
-  const runningInsights = db
+  // Cancel any in-flight LLM tasks (insights, polish) before tearing the
+  // cache dir down, otherwise they would try to write into a directory
+  // we're about to delete.
+  const runningLlm = db
     .prepare(
       `SELECT id FROM insight_tasks
+       WHERE video_sha = ? AND status IN ('queued','running')
+       UNION ALL
+       SELECT id FROM polish_tasks
        WHERE video_sha = ? AND status IN ('queued','running')`,
     )
-    .all(hash) as { id: string }[];
-  for (const row of runningInsights) {
+    .all(hash, hash) as { id: string }[];
+  for (const row of runningLlm) {
     llmQueue.cancel(row.id);
   }
   const videoPath = join(SUBCAST_PATHS.videos, `${hash}${row.ext}`);

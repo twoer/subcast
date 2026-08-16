@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  LLAMA_CPP_VERSION: b4524  # pin a specific upstream tag; bump deliberately
+  LLAMA_CPP_VERSION: b10435  # pin a specific upstream tag; bump deliberately
 
 jobs:
   build:
@@ -25,10 +25,11 @@ jobs:
             arch: arm64
             cmake_flags: -DGGML_METAL=ON -DLLAMA_CURL=OFF -DBUILD_SHARED_LIBS=OFF
             artifact_path: build/bin/llama-server
-          - os: windows-2022
-            arch: x64
-            cmake_flags: -DLLAMA_CURL=OFF -DBUILD_SHARED_LIBS=OFF
-            artifact_path: build/bin/Release/llama-server.exe
+          # Windows 构建暂缓（当前仅发布 macOS）——恢复时取消注释。
+          # - os: windows-2022
+          #   arch: x64
+          #   cmake_flags: -DLLAMA_CURL=OFF -DBUILD_SHARED_LIBS=OFF
+          #   artifact_path: build/bin/Release/llama-server.exe
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout llama.cpp

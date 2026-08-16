@@ -121,6 +121,7 @@ async function tryBatch(
   const raw = await llmBackend().chat({
     messages,
     temperature: 0,
+    responseSchema: jsonStringArraySchema(cues.length),
     signal,
   });
   const parsed = parseJsonArray(raw);
@@ -155,8 +156,23 @@ export interface TranslateAllOptions {
   }) => void;
 }
 
-const SUPER_BATCH_SIZE = 25;
+export const SUPER_BATCH_SIZE = 25;
 const SUB_BATCH_SIZE = 15;
+
+/**
+ * Grammar constraint for the "exactly N strings" contract. minItems/
+ * maxItems enforcement depends on llama.cpp's schema→grammar version;
+ * the array-of-strings structure itself is always enforced, and the
+ * count check in the caller stays as the safety net either way.
+ */
+export function jsonStringArraySchema(count: number): Record<string, unknown> {
+  return {
+    type: 'array',
+    items: { type: 'string' },
+    minItems: count,
+    maxItems: count,
+  };
+}
 
 export async function translateAll(
   cues: readonly Cue[],

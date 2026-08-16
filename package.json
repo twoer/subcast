@@ -1,6 +1,6 @@
 {
   "name": "subcast",
-  "version": "0.4.8",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "main": "desktop-dist/main.js",
@@ -33,6 +33,7 @@
   },
   "scripts": {
     "dev": "nuxt dev",
+    "predev": "node scripts/ensure-sqlite-abi.mjs node",
     "build": "nuxt build",
     "preview": "nuxt preview",
     "typecheck": "nuxt typecheck",
@@ -52,18 +53,23 @@
     "build:desktop:main": "tsc -p tsconfig.desktop.json && tsc -p tsconfig.preload.json && node scripts/rename-preload.mjs",
     "build:desktop:native": "node scripts/ensure-sqlite-abi.mjs electron",
     "build:desktop:icons": "node scripts/generate-icons.mjs",
+    "docs:dev": "pnpm -C website dev",
+    "docs:build": "pnpm -C website build",
+    "docs:preview": "pnpm -C website preview",
     "fetch:silero-vad": "node scripts/fetch-silero-vad.mjs",
     "fetch:whisper-cli": "node scripts/fetch-whisper-cli.mjs",
     "fetch:llama-server": "node scripts/fetch-llama-server.mjs",
     "fetch:yt-dlp": "node scripts/fetch-yt-dlp.mjs",
     "fetch:diarize-models": "node scripts/fetch-diarize-models.mjs",
-    "build:desktop": "pnpm fetch:silero-vad && pnpm fetch:diarize-models && pnpm fetch:whisper-cli && pnpm fetch:llama-server && pnpm fetch:yt-dlp && pnpm build:desktop:icons && pnpm build:desktop:assets && pnpm build:desktop:main && pnpm build:desktop:native && electron-builder --config electron-builder.config.cjs",
-    "build:desktop:mac": "pnpm fetch:silero-vad && pnpm fetch:diarize-models && pnpm fetch:whisper-cli darwin-arm64 && pnpm fetch:llama-server darwin-arm64 && pnpm fetch:yt-dlp darwin-arm64 && pnpm build:desktop:icons && pnpm build:desktop:assets && pnpm build:desktop:main && pnpm build:desktop:native && electron-builder --config electron-builder.config.cjs --mac",
-    "build:desktop:win": "pnpm fetch:silero-vad && pnpm fetch:diarize-models && pnpm fetch:whisper-cli win32-x64 && pnpm fetch:llama-server win32-x64 && pnpm fetch:yt-dlp win32-x64 && pnpm build:desktop:icons && pnpm build:desktop:assets && pnpm build:desktop:main && pnpm build:desktop:native && electron-builder --config electron-builder.config.cjs --win",
+    "fetch:sensevoice": "node scripts/fetch-sensevoice.mjs",
+    "build:desktop": "pnpm fetch:silero-vad && pnpm fetch:diarize-models && pnpm fetch:sensevoice && pnpm fetch:whisper-cli && pnpm fetch:llama-server && pnpm fetch:yt-dlp && pnpm build:desktop:icons && pnpm build:desktop:assets && pnpm build:desktop:main && pnpm build:desktop:native && electron-builder --config electron-builder.config.cjs",
+    "build:desktop:mac": "pnpm fetch:silero-vad && pnpm fetch:diarize-models && pnpm fetch:sensevoice && pnpm fetch:whisper-cli darwin-arm64 && pnpm fetch:llama-server darwin-arm64 && pnpm fetch:yt-dlp darwin-arm64 && pnpm build:desktop:icons && pnpm build:desktop:assets && pnpm build:desktop:main && pnpm build:desktop:native && electron-builder --config electron-builder.config.cjs --mac",
+    "build:desktop:win": "pnpm fetch:silero-vad && pnpm fetch:diarize-models && pnpm fetch:sensevoice && pnpm fetch:whisper-cli win32-x64 && pnpm fetch:llama-server win32-x64 && pnpm fetch:yt-dlp win32-x64 && pnpm build:desktop:icons && pnpm build:desktop:assets && pnpm build:desktop:main && pnpm build:desktop:native && electron-builder --config electron-builder.config.cjs --win",
     "predev:desktop": "node scripts/ensure-sqlite-abi.mjs electron",
     "dev:desktop": "pnpm build:desktop:assets && pnpm build:desktop:main && electron .",
     "predev:desktop:hot": "node scripts/ensure-sqlite-abi.mjs electron",
-    "dev:desktop:hot": "node scripts/dev-desktop-hot.mjs"
+    "dev:desktop:hot": "node scripts/dev-desktop-hot.mjs",
+    "prepreview": "node scripts/ensure-sqlite-abi.mjs node"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
@@ -107,5 +113,8 @@
     "vue": "^3.5.0",
     "vue-router": "^4.4.0"
   },
-  "packageManager": "pnpm@9.12.0"
+  "packageManager": "pnpm@9.12.0",
+  "pnpm": {
+    "enable-pre-post-scripts": true
+  }
 }

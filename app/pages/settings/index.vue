@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/tabs';
 import Models from './components/Models.vue';
 import type { Settings, Hardware } from '@/types/settings';
+import { llmDisplayName } from '#shared/llmModels';
 
 interface Resp {
   settings: Settings;
@@ -90,7 +91,7 @@ async function saveSlice(slice: Partial<Settings>): Promise<void> {
     settings.value = data.settings;
     draft.value = { ...data.settings };
     savedAt.value = Date.now();
-    setActiveModelsCache(data.settings.whisperModel, data.settings.llmModel);
+    setActiveModelsCache(data.settings.whisperModel, data.settings.llmModel, data.settings.transcribeEngine);
     void refreshActiveModels();
   } catch (e) {
     errMsg.value = e instanceof Error ? e.message : 'failed to save';
@@ -114,6 +115,8 @@ async function savePreferences(): Promise<void> {
     silenceThresholdMs: draft.value.silenceThresholdMs,
     debugMode: draft.value.debugMode,
     chunkingStrategy: draft.value.chunkingStrategy,
+    transcriptPolish: draft.value.transcriptPolish,
+    polishHints: draft.value.polishHints,
   });
 }
 
@@ -130,6 +133,8 @@ const dirtyPrefs = computed(() => {
     || draft.value.silenceThresholdMs !== settings.value.silenceThresholdMs
     || draft.value.debugMode !== settings.value.debugMode
     || draft.value.chunkingStrategy !== settings.value.chunkingStrategy
+    || draft.value.transcriptPolish !== settings.value.transcriptPolish
+    || draft.value.polishHints !== settings.value.polishHints
   );
 });
 
@@ -213,7 +218,7 @@ onBeforeUnmount(() => {
                 <dd class="font-mono text-xs">{{ hardware.platform }} ({{ hardware.arch }})</dd>
                 <dt class="text-muted-foreground">{{ t('settings.recommended') }}</dt>
                 <dd class="font-mono text-xs">
-                  whisper={{ hardware.recommended.whisperModel }} · llm={{ hardware.recommended.llmModel }}
+                  whisper={{ hardware.recommended.whisperModel }} · llm={{ llmDisplayName(hardware.recommended.llmModel) }}
                 </dd>
               </dl>
               <Button
@@ -316,6 +321,44 @@ onBeforeUnmount(() => {
                   @input="(e) => saveCueFontSize(Number((e.target as HTMLInputElement).value))"
                 >
                 <p class="text-xs text-muted-foreground">{{ t('settings.cueFontSizeHint') }}</p>
+              </div>
+
+              <div class="space-y-3 rounded-md border border-border/60 bg-muted/20 p-3">
+                <Label class="text-sm font-medium">{{ t('settings.polish.title') }}</Label>
+                <label
+                  for="polish"
+                  class="flex cursor-pointer items-start gap-3 rounded-md border border-border/60 bg-muted/30 p-3 transition-colors hover:bg-muted/50"
+                  :class="{ 'pointer-events-none opacity-60': !draft.llmModel }"
+                >
+                  <input
+                    id="polish"
+                    v-model="draft.transcriptPolish"
+                    type="checkbox"
+                    class="mt-0.5 h-4 w-4 cursor-pointer rounded border-input accent-primary"
+                    :disabled="!draft.llmModel"
+                  >
+                  <div class="text-sm">
+                    <div class="font-medium leading-none">{{ t('settings.polish.autoTitle') }}</div>
+                    <p class="mt-1 text-xs text-muted-foreground">{{ t('settings.polish.autoDesc') }}</p>
+                  </div>
+                </label>
+                <p v-if="!draft.llmModel" class="text-xs text-muted-foreground">
+                  {{ t('settings.polish.needsLlm') }}
+                </p>
+                <div v-if="draft.transcriptPolish && draft.llmModel" class="space-y-1.5">
+                  <Label for="polish-hints" class="text-sm font-medium">
+                    {{ t('settings.polish.hintsTitle') }}
+                  </Label>
+                  <textarea
+                    id="polish-hints"
+                    v-model="draft.polishHints"
+                    rows="2"
+                    maxlength="500"
+                    :placeholder="t('settings.polish.hintsPlaceholder')"
+                    class="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  />
+                  <p class="text-xs text-muted-foreground">{{ t('settings.polish.hintsHint') }}</p>
+                </div>
               </div>
 
               <label

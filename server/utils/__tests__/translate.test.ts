@@ -42,6 +42,21 @@ beforeEach(() => {
 });
 
 describe('translateAll', () => {
+  it('constrains decoding with an exact-length string-array schema per call', async () => {
+    chatMock.mockImplementation(async (opts) => {
+      const match = opts.messages.at(-1)?.content.match(/INPUT \((\d+) subtitle/);
+      const n = Number(match?.[1] ?? 0);
+      return jsonItems('translated', n);
+    });
+
+    await translateAll(Array.from({ length: 26 }, (_, i) => cue(i)), 'zh-CN');
+
+    expect(chatMock.mock.calls.map(([opts]) => opts.responseSchema)).toEqual([
+      { type: 'array', items: { type: 'string' }, minItems: 25, maxItems: 25 },
+      { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 1 },
+    ]);
+  });
+
   it('uses 25-cue super batches to reduce local LLM format drift', async () => {
     chatMock.mockImplementation(async (opts) => {
       const match = opts.messages.at(-1)?.content.match(/INPUT \((\d+) subtitle/);

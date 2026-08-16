@@ -6,7 +6,8 @@
 # WHISPER_CPP_VERSION here and re-trigger the workflow.
 #
 # Artifacts:
-#   whisper-cli-macos-arm64  →  Mach-O arm64 binary (Metal acceleration on)
+#   whisper-cli-macos-arm64  →  whisper-cli + whisper-server (Mach-O, Metal on)
+#                               + whisper-libs/*.dylib
 #   whisper-cli-windows-x64  →  whisper-cli.exe (CPU-only, no CUDA yet)
 #
 # Trigger:
@@ -44,18 +45,19 @@ jobs:
             cmake_flags: '-DGGML_METAL=ON -DCMAKE_BUILD_TYPE=Release'
             build_config: 'Release'
             artifact_path: 'whisper.cpp/build/bin'
+          # Windows 构建暂缓（当前仅发布 macOS）——恢复时取消注释。
           # Pin windows-2022 (NOT windows-latest). As of 2026-06-08 GitHub
           # migrated windows-latest → VS 2026 (Microsoft skipped VS 2025),
           # so '-G "Visual Studio 17 2022"' fails with 'could not find any
           # instance of Visual Studio'. windows-2022 still ships VS 2022,
           # which matches both this generator and the whisper.cpp v1.8.4
           # toolchain the build was validated against.
-          - os: windows-2022
-            arch: x64
-            ext: '.exe'
-            cmake_flags: '-DCMAKE_BUILD_TYPE=Release -G "Visual Studio 17 2022" -A x64'
-            build_config: 'Release'
-            artifact_path: 'whisper.cpp/build/bin/Release/whisper-cli.exe'
+          # - os: windows-2022
+          #   arch: x64
+          #   ext: '.exe'
+          #   cmake_flags: '-DCMAKE_BUILD_TYPE=Release -G "Visual Studio 17 2022" -A x64'
+          #   build_config: 'Release'
+          #   artifact_path: 'whisper.cpp/build/bin/Release/whisper-cli.exe'
 
     runs-on: ${{ matrix.os }}
 
@@ -90,10 +92,10 @@ jobs:
             cmake .. ${{ matrix.cmake_flags }}
           fi
 
-      - name: Build whisper-cli
+      - name: Build whisper-cli + whisper-server
         working-directory: whisper.cpp/build
         shell: bash
-        run: cmake --build . --target whisper-cli --config ${{ matrix.build_config }}
+        run: cmake --build . --target whisper-cli --target whisper-server --config ${{ matrix.build_config }}
 
       # macOS only: whisper-cli is dynamically linked against libwhisper +
       # libggml*.dylib. Stage them next to the binary (whisper.cpp/build/bin/

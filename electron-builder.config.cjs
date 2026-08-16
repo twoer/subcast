@@ -73,6 +73,16 @@ function buildExtraResources() {
       console.warn(`[electron-builder] whisper-cli missing at ${whisperRel} — packaging without it. Run scripts/fetch-whisper-cli.mjs (Phase 1.8.c) before release.`);
     }
 
+    // whisper-server: resident-model accelerator. A missing copy only
+    // degrades transcription back to per-chunk whisper-cli spawns, so
+    // package with a warning instead of failing.
+    const whisperServerRel = `binaries/${t.os === 'mac' ? 'darwin' : t.os === 'win' ? 'win32' : t.os}-${t.arch}/whisper-server${t.ext}`;
+    if (fs.existsSync(path.join(root, whisperServerRel))) {
+      out.push({ from: whisperServerRel, to: `whisper-server${t.ext}` });
+    } else {
+      console.warn(`[electron-builder] whisper-server missing at ${whisperServerRel} — packaging without it; transcription falls back to whisper-cli spawns.`);
+    }
+
     // macOS whisper.cpp dynamic libraries. The upstream CMake build links
     // whisper-cli against @rpath/libwhisper + libggml*.dylib; shipping only
     // the executable leaves dyld looking for the original build directory on
@@ -85,6 +95,17 @@ function buildExtraResources() {
         out.push({ from: dylibsDir, to: 'whisper-libs' });
       } else {
         console.warn(`[electron-builder] whisper dylibs missing at ${dylibsDir} — whisper-cli may fail to load on another machine.`);
+      }
+
+      // llama-server switched to dynamic linking upstream (~b5xxx): same
+      // treatment — stage llama-libs/ next to the binary, afterPack fixes
+      // the rpaths.
+      const llamaLibsDir = `binaries/darwin-${t.arch}/llama-libs`;
+      const llamaLibsAbs = path.join(root, llamaLibsDir);
+      if (fs.existsSync(llamaLibsAbs)) {
+        out.push({ from: llamaLibsDir, to: 'llama-libs' });
+      } else {
+        console.warn(`[electron-builder] llama dylibs missing at ${llamaLibsDir} — llama-server may fail to load on another machine.`);
       }
     }
 
@@ -109,17 +130,19 @@ function buildExtraResources() {
     }
   }
 
-  // Default Whisper model (ggml-base.bin, ~148 MB) — shipped so first
-  // launch is offline-usable. Electron main symlinks this into
-  // <userData>/models/whisper/ at startup (see desktop/modelManager/
-  // seedBundledModel.ts). Missing-file path mirrors the binaries above:
-  // packaging still succeeds; the setup wizard just falls back to the
-  // download flow.
-  const baseModelRel = 'binaries/models/ggml-base.bin';
-  if (fs.existsSync(path.join(root, baseModelRel))) {
-    out.push({ from: baseModelRel, to: 'models/ggml-base.bin' });
+  // Bundled SenseVoice model (~237 MB int8 + tokens) — the default
+  // transcribe engine for the zh/en-first audience, shipped so first
+  // launch transcribes offline with zero download. Electron main
+  // symlinks these into <userData>/models/sensevoice/ at startup (see
+  // desktop/modelManager/seedBundledSenseVoice.ts). Replaces the old
+  // bundled ggml-base.bin (whisper models are all on-demand now).
+  // Missing-file path mirrors the binaries above: packaging still
+  // succeeds; the setup wizard falls back to the download flow.
+  const svModelRel = 'binaries/models/sensevoice';
+  if (fs.existsSync(path.join(root, svModelRel, 'model.int8.onnx'))) {
+    out.push({ from: svModelRel, to: 'models/sensevoice' });
   } else {
-    console.warn(`[electron-builder] ${baseModelRel} missing — packaging without bundled base model. Run scripts/fetch-ggml-base.mjs before release.`);
+    console.warn(`[electron-builder] ${svModelRel} missing — packaging without bundled SenseVoice model. Run scripts/fetch-sensevoice.mjs before release.`);
   }
 
   // Silero VAD model (~1.8 MB) — pre-segments audio so Whisper only
@@ -215,6 +238,25 @@ async function ensureExecutable(context) {
 }
 
 async function fixWhisperDylibs(context) {
+  await fixSidecarDylibs(context, 'whisper-cli', 'whisper-libs');
+  // whisper-server links the same libwhisper/libggml dylibs — same rpath
+  // surgery against the same whisper-libs dir (idempotent). Missing
+  // binary (older staging) makes this a no-op.
+  await fixSidecarDylibs(context, 'whisper-server', 'whisper-libs');
+  // llama-server went dynamic-link upstream (~b5xxx): same rpath surgery.
+  // Missing llama-libs (older static pin / non-mac) makes this a no-op.
+  await fixSidecarDylibs(context, 'llama-server', 'llama-libs');
+}
+
+/**
+ * Rewrite the rpaths of a dynamically-linked macOS sidecar and its dylib
+ * siblings so the pair is self-contained inside Contents/Resources:
+ *   binary  → rpath @loader_path/<libsDirName>
+ *   dylibs  → rpath @loader_path, install name @rpath/<basename>
+ * No-op when either the binary or the libs dir is absent (sidecar was
+ * skipped from extraResources, or the pin is a static build).
+ */
+async function fixSidecarDylibs(context, binaryName, libsDirName) {
   if (context.electronPlatformName !== 'darwin') return;
   const { join, basename } = require('node:path');
   const { chmod, access, readdir } = require('node:fs/promises');
@@ -228,11 +270,11 @@ async function fixWhisperDylibs(context) {
     'Contents',
     'Resources',
   );
-  const whisperCli = join(resourcesDir, 'whisper-cli');
-  const libsDir = join(resourcesDir, 'whisper-libs');
+  const cliPath = join(resourcesDir, binaryName);
+  const libsDir = join(resourcesDir, libsDirName);
 
   try {
-    await access(whisperCli);
+    await access(cliPath);
     await access(libsDir);
   } catch {
     return;
@@ -261,7 +303,12 @@ async function fixWhisperDylibs(context) {
   }
 
   async function assertNoBuildMachinePaths(targets) {
-    const forbidden = /\/Users\/|node_modules\/nodejs-whisper|Documents\/Code/;
+    // Exempt /Users/runner/work/: upstream llama.cpp release binaries
+    // embed GitHub-runner __FILE__ strings (compiled into __TEXT,__const
+    // — strip can't remove them) in every official asset. The check
+    // exists to catch LOCAL build-machine paths leaking into the bundle,
+    // and the runner path is neither local nor machine-specific.
+    const forbidden = /\/Users\/(?!runner\/work\/)|node_modules\/nodejs-whisper|Documents\/Code/;
     for (const target of targets) {
       const linked = await execFileAsync('otool', ['-L', target]);
       const loadCommands = await execFileAsync('otool', ['-l', target]);
@@ -280,7 +327,7 @@ async function fixWhisperDylibs(context) {
     }
   }
 
-  await replaceRpaths(whisperCli, '@loader_path/whisper-libs');
+  await replaceRpaths(cliPath, `@loader_path/${libsDirName}`);
 
   const dylibTargets = [];
   for (const dylib of dylibs) {
@@ -291,8 +338,8 @@ async function fixWhisperDylibs(context) {
     await execFileAsync('install_name_tool', ['-id', `@rpath/${basename(dylib)}`, target]);
     await execFileAsync('codesign', ['--force', '--sign', '-', target]);
   }
-  await execFileAsync('codesign', ['--force', '--deep', '--sign', '-', whisperCli]);
-  await assertNoBuildMachinePaths([whisperCli, ...dylibTargets]);
+  await execFileAsync('codesign', ['--force', '--deep', '--sign', '-', cliPath]);
+  await assertNoBuildMachinePaths([cliPath, ...dylibTargets]);
 }
 
 /**

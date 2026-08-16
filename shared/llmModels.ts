@@ -1,32 +1,29 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
 /**
- * LLM (Qwen 2.5) model catalog.
+ * LLM (Qwen 3) model catalog.
  *
  * Pure shared data: safe for renderer, Nitro, and Electron-side code.
  * Do not import Node, Electron, filesystem, or desktop modules here.
  *
- * **Why bartowski's repos, not Qwen's official ones**: Qwen uploads their
- * 7B+ GGUFs as multi-shard files (`-00001-of-00002.gguf` etc.) that
- * llama.cpp can load but our downloader can't (it fetches a single
- * `destPath`). `bartowski/Qwen2.5-*-Instruct-GGUF` hosts the same
- * quants as single files with stable CamelCase filenames, matching our
- * on-disk install layout 1:1. Switch repos here if the upstream
- * convention changes.
+ * **Why Qwen's official repos (not bartowski)**: the historical reason for
+ * bartowski was that Qwen uploaded 7B+ GGUFs as multi-shard files our
+ * single-file downloader can't fetch. Qwen3 official GGUF repos ship each
+ * quant as a single file, so the extra mirror layer is no longer needed.
+ * If Qwen ever returns to sharded uploads, bartowski's `Qwen_Qwen3-*-GGUF`
+ * repos are the drop-in fallback (single files, stable names).
  *
- * **ModelScope dropped**: ModelScope only mirrors Qwen's official
- * (sharded) upload, not bartowski. hf-mirror.com is fast enough in
- * China that ModelScope's nice-to-have value didn't justify the
- * multi-shard download path. If we ever need a third mirror, picking
- * one that hosts bartowski's repo (or implementing shard fetch) is
- * the right move — not re-adding the Qwen-official source.
+ * **Thinking mode**: Qwen3 emits `<think>` reasoning by default. The llama
+ * server request path disables it via `chat_template_kwargs` and the
+ * backend strips any leaked `<think>` blocks — see
+ * `server/utils/llmBackendLlamaServer.ts`. Nothing prompt-side.
  *
  * sha256 left undefined for now — see desktop/modelManager/whisperConfig.ts
  * for the same rationale (downloader skips verification gracefully when
  * undefined).
  */
 
-export type LlmModelId = '3b' | '7b' | '14b';
+export type LlmModelId = '4b' | '8b' | '14b';
 export type LlmMirror = 'huggingface' | 'hf-mirror' | 'auto';
 
 export interface LlmModelInfo {
@@ -38,14 +35,32 @@ export interface LlmModelInfo {
 }
 
 export const LLM_MODELS: Record<LlmModelId, LlmModelInfo> = {
-  '3b':  { filename: 'Qwen2.5-3B-Instruct-Q4_K_M.gguf',  sizeBytes: 1_930_000_000, minRamGB: 8 },
-  '7b':  { filename: 'Qwen2.5-7B-Instruct-Q4_K_M.gguf',  sizeBytes: 4_680_000_000, minRamGB: 16 },
-  '14b': { filename: 'Qwen2.5-14B-Instruct-Q4_K_M.gguf', sizeBytes: 8_990_000_000, minRamGB: 32 },
+  '4b':  { filename: 'Qwen3-4B-Q4_K_M.gguf',  sizeBytes: 2_497_280_256, minRamGB: 8 },
+  '8b':  { filename: 'Qwen3-8B-Q4_K_M.gguf',  sizeBytes: 5_027_783_488, minRamGB: 16 },
+  '14b': { filename: 'Qwen3-14B-Q4_K_M.gguf', sizeBytes: 9_001_752_960, minRamGB: 32 },
 };
 
+/** All tier ids, in ascending-size order. Single source for API validators. */
+export const LLM_MODEL_IDS = Object.keys(LLM_MODELS) as LlmModelId[];
+
+/**
+ * User-facing name for a tier id ('8b' → 'Qwen3-8B'). Tier ids are internal
+ * storage keys — anywhere a human reads the model, use this instead.
+ */
+export function llmDisplayName(id: LlmModelId): string {
+  return `Qwen3-${id.toUpperCase()}`;
+}
+
+export function isLlmModelId(value: unknown): value is LlmModelId {
+  return (
+    typeof value === 'string' &&
+    (LLM_MODEL_IDS as readonly string[]).includes(value)
+  );
+}
+
 const MIRROR_PREFIX: Record<Exclude<LlmMirror, 'auto'>, (id: LlmModelId) => string> = {
-  huggingface: (id) => `https://huggingface.co/bartowski/Qwen2.5-${idCase(id)}-Instruct-GGUF/resolve/main`,
-  'hf-mirror': (id) => `https://hf-mirror.com/bartowski/Qwen2.5-${idCase(id)}-Instruct-GGUF/resolve/main`,
+  huggingface: (id) => `https://huggingface.co/Qwen/Qwen3-${idCase(id)}-GGUF/resolve/main`,
+  'hf-mirror': (id) => `https://hf-mirror.com/Qwen/Qwen3-${idCase(id)}-GGUF/resolve/main`,
 };
 
 function idCase(id: LlmModelId): string {
@@ -65,7 +80,7 @@ export function llmDownloadUrls(id: LlmModelId): string[] {
   return [llmDownloadUrl(id, 'huggingface'), llmDownloadUrl(id, 'hf-mirror')];
 }
 
-export const RECOMMENDED_LLM_MODEL: LlmModelId = '7b';
+export const RECOMMENDED_LLM_MODEL: LlmModelId = '8b';
 
 export interface HardwareHint {
   totalMemoryGB: number;
@@ -73,6 +88,6 @@ export interface HardwareHint {
 
 export function recommendLlmModel(hw: HardwareHint): LlmModelId {
   if (hw.totalMemoryGB >= 32) return '14b';
-  if (hw.totalMemoryGB >= 16) return '7b';
-  return '3b';
+  if (hw.totalMemoryGB >= 16) return '8b';
+  return '4b';
 }

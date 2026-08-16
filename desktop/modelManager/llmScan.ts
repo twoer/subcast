@@ -1,14 +1,14 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
 /**
- * Scan well-known filesystem locations for an already-downloaded Qwen 2.5
- * Instruct GGUF so the setup wizard can offer "symlink" / "copy" instead of
+ * Scan well-known filesystem locations for an already-downloaded Qwen 3
+ * GGUF so the setup wizard can offer "symlink" / "copy" instead of
  * re-downloading several GB. Mirrors `whisperScan.ts` — same `ScanResult`
  * shape, same `defaultRoots()` + safe-readdir style, just different roots
  * (LM Studio, Jan, llama.cpp cache) and a different filename regex.
  *
  * Layouts we account for:
- *   - `~/.cache/lm-studio/models/lmstudio-community/Qwen2.5-7B-Instruct-GGUF/<file>.gguf`
+ *   - `~/.cache/lm-studio/models/lmstudio-community/Qwen_Qwen3-8B-GGUF/<file>.gguf`
  *   - `~/Library/Caches/jan/models/<repo>/<file>.gguf`
  *   - `~/.cache/llama.cpp/<file>.gguf`
  *   - Subcast's own canonical install dir
@@ -24,7 +24,7 @@ import { basename, join } from 'node:path';
 import type { LlmModelId } from './llmConfig';
 import { LLM_MODELS } from './llmConfig';
 
-const FILENAME_RE = /^Qwen2\.5-(3B|7B|14B)-Instruct-Q4_K_M\.gguf$/i;
+const FILENAME_RE = /^Qwen3-(4B|8B|14B)-Q4_K_M\.gguf$/i;
 
 export interface LlmScanResult {
   name: LlmModelId;
@@ -110,7 +110,7 @@ async function safeReaddirRecursive(dir: string, depth: number): Promise<string[
 
 function asModelId(s: string): LlmModelId | null {
   const lower = s.toLowerCase();
-  if (lower === '3b' || lower === '7b' || lower === '14b') return lower;
+  if (lower === '4b' || lower === '8b' || lower === '14b') return lower;
   return null;
 }
 
@@ -155,4 +155,41 @@ export async function scanLlmModels(opts: LlmScanOptions = {}): Promise<LlmScanR
     }
   }
   return results;
+}
+
+/** Qwen2.5-era filenames (pre-Qwen3 catalog) — no longer recognized by FILENAME_RE. */
+const LEGACY_FILENAME_RE = /^Qwen2\.5-(?:\d+(?:\.\d+)?B)-Instruct-Q4_K_M\.gguf$/i;
+
+export interface LegacyLlmFile {
+  path: string;
+  filename: string;
+  sizeBytes: number;
+}
+
+/**
+ * Find orphaned Qwen2.5 GGUFs in the canonical install dir after the
+ * Qwen3 catalog switch. The files still occupy GBs on disk but can no
+ * longer be selected — the settings page surfaces them as a one-click
+ * cleanup card. Only scans Subcast's own models/llm dir (never LM Studio
+ * / Jan copies, which belong to those apps).
+ */
+export async function findLegacyQwen25Models(dir: string): Promise<LegacyLlmFile[]> {
+  const out: LegacyLlmFile[] = [];
+  let entries: Dirent[];
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const e of entries) {
+    if (!e.isFile() || !LEGACY_FILENAME_RE.test(e.name)) continue;
+    const full = join(dir, e.name);
+    try {
+      const st = await stat(full);
+      out.push({ path: full, filename: e.name, sizeBytes: st.size });
+    } catch {
+      // vanished mid-scan — skip
+    }
+  }
+  return out;
 }

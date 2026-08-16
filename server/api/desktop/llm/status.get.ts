@@ -15,7 +15,7 @@
  *   - `migrationHint`  — one-shot read+delete of
  *     `<SUBCAST_HOME>/models/llm/.migration-hint.json`, written by
  *     `settings.ts` when an upgrading user's legacy `ollamaModel` field
- *     mapped to a Qwen2.5 tier. The wizard uses this to pre-select the
+ *     mapped to a Qwen tier. The wizard uses this to pre-select the
  *     same tier the user was running before the llama.cpp switch.
  */
 
@@ -23,13 +23,11 @@ import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { createError, defineEventHandler } from 'h3';
 import { detectHardware } from '../../../utils/hardware';
-import { loadSettings } from '../../../utils/settings';
+import { loadSettings, remapLegacyLlmTier } from '../../../utils/settings';
 import { logEvent } from '../../../utils/log';
 import { scanLlmModels } from '../../../../desktop/modelManager/llmScan';
 import { recommendLlmModel, type LlmModelId } from '#shared/llmModels';
 import { llmModelPath } from '../../../../desktop/modelManager/llmInstall';
-
-const VALID_HINT_IDS: ReadonlySet<LlmModelId> = new Set(['3b', '7b', '14b']);
 
 /**
  * Read + delete the one-shot migration hint sidecar written by
@@ -49,9 +47,10 @@ function readAndConsumeMigrationHint(): LlmModelId | undefined {
     const parsed = JSON.parse(raw) as { id?: unknown };
     const id = typeof parsed.id === 'string' ? parsed.id : undefined;
     // Delete unconditionally — even malformed hints shouldn't survive
-    // to the next request.
+    // to the next request. Old (pre-Qwen3) ids remap to their new tier.
     rmSync(file, { force: true });
-    return id && VALID_HINT_IDS.has(id as LlmModelId) ? (id as LlmModelId) : undefined;
+    const hint = id ? remapLegacyLlmTier(id) : undefined;
+    return hint;
   } catch (err) {
     logEvent({
       level: 'debug',

@@ -135,12 +135,13 @@ describe('LlmServer state machine', () => {
     const fakeStdout = Readable.from([
       'llama server starting\n',
       'HTTP server listening on 127.0.0.1:51302\n',
-      'ready\n',
+      'ready',
     ]);
     const fakeProc = {
       stdout: fakeStdout,
       stderr: Readable.from([]),
       on: vi.fn(),
+      off: vi.fn(),
     } as unknown as ChildProcess;
     const port = await (
       new LlmServer() as unknown as {
@@ -148,5 +149,28 @@ describe('LlmServer state machine', () => {
       }
     ).waitForListeningPort(fakeProc, 2000);
     expect(port).toBe(51302);
+  });
+
+  it('rejects immediately with the stderr tail when the process dies before listening', async () => {
+    const { Readable } = await import('node:stream');
+    const ev = new EventEmitter();
+    const fakeProc = {
+      stdout: Readable.from([]),
+      stderr: Readable.from(['error while handling argument "-fa": unknown value\n']),
+      on: ev.on.bind(ev),
+      off: ev.off.bind(ev),
+    } as unknown as ChildProcess;
+    const probe = (
+      new LlmServer() as unknown as {
+        waitForListeningPort: (p: ChildProcess, t: number) => Promise<number>;
+      }
+    ).waitForListeningPort(fakeProc, 5000);
+    // Let the stderr Readable drain first, then kill the process —
+    // mirrors an argv-parse failure where llama-server dies instantly.
+    await new Promise((r) => setTimeout(r, 20));
+    ev.emit('exit', 1);
+    await expect(probe).rejects.toThrow(
+      /exited \(code 1\) before announcing a port.*unknown value/,
+    );
   });
 });

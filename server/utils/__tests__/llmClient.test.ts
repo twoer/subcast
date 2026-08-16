@@ -99,6 +99,35 @@ describe('LlamaServerBackend', () => {
     ).rejects.toThrow(/503.*model loading/);
   });
 
+  it('chat() sends response_format json_schema only when responseSchema is set', async () => {
+    let bodyWithout: Record<string, unknown> | undefined;
+    let bodyWith: Record<string, unknown> | undefined;
+    globalThis.fetch = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      if (body.response_format) bodyWith = body;
+      else bodyWithout = body;
+      return jsonResponse({ choices: [{ message: { content: 'ok' } }] });
+    }) as unknown as typeof fetch;
+
+    const backend = new LlamaServerBackend();
+    await backend.chat({ messages: [{ role: 'user', content: 'hi' }] });
+    await backend.chat({
+      messages: [{ role: 'user', content: 'hi' }],
+      responseSchema: { type: 'array', items: { type: 'string' }, minItems: 3, maxItems: 3 },
+    });
+
+    expect(bodyWithout).toBeDefined();
+    expect(bodyWithout).not.toHaveProperty('response_format');
+    expect(bodyWith).toBeDefined();
+    expect(bodyWith!.response_format).toEqual({
+      type: 'json_schema',
+      json_schema: {
+        name: 'subcast_response',
+        schema: { type: 'array', items: { type: 'string' }, minItems: 3, maxItems: 3 },
+      },
+    });
+  });
+
   it('chatStream() yields deltas assembled from SSE chunks then a stop marker', async () => {
     globalThis.fetch = vi.fn(async () =>
       streamResponse([

@@ -54,7 +54,9 @@ describe('transcribeQueue.ensureTask', () => {
     const task = transcribeQueue.ensureTask(HASH_A, 'base');
     expect(task.status).toBe('queued');
     expect(task.video_sha).toBe(HASH_A);
-    expect(task.model).toBe('base');
+    // Settings default engine is auto → the task row carries the engine
+    // setting until runWorker resolves it per audio (see ensureTask).
+    expect(task.model).toBe('auto');
     expect(task.done_chunks).toBe(0);
     expect(task.error_msg).toBe(null);
   });
@@ -65,7 +67,7 @@ describe('transcribeQueue.ensureTask', () => {
     expect(second.id).toBe(first.id);
     // Model from the existing row wins — ensureTask never silently
     // rewrites it. Callers that want a model change use the retry endpoint.
-    expect(second.model).toBe('base');
+    expect(second.model).toBe('auto');
   });
 
   it('resurrects a failed task back to queued and clears error_msg', () => {

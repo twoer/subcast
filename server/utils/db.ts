@@ -308,6 +308,28 @@ function migrate(db: Database.Database): void {
     ensureColumn(db, 'videos', 'source_url', 'TEXT');
     db.pragma('user_version = 13');
   }
+  if (version < 14) {
+    // AI transcript polish (LLM post-pass over original.vtt). Mirrors
+    // translate_tasks minus target_lang/priority: the polished layer is
+    // a single fixed pseudo-language per video, enqueued automatically
+    // after transcription (or manually from the player).
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS polish_tasks (
+        id           TEXT PRIMARY KEY,
+        video_sha    TEXT NOT NULL REFERENCES videos(sha256),
+        status       TEXT NOT NULL,
+        model        TEXT NOT NULL,
+        progress_pct INTEGER NOT NULL DEFAULT 0,
+        error_msg    TEXT,
+        error_code   TEXT,
+        created_at   INTEGER NOT NULL,
+        completed_at INTEGER,
+        UNIQUE (video_sha)
+      );
+      CREATE INDEX IF NOT EXISTS idx_polish_status ON polish_tasks(status, created_at);
+    `);
+    db.pragma('user_version = 14');
+  }
   // Post-migration integrity: the source_url column is now load-bearing
   // (urlImportQueue.lookupExistingImport queries it). If a prior branch
   // bumped user_version past 13 without our migration running, the column

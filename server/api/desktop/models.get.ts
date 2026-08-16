@@ -17,11 +17,13 @@
  */
 
 import { createError, defineEventHandler } from 'h3';
+import { existsSync } from 'node:fs';
 import { loadSettings } from '../../utils/settings';
 import { listInstalledWhisperModels } from '../../utils/whisperInstalled';
-import { scanLlmModels } from '../../../desktop/modelManager/llmScan';
+import { isSenseVoiceReady, senseVoiceModelDir } from '../../utils/sensevoice';
+import { scanLlmModels, findLegacyQwen25Models } from '../../../desktop/modelManager/llmScan';
 import { LLM_MODELS, type LlmModelId } from '#shared/llmModels';
-import { llmModelPath } from '../../../desktop/modelManager/llmInstall';
+import { llmModelPath, llmModelsDir } from '../../../desktop/modelManager/llmInstall';
 
 interface InstalledLlmRow {
   name: LlmModelId;
@@ -66,7 +68,20 @@ export default defineEventHandler(async (event) => {
     listInstalledLlmModels(),
   ]);
 
+  // Post-Qwen3-upgrade guidance: an upgraded user's active tier points at
+  // a Qwen3 file that isn't on disk yet (their old Qwen2.5 GGUF no longer
+  // matches any catalog entry). Flag it so the settings page can offer a
+  // one-click download instead of letting the first translate/insights
+  // call die inside llama-server.
+  const llmNeedsDownload =
+    settings.llmModel !== undefined && !existsSync(llmModelPath(settings.llmModel));
+  const legacyLlm =
+    process.env.SUBCAST_DESKTOP === 'true'
+      ? await findLegacyQwen25Models(llmModelsDir()).catch(() => [])
+      : [];
+
   return {
+    transcribeEngine: settings.transcribeEngine ?? 'sensevoice',
     whisper: {
       active: settings.whisperModel,
       installed: whisperInstalled.map((m) => ({
@@ -74,9 +89,15 @@ export default defineEventHandler(async (event) => {
         sizeBytes: m.sizeBytes,
       })),
     },
+    sensevoice: {
+      ready: isSenseVoiceReady(),
+      dir: senseVoiceModelDir(),
+    },
     llm: {
       active: settings.llmModel,
       installed: llmInstalled,
+      needsDownload: llmNeedsDownload,
+      legacy: legacyLlm.map((f) => ({ filename: f.filename, sizeBytes: f.sizeBytes })),
     },
   };
 });

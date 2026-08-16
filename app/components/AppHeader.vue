@@ -1,5 +1,6 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script setup lang="ts">
+import { llmDisplayName } from '#shared/llmModels';
 import {
   Settings as SettingsIcon,
   Languages,
@@ -59,10 +60,33 @@ function onModelsKeydown(e: KeyboardEvent): void {
 // `null` (unknown — web mode or pre-refresh) renders as no dot so the
 // chip doesn't flash a warning before the first /api/desktop/models
 // response settles.
-function whisperWarn(): string | null {
+// The first slot follows the ACTIVE engine: SenseVoice readiness when
+// engine=sensevoice, whisper-tier readiness otherwise.
+/** Label shown in the chip's first slot. Brand casing for engines,
+ *  localized label for `auto`; whisper tiers keep their file-style ids. */
+const asrLabel = computed(() => {
   const m = activeModels.value;
-  if (!m || m.whisperReady !== false) return null;
-  return t('app.modelNotInstalled', { name: m.whisperModel });
+  if (m?.transcribeEngine === 'sensevoice') return 'SenseVoice';
+  if (m?.transcribeEngine === 'auto') return t('app.engineAutoName');
+  return m?.whisperModel ?? '—';
+});
+
+function asrWarn(): string | null {
+  const m = activeModels.value;
+  if (!m) return null;
+  if (m.transcribeEngine === 'sensevoice') {
+    if (m.senseVoiceReady === false) return t('app.sensevoiceNotInstalled');
+    return null;
+  }
+  if (m.transcribeEngine === 'auto') {
+    // Auto dispatches per audio — warn only when neither engine can run.
+    if (m.senseVoiceReady === false && m.whisperReady === false) {
+      return t('app.noEngineInstalled');
+    }
+    return null;
+  }
+  if (m.whisperReady === false) return t('app.modelNotInstalled', { name: m.whisperModel });
+  return null;
 }
 
 function llmWarn(): string | null {
@@ -75,8 +99,8 @@ function llmWarn(): string | null {
   return null;
 }
 
-const chipWarn = computed(() => whisperWarn() ?? llmWarn());
-const whisperWarnMsg = computed(() => whisperWarn());
+const chipWarn = computed(() => asrWarn() ?? llmWarn());
+const asrWarnMsg = computed(() => asrWarn());
 const llmWarnMsg = computed(() => llmWarn());
 
 // In desktop mode, the dedicated Models tab is visible. In web mode it's
@@ -238,9 +262,9 @@ const NAV_BTN_ACTIVE = 'bg-accent text-foreground font-semibold';
                   :class="isAnyTaskBusy ? 'text-primary' : 'opacity-70'"
                 />
                 <span class="flex items-center gap-1 truncate font-mono text-2xs tabular-nums">
-                  <span class="truncate">{{ activeModels?.whisperModel ?? '—' }}</span>
+                  <span class="truncate">{{ asrLabel }}</span>
                   <span
-                    v-if="whisperWarnMsg"
+                    v-if="asrWarnMsg"
                     aria-hidden="true"
                     class="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
                   />
@@ -249,7 +273,7 @@ const NAV_BTN_ACTIVE = 'bg-accent text-foreground font-semibold';
                      structural separator, not punctuation. -->
                 <span aria-hidden="true" class="h-3 w-px shrink-0 bg-border" />
                 <span class="flex items-center gap-1 truncate font-mono text-2xs tabular-nums">
-                  <span class="truncate">{{ activeModels?.llmModel ?? '—' }}</span>
+                  <span class="truncate">{{ activeModels?.llmModel ? llmDisplayName(activeModels.llmModel) : '—' }}</span>
                   <span
                     v-if="llmWarnMsg"
                     aria-hidden="true"
@@ -283,21 +307,21 @@ const NAV_BTN_ACTIVE = 'bg-accent text-foreground font-semibold';
               <div class="space-y-3">
                 <div>
                   <div class="text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Whisper
+                    {{ $t('app.transcribeEngineLabel') }}
                   </div>
                   <div class="mt-0.5 flex items-center gap-1.5 truncate font-mono text-sm font-medium text-foreground">
-                    <span class="truncate">{{ activeModels?.whisperModel ?? '—' }}</span>
+                    <span class="truncate">{{ asrLabel }}</span>
                     <span
-                      v-if="whisperWarnMsg"
+                      v-if="asrWarnMsg"
                       aria-hidden="true"
                       class="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
                     />
                   </div>
                   <div
-                    v-if="whisperWarnMsg"
+                    v-if="asrWarnMsg"
                     class="mt-0.5 text-2xs font-medium text-amber-600"
                   >
-                    {{ whisperWarnMsg }}
+                    {{ asrWarnMsg }}
                   </div>
                 </div>
                 <div>
@@ -305,7 +329,7 @@ const NAV_BTN_ACTIVE = 'bg-accent text-foreground font-semibold';
                     {{ $t('app.llmLabel') }}
                   </div>
                   <div class="mt-0.5 flex items-center gap-1.5 truncate font-mono text-sm font-medium text-foreground">
-                    <span class="truncate">{{ activeModels?.llmModel ?? '—' }}</span>
+                    <span class="truncate">{{ activeModels?.llmModel ? llmDisplayName(activeModels.llmModel) : '—' }}</span>
                     <span
                       v-if="llmWarnMsg"
                       aria-hidden="true"

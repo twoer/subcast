@@ -2,7 +2,7 @@
 <!-- app/pages/player/[hash].vue -->
 <script setup lang="ts">
 import {
-  AlertCircle, Info,
+  AlertCircle, Info, Loader2, X as XIcon,
   Play, Pause, Volume2, Volume1, VolumeX, Captions, CaptionsOff,
   Maximize, Minimize, Sparkles,
 } from 'lucide-vue-next';
@@ -63,6 +63,7 @@ const SUPPORTED_LANGS: Array<{ code: string; label: string }> = [
 ];
 
 function langLabel(code: string, fallbackLabel: string): string {
+  if (code === 'polished') return t('player.polish.layerLabel');
   return code === 'original' ? t('player.original') : fallbackLabel;
 }
 
@@ -85,7 +86,11 @@ const hash = computed(() => String(route.params.hash));
 
 const videoRef = ref<HTMLVideoElement | null>(null);
 const currentLang = ref<string>('original');
-// Tier id ('3b' | '7b' | '14b') or undefined when no LLM is configured.
+// Which text layer of the original transcript is shown: raw ASR vs the
+// AI-polished layer (settings → 偏好 → AI 转写润色). Only meaningful while
+// currentLang === 'original'.
+const textVariant = ref<'original' | 'polished'>('original');
+// Tier id ('4b' | '8b' | '14b') or undefined when no LLM is configured.
 // Passed to InsightsPanel so it can label the footer with the model that
 // generated existing insights vs. the one a fresh run would use.
 const llmModel = ref<string>('—');
@@ -161,15 +166,20 @@ const {
   fromCache,
   translateProgress,
   translateRetryNotice,
+  polishProgress,
+  transcriptEngine,
+  transcriptDetectedLang,
   cachedLangs,
   isStreaming,
   openOriginalStream,
   openTranslateStream,
+  openPolishStream,
   closeStream,
   loadCachedLangs,
 } = useSubtitleStreams({
   hash,
   currentLang,
+  textVariant,
   onCueForCurrentLang: addCueToTrack,
 });
 
@@ -450,6 +460,91 @@ const {
   rebuildTrack,
 });
 
+// --- AI 润色层（textVariant） -------------------------------------------------
+
+/** LLM is configured (server tier id) — gates the manual polish button. */
+const llmConfigured = computed(() => llmModel.value !== '—');
+/** Auto-polish setting (fetched with the LLM tier below). */
+const autoPolishEnabled = ref(false);
+const polishLayerReady = computed(() => langStatus.value.polished === 'done');
+const polishRunning = computed(() => langStatus.value.polished === 'running');
+/** Show the 原文/润色 toggle once the layer exists or is being produced. */
+const showVariantToggle = computed(() =>
+  currentLang.value === 'original'
+  && (polishLayerReady.value || polishRunning.value),
+);
+/** Manual trigger for videos transcribed before the setting existed. */
+const canRunPolish = computed(() =>
+  currentLang.value === 'original'
+  && isOriginalTranscribeDone.value
+  && llmConfigured.value
+  && !polishLayerReady.value
+  && !polishRunning.value
+  && langStatus.value.polished !== 'error',
+);
+
+// English content the auto-dispatch had to run on SenseVoice because no
+// Whisper model is installed — suggest the download once per session.
+// Once Whisper IS installed, the same condition instead offers a
+// re-transcribe (downloading the model doesn't redo existing transcripts).
+const whisperHintDismissed = ref(false);
+const whisperInstalled = ref(false);
+const whisperFallbackHappened = computed(() =>
+  transcriptEngine.value === 'sensevoice'
+  && transcriptDetectedLang.value === 'en'
+  && isOriginalTranscribeDone.value,
+);
+const showWhisperDownloadHint = computed(() =>
+  !whisperHintDismissed.value
+  && desktop.isDesktop
+  && whisperFallbackHappened.value
+  && !whisperInstalled.value,
+);
+const showWhisperRetranscribeHint = computed(() =>
+  !whisperHintDismissed.value
+  && desktop.isDesktop
+  && whisperFallbackHappened.value
+  && whisperInstalled.value,
+);
+
+function setVariant(v: 'original' | 'polished'): void {
+  textVariant.value = v;
+  if (v === 'polished' && !(cuesByLang.value.polished?.length)) {
+    // Loads from cache (server replays polished.vtt) or starts a run.
+    openPolishStream();
+  }
+  rebuildTrack(cues.value);
+}
+
+// Fresh transcriptions: the server auto-enqueues polish (when enabled) at
+// completion — open the stream then so progress + the final layer stream
+// in without user action.
+watch(isOriginalTranscribeDone, (done) => {
+  if (done && llmConfigured.value && (autoPolishEnabled.value || langStatus.value.polished === 'done')) {
+    openPolishStream();
+  }
+});
+
+// Auto-switch to the polished layer the moment it finishes, so users get
+// the improved text without touching anything. One-way: switching back to
+// 原文 afterwards sticks for the session.
+watch(polishLayerReady, (ready) => {
+  if (
+    ready
+    && currentLang.value === 'original'
+    && textVariant.value === 'original'
+    && (cuesByLang.value.polished?.length ?? 0) > 0
+  ) {
+    textVariant.value = 'polished';
+  }
+});
+
+// Keep the native TextTrack in sync when the displayed layer changes
+// underneath (auto-switch fires while the original view is mounted).
+watch(() => cues.value, () => {
+  if (subsVisible.value) rebuildTrack(cues.value);
+});
+
 const videoName = ref<string>('');
 
 onMounted(async () => {
@@ -458,16 +553,27 @@ onMounted(async () => {
   loadPlaybackRate();
   subtitleView.load();
   void diarize.refresh();
-  void loadCachedLangs();
   openOriginalStream();
   // Stamp `last_opened_at` so the library re-sorts to put this video
   // at the top. Best-effort: errors are swallowed since the library
   // still functions on the old timestamp.
   void $fetch(`/api/video/open?hash=${hash.value}`, { method: 'POST' }).catch(() => {});
   try {
-    const s = await $fetch<{ settings?: { llmModel?: string } }>('/api/settings');
+    const s = await $fetch<{ settings?: { llmModel?: string; transcriptPolish?: boolean } }>('/api/settings');
     if (s.settings?.llmModel) llmModel.value = s.settings.llmModel;
+    autoPolishEnabled.value = s.settings?.transcriptPolish !== false;
   } catch { /* ignore */ }
+  // Observe / load the polish layer once the transcript and settings are
+  // known: replays cached results instantly, live-tails an auto-enqueued
+  // run. Never creates a task on its own unless the setting asked for one.
+  await loadCachedLangs().catch(() => {});
+  if (
+    isOriginalTranscribeDone.value
+    && llmConfigured.value
+    && (autoPolishEnabled.value || langStatus.value.polished === 'done')
+  ) {
+    openPolishStream();
+  }
   // Resolve display name → originalName → hash-fallback for the header.
   // Reuses /api/cache/list (already cached by other panels) — cheap.
   try {
@@ -477,6 +583,17 @@ onMounted(async () => {
     const entry = res.items.find((i) => i.sha256 === hash.value);
     if (entry) videoName.value = entry.displayName ?? entry.originalName;
   } catch { /* keep empty — UI falls back to hash slice */ }
+  // Whisper install state decides which variant of the fallback hint the
+  // subtitle panel shows (download vs re-transcribe). Desktop-only — web
+  // mode has no model management.
+  if (desktop.isDesktop) {
+    try {
+      const m = await $fetch<{ whisper: { installed: Array<{ name: string }> } }>(
+        '/api/desktop/models',
+      );
+      whisperInstalled.value = m.whisper.installed.length > 0;
+    } catch { /* keep false */ }
+  }
 });
 
 watch(activeIdx, (idx) => {
@@ -705,6 +822,36 @@ watch(activeIdx, (idx) => {
               </TabsTrigger>
             </TabsList>
             <TabsContent value="subtitles" class="flex flex-1 flex-col gap-2 min-h-0">
+              <div
+                v-if="showWhisperDownloadHint || showWhisperRetranscribeHint"
+                class="flex items-start gap-2.5 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm"
+              >
+                <Info class="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <p class="flex-1 text-foreground/90">
+                  {{ showWhisperDownloadHint
+                    ? t('player.whisperHint.text')
+                    : t('player.whisperHint.retranscribeText') }}
+                </p>
+                <NuxtLink
+                  v-if="showWhisperDownloadHint"
+                  to="/setup-wizard?step=1&engine=whisper"
+                  class="inline-flex h-7 shrink-0 items-center rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                >{{ t('player.whisperHint.action') }}</NuxtLink>
+                <button
+                  v-else
+                  type="button"
+                  class="inline-flex h-7 shrink-0 items-center rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                  @click="showRetranscribeDialog = true"
+                >{{ t('player.whisperHint.retranscribeAction') }}</button>
+                <button
+                  type="button"
+                  class="shrink-0 rounded-sm p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  :aria-label="t('player.whisperHint.dismiss')"
+                  @click="whisperHintDismissed = true"
+                >
+                  <XIcon class="h-3.5 w-3.5" />
+                </button>
+              </div>
               <div class="flex items-center gap-2">
                 <div class="flex-1">
                   <SearchBar
@@ -714,6 +861,45 @@ watch(activeIdx, (idx) => {
                     @update:match-idx="searchMatchIdx = $event"
                   />
                 </div>
+                <div
+                  v-if="showVariantToggle"
+                  class="inline-flex h-8 items-center rounded-lg border border-border/60 bg-muted/40 p-0.5 text-xs font-medium"
+                  role="group"
+                  :aria-label="t('player.polish.layerLabel')"
+                >
+                  <button
+                    type="button"
+                    class="rounded-md px-2.5 py-1 transition-colors"
+                    :class="textVariant === 'original' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+                    @click="setVariant('original')"
+                  >{{ t('player.polish.originalLabel') }}</button>
+                  <button
+                    type="button"
+                    class="rounded-md px-2.5 py-1 transition-colors"
+                    :class="textVariant === 'polished' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+                    @click="setVariant('polished')"
+                  >
+                    {{ t('player.polish.polishedLabel') }}
+                    <Loader2 v-if="polishRunning" class="ml-1 inline h-3 w-3 animate-spin" />
+                  </button>
+                </div>
+                <Button
+                  v-else-if="canRunPolish"
+                  variant="outline"
+                  size="sm"
+                  class="h-8 shrink-0 gap-1.5 text-xs"
+                  @click="openPolishStream"
+                >
+                  <Sparkles class="h-3.5 w-3.5" />
+                  {{ t('player.polish.runButton') }}
+                </Button>
+                <span
+                  v-if="polishRunning && !showVariantToggle"
+                  class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border/60 bg-muted/40 px-2.5 text-xs text-muted-foreground"
+                >
+                  <Loader2 class="h-3 w-3 animate-spin" />
+                  {{ t('player.polish.runningLabel', { pct: polishProgress ?? 0 }) }}
+                </span>
                 <ViewToggle
                   v-if="subtitleView.toggleVisible.value"
                   :model-value="subtitleView.view.value"

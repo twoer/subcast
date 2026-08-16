@@ -13,7 +13,11 @@
     "manageModels": "管理模型",
     "modelNotInstalled": "未安裝：{name}",
     "llmNotInstalled": "AI 模型未安裝",
-    "llmLabel": "AI 模型"
+    "llmLabel": "AI 模型",
+    "sensevoiceNotInstalled": "SenseVoice 模型未安裝",
+    "noEngineInstalled": "沒有可用的轉寫引擎 — 請到設定安裝模型",
+    "transcribeEngineLabel": "轉寫引擎",
+    "engineAutoName": "自動"
   },
   "fileStatus": {
     "transcribing": "轉錄中 {pct}%",
@@ -66,6 +70,7 @@
     "translating": "翻譯中",
     "kindTranscribe": "轉錄",
     "kindTranslate": "翻譯",
+    "kindPolish": "AI 潤色",
     "kindInsightZh": "AI 摘要 (中文)",
     "kindInsightEn": "AI 摘要 (英文)",
     "kindDiarize": "語者辨識",
@@ -182,7 +187,8 @@
       "BATCH_RETRY_EXHAUSTED": "翻譯重試多次仍失敗，請稍後再試或更換模型。",
       "PARSE_FAILED": "AI 輸出無法解析，請重試。",
       "fallback": "操作失敗，請重試。",
-      "retry": "重試"
+      "retry": "重試",
+      "SENSE_VOICE_NOT_CONFIGURED": "SenseVoice 模型未就緒，請到 設定 → 模型 中下載。"
     },
     "cancelTranslation": "取消翻譯",
     "cancelTranslationTitle": "取消目前的翻譯？",
@@ -273,6 +279,20 @@
         "NETWORK": "產生期間網路中斷。",
         "fallback": "產生失敗，請重試。"
       }
+    },
+    "polish": {
+      "layerLabel": "潤色版",
+      "originalLabel": "原文",
+      "polishedLabel": "潤色",
+      "runButton": "AI 潤色",
+      "runningLabel": "潤色中 {pct}%"
+    },
+    "whisperHint": {
+      "text": "這部影片以英文為主，因未安裝 Whisper 模型而使用了 SenseVoice 轉寫。Whisper 對英文識別明顯更好——要下載一個嗎？",
+      "action": "下載 Whisper",
+      "dismiss": "忽略",
+      "retranscribeText": "這部英文影片是在安裝 Whisper 之前用 SenseVoice 轉寫的。Whisper 對英文識別明顯更好——現在重新轉寫嗎？（會清掉已有的翻譯和潤色層）",
+      "retranscribeAction": "重新轉寫"
     }
   },
   "batch": {
@@ -333,27 +353,39 @@
       "models": "模型"
     },
     "models": {
-      "activeTitle": "目前啟用模型",
-      "notInstalledWarn": "{name} 未完整安裝，轉錄會失敗。請「下載更多」或在下方列表切換到已安裝的模型。",
-      "whisper": "Whisper 轉錄模型",
-      "llm": "AI 模型 (Qwen 2.5)",
-      "size": "{size}",
-      "active": "目前啟用",
-      "activeFile": "目前啟用：{name}",
-      "notConfigured": "未設定 — 請透過 setup wizard 設定 AI 模型。",
+      "noEngineInstalled": "未安裝任何引擎模型 — 請在下方下載 SenseVoice 或 Whisper 模型，否則轉寫會失敗。",
+      "whisper": "Whisper 模型",
+      "sensevoice": "SenseVoice 模型",
+      "llm": "AI 模型（Qwen3）",
+      "activeTitle": "目前使用的模型",
+      "active": "使用中",
       "switch": "切換",
-      "delete": "刪除",
-      "downloadMore": "下載更多",
-      "loading": "載入中…",
-      "empty": "尚無已安裝的模型，請點擊右上角下載",
-      "emptyLlm": "尚無已安裝的 AI 模型，請點擊右上角下載",
-      "refresh": "重新整理",
-      "deleteTitle": "刪除此模型？",
-      "deleteDesc": "「{name}」（{size}）將從本機移除，下次使用前須重新下載。",
-      "cancel": "取消",
-      "confirm": "刪除",
       "switchFailed": "切換失敗：{error}",
-      "deleteFailed": "刪除失敗：{error}"
+      "delete": "刪除",
+      "deleteTitle": "刪除模型",
+      "deleteDesc": "確定刪除 {name}（{size}）？刪除後可隨時重新下載。",
+      "deleteFailed": "刪除失敗：{error}",
+      "confirm": "刪除",
+      "cancel": "取消",
+      "refresh": "重新整理",
+      "downloadMore": "下載更多",
+      "empty": "尚未安裝任何 Whisper 模型。",
+      "emptyLlm": "尚未安裝任何 AI 模型。",
+      "loading": "載入中…",
+      "notConfigured": "未設定",
+      "notInstalledWarn": "{name} 尚未安裝——請先下載，否則轉寫會失敗。",
+      "sensevoiceNotInstalled": "SenseVoice 尚未就緒——請在下方模型區下載。",
+      "sensevoiceFastCn": "中文更快",
+      "sensevoiceEmpty": "SenseVoice 尚未安裝。",
+      "sensevoiceDownload": "下載 SenseVoice（約 250 MB）",
+      "sensevoiceDownloading": "正在下載 SenseVoice…",
+      "sensevoiceInstallFailed": "下載失敗：{error}",
+      "sensevoiceIsActive": "SenseVoice 是目前轉寫引擎，無法刪除。",
+      "llmNeedsDownload": "目前 AI 模型 {model} 的檔案缺失——請重新下載以恢復翻譯與摘要功能。",
+      "llmDownloadNow": "立即下載",
+      "legacyLlmTitle": "舊版 Qwen2.5 模型檔案",
+      "legacyLlmHint": "可安全刪除以釋放磁碟空間。",
+      "legacyLlmNone": "沒有可刪除的舊版模型檔案。"
     },
     "hardware": "硬體",
     "tier": "等級",
@@ -368,7 +400,7 @@
     "whisperModel": "Whisper 模型",
     "whisperHint": "越大越精準但越慢。變更僅對新轉錄任務生效。",
     "llmModel": "AI 模型",
-    "llmHint": "由 in-process llama-server 提供的本地 Qwen 2.5 量化模型。推薦：{model}。",
+    "llmHint": "由 in-process llama-server 提供的本地 Qwen 3 量化模型。推薦：{model}。",
     "cacheLimit": "快取大小上限",
     "silenceThreshold": "靜音門檻",
     "chunkingStrategy": {
@@ -429,6 +461,17 @@
       "showing": "已顯示最近 {count} / {total} 行",
       "truncatedNote": "還有更早的記錄未顯示。可加大行數或匯出完整 ZIP。",
       "writerUnhealthy": "日誌寫入持續失敗——近期事件可能未寫入磁碟。"
+    },
+    "transcribeEngine": "轉寫引擎",
+    "transcribeEngineHint": "自動：中日韓語音走 SenseVoice，英文走 Whisper（若已安裝）。SenseVoice/Whisper 則固定單引擎。",
+    "polish": {
+      "title": "AI 轉寫潤色",
+      "autoTitle": "轉寫完成後自動潤色",
+      "autoDesc": "用本機 AI 修正錯字、統一中英文寫法並補上標點。原文完整保留，可在播放器隨時切回。",
+      "needsLlm": "需先在「模型」頁安裝 AI 模型。",
+      "hintsTitle": "專有名詞提示（可選）",
+      "hintsPlaceholder": "如：廬州府學、布林運算、講者姓名……",
+      "hintsHint": "幫助 AI 按正確寫法修正地名、術語與人名。"
     }
   },
   "help": {
@@ -440,6 +483,13 @@
       "changelog": "更新紀錄"
     },
     "changelog": {
+      "v050": {
+        "qwen3": "大模型升級到 Qwen3：翻譯、潤色、AI 摘要的多語言品質大幅提升，同等級模型體積近乎減半，8GB 記憶體機型也能跑 8B 級。",
+        "sensevoice": "新增 SenseVoice 轉寫引擎（預設「自動」模式）：中文識別又快又準，依音訊語言自動在 SenseVoice / Whisper 間分發，英文內容自動用 Whisper 取得詞級時間軸。",
+        "polish": "新增 AI 字幕潤色：轉寫完成後自動用本地大模型校對同音錯字、修復被拆散的英文（\"a i\" → \"AI\"）、補全標點；可在設定裡加入領域術語提示，播放器裡可一鍵開關潤色層。",
+        "speed": "轉寫與翻譯全面提速：whisper 轉寫改為常駐推理服務 + 記憶體切片（實測快 25-60%），模型常駐不再逐段冷啟動；翻譯/潤色啟動零冷啟動等待。",
+        "stability": "翻譯/潤色更穩：大模型輸出加結構化約束（JSON Schema），從源頭消滅「數錯行數」導致的重試與漏譯；LLM 服務異常時秒級報錯並帶原因，不再靜默等待 30 秒。"
+      },
       "title": "更新紀錄",
       "body": "近期版本的重要變更。完整提交紀錄以程式碼倉庫為準。",
       "v048": {
@@ -500,9 +550,9 @@
     "setupWizard": {
       "welcome": "首次設定",
       "manageTitle": "管理模型",
-      "stepLabel1": "Whisper 轉錄",
+      "stepLabel1": "轉寫引擎",
       "stepLabel2": "AI 模型",
-      "subtitleStep1": "選擇轉錄模型 (Whisper)",
+      "subtitleStep1": "選擇轉寫引擎與模型",
       "subtitleStep2": "選擇 AI 模型（翻譯 & 摘要）",
       "recommended": "推薦",
       "foundAt": "已在本機偵測到：",
@@ -531,7 +581,17 @@
       "remainingMins": "剩餘 {m} 分 {s} 秒",
       "perSecond": "/秒",
       "checkingEvery5s": "每 5 秒自動檢查一次 — 請保持本視窗開啟。",
-      "installedAt": "{name} 已安裝於"
+      "installedAt": "{name} 已安裝於",
+      "engineChoiceTitle": "轉寫引擎",
+      "engineWhisperName": "Whisper",
+      "engineWhisperDesc": "99 種語言 · 詞級時間戳 · 模型 77MB–1.6GB",
+      "engineSensevoiceName": "SenseVoice",
+      "engineSensevoiceBadge": "推薦",
+      "engineSensevoiceDesc": "中/英/日/韓/粵 · CPU 提速約 15 倍 · 單模型 166MB",
+      "svModelMeta": "固定 int8 模型 · 約 166MB · 自動語言偵測（中/英/日/韓/粵）",
+      "svReadyHint": "已安裝，可直接使用 — 點擊「下一步」繼續。",
+      "svNotInstalledHint": "未安裝 — 點擊下方「下載」取得（約 166MB）。",
+      "installed": "已安裝"
     },
     "llm": {
       "selectModel": "選擇 AI 模型",
@@ -558,6 +618,7 @@
       "depsHeader": "使用以下開源元件",
       "licenseLine": "© 2026 twoer · 基於",
       "buttons": {
+        "documentation": "說明文件",
         "repository": "程式碼倉庫",
         "license": "開源授權",
         "reportIssue": "回報問題"

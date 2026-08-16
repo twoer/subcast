@@ -6,6 +6,7 @@ export type {
   QueueActiveTask as ActiveTask,
   QueueInsightTaskSummary as InsightTaskSummary,
   QueueLLMTaskKind as LLMTaskKind,
+  QueuePolishTaskSummary as PolishTaskSummary,
   QueueTranscribeTaskSummary as TranscribeTaskSummary,
   QueueTranslateTaskSummary as TranslateTaskSummary,
 } from './queueTypes';

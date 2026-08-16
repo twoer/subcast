@@ -12,6 +12,17 @@ const { t } = useI18n();
 
 const CHANGELOG = [
   {
+    version: '0.5.0',
+    date: '2026-08-16',
+    items: [
+      'help.changelog.v050.qwen3',
+      'help.changelog.v050.sensevoice',
+      'help.changelog.v050.polish',
+      'help.changelog.v050.speed',
+      'help.changelog.v050.stability',
+    ],
+  },
+  {
     version: '0.4.8',
     date: '2026-06-22',
     items: [

@@ -18,7 +18,7 @@
  * Idempotent: skips when an existing binary is the expected size.
  */
 
-import { createWriteStream, existsSync, statSync, chmodSync, mkdtempSync, readdirSync, copyFileSync, rmSync } from 'node:fs';
+import { createWriteStream, existsSync, statSync, chmodSync, mkdtempSync, mkdirSync, readdirSync, copyFileSync, rmSync } from 'node:fs';
 import { mkdir, rename, rm } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
@@ -28,16 +28,18 @@ import { pipeline } from 'node:stream/promises';
 import process from 'node:process';
 import { fetchWithTimeout } from './_fetchWithTimeout.mjs';
 
-const LLAMA_CPP_VERSION = 'b4524';
+const LLAMA_CPP_VERSION = 'b10435';
 const REPO = process.cwd();
 
-// Upstream release-asset filenames. Windows AVX2 build is the right
-// baseline for v1 (broad CPU support, no GPU dependencies). Switch the
-// win32-x64 entry to `cuda-cu12.4` later if/when we ship a GPU variant.
+// Upstream release-asset filenames. Upstream renamed the assets around
+// b5xxx: macOS switched from .zip to .tar.gz and the Windows baseline
+// from `bin-win-avx2-x64` to `bin-win-cpu-x64` (still the AVX2 CPU
+// build — broad CPU support, no GPU dependencies). Switch the win32-x64
+// entry to `cuda-cu12.4` later if/when we ship a GPU variant.
 const ASSETS = {
-  'darwin-arm64': `llama-${LLAMA_CPP_VERSION}-bin-macos-arm64.zip`,
-  'darwin-x64':   `llama-${LLAMA_CPP_VERSION}-bin-macos-x64.zip`,
-  'win32-x64':    `llama-${LLAMA_CPP_VERSION}-bin-win-avx2-x64.zip`,
+  'darwin-arm64': `llama-${LLAMA_CPP_VERSION}-bin-macos-arm64.tar.gz`,
+  'darwin-x64':   `llama-${LLAMA_CPP_VERSION}-bin-macos-x64.tar.gz`,
+  'win32-x64':    `llama-${LLAMA_CPP_VERSION}-bin-win-cpu-x64.zip`,
 };
 // CN-friendly GitHub proxy. Direct github.com release downloads are
 // often <50 KB/s without a proxy; gh-proxy.com routes through a CN
@@ -50,7 +52,11 @@ const GH_DIRECT = `https://github.com/ggml-org/llama.cpp/releases/download/${LLA
 const URL_BASE = process.env.SUBCAST_GH_MIRROR === 'direct'
   ? GH_DIRECT
   : `${GH_PROXY}/${GH_DIRECT}`;
-const MIN_BYTES = 1 * 1024 * 1024;   // packed llama-server is ~5MB; allow margin
+const MIN_BYTES = 1 * 1024 * 1024;   // win exe is a static ~5MB; allow margin
+// macOS builds are dynamically linked since ~b5xxx: llama-server is a
+// thin ~30KB launcher over libllama-server-impl.dylib, so the floor is
+// tiny there — integrity is guaranteed by the dylib staging below.
+const MIN_BYTES_DARWIN = 16 * 1024;
 const MAX_BYTES = 80 * 1024 * 1024;
 
 const target = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : `${process.platform}-${process.arch}`;
@@ -67,7 +73,11 @@ const dest = join(REPO, 'binaries', target, `llama-server${ext}`);
 
 if (!FORCE && existsSync(dest)) {
   const size = statSync(dest).size;
-  if (size >= MIN_BYTES && size <= MAX_BYTES) {
+  const minBytes = target.startsWith('darwin') ? MIN_BYTES_DARWIN : MIN_BYTES;
+  // macOS also needs the dylib siblings (see staging below).
+  const libsOk = !target.startsWith('darwin')
+    || (existsSync(join(dirname(dest), 'llama-libs')) && statSync(join(dirname(dest), 'llama-libs')).isDirectory());
+  if (size >= minBytes && size <= MAX_BYTES && libsOk) {
     console.log(`[fetch-llama-server] already present (${(size / 1024 / 1024).toFixed(1)} MB) at ${dest} — skipping. Pass --force to re-download.`);
     process.exit(0);
   }
@@ -140,11 +150,14 @@ if (actualBytes < MIN_PLAUSIBLE_ZIP) {
 }
 console.log(`[fetch-llama-server] download complete: ${actualBytes} bytes`);
 
-// Extract the zip. macOS / Linux have `unzip` preinstalled; Windows
-// has `tar -xf` (which speaks zip) since Windows 10 1803.
+// Extract the archive. tar.gz via `tar -xf` (universal); zip via
+// `unzip` on macOS/Linux and `tar -xf` (which speaks zip) on
+// Windows 10 1803+.
 console.log(`[fetch-llama-server] extracting ${assetName}`);
 try {
-  if (process.platform === 'win32') {
+  if (assetName.endsWith('.tar.gz')) {
+    execFileSync('tar', ['-xzf', zipPath, '-C', stage], { stdio: 'inherit' });
+  } else if (process.platform === 'win32') {
     execFileSync('tar', ['-xf', zipPath, '-C', stage], { stdio: 'inherit' });
   } else {
     execFileSync('unzip', ['-q', zipPath, '-d', stage], { stdio: 'inherit' });
@@ -181,8 +194,9 @@ if (!found) {
 }
 
 const size = statSync(found).size;
-if (size < MIN_BYTES || size > MAX_BYTES) {
-  console.error(`[fetch-llama-server] extracted ${wantedName} size ${size}B outside [${MIN_BYTES}, ${MAX_BYTES}] — likely corrupt`);
+const minBytes = target.startsWith('darwin') ? MIN_BYTES_DARWIN : MIN_BYTES;
+if (size < minBytes || size > MAX_BYTES) {
+  console.error(`[fetch-llama-server] extracted ${wantedName} size ${size}B outside [${minBytes}, ${MAX_BYTES}] — likely corrupt`);
   rmSync(stage, { recursive: true, force: true });
   process.exit(1);
 }
@@ -192,5 +206,36 @@ await rm(tmpDest, { force: true });
 copyFileSync(found, tmpDest);
 await rename(tmpDest, dest);
 chmodSync(dest, 0o755);
+
+// macOS builds are dynamically linked since ~b5xxx: llama-server needs
+// libllama + libggml*.dylib siblings, exactly like whisper-cli. Stage
+// every dylib (including versioned symlink chains) into llama-libs/ next
+// to the binary; afterPack rewrites rpaths to @loader_path/llama-libs.
+// Windows zip stays single-file static (verified b4524; re-check when
+// bumping LLAMA_CPP_VERSION if the win asset ever grows a dll).
+const libDir = join(dirname(dest), 'llama-libs');
+if (target.startsWith('darwin')) {
+  const foundRoot = dirname(found);
+  const dylibs = readdirSync(foundRoot).filter((f) => f.endsWith('.dylib'));
+  if (dylibs.length === 0) {
+    console.error(`[fetch-llama-server] no dylibs found next to ${wantedName} — upstream layout changed?`);
+    rmSync(stage, { recursive: true, force: true });
+    process.exit(1);
+  }
+  rmSync(libDir, { recursive: true, force: true });
+  mkdirSync(libDir, { recursive: true });
+  for (const d of dylibs) {
+    // cp -a preserves the versioned-symlink relationship upstream ships
+    // (libggml.dylib -> libggml.0.dylib -> libggml.0.20.0.dylib).
+    execFileSync('cp', ['-a', join(foundRoot, d), join(libDir, d)]);
+  }
+  // Bake the relative rpath in now so dev mode can spawn the binary
+  // straight from binaries/ (packaged apps re-run the same surgery in
+  // afterPack, which is idempotent against this value).
+  execFileSync('install_name_tool', ['-add_rpath', '@loader_path/llama-libs', dest]);
+  console.log(`[fetch-llama-server] staged ${dylibs.length} dylibs into ${libDir}`);
+} else {
+  rmSync(libDir, { recursive: true, force: true });
+}
 rmSync(stage, { recursive: true, force: true });
 console.log(`[fetch-llama-server] saved to ${dest} (${(size / 1024 / 1024).toFixed(1)} MB)`);

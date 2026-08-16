@@ -9,17 +9,21 @@ import { getDb, SUBCAST_PATHS } from './db';
 import { logEvent } from './log';
 import { buildInsightMessages } from './insights';
 import { runInsightWorker, type InsightWorkerParams } from './insightTasks';
-import { translateAll } from './translate';
+import { polishAll, BATCH_SIZE as POLISH_BATCH_SIZE } from './polish';
+import { loadSettings } from './settings';
+import { translateAll, SUPER_BATCH_SIZE } from './translate';
 import { parseVtt, serializeVtt } from './vtt';
 import { isLlmConfigError, type TaskErrorCode } from '#shared/errorCodes';
+import { POLISH_LAYER_LANG } from '#shared/polishLayer';
 import type { SseFrame } from './sse';
 import type {
   QueueActiveLLMTask as ActiveLLMTask,
   QueueInsightTaskSummary as InsightTaskSummary,
   QueueLLMTaskKind as LLMTaskKind,
+  QueuePolishTaskSummary as PolishTaskSummary,
   QueueTranslateTaskSummary as TranslateTaskSummary,
 } from './queueTypes';
-import type { InsightTaskRow, TranslateTaskRow } from '../types/db';
+import type { InsightTaskRow, PolishTaskRow, TranslateTaskRow } from '../types/db';
 
 // ─────────────────────────────────────────────────────────────────────
 // LLMQueue — single-concurrent worker for translate + insight tasks.
@@ -150,6 +154,53 @@ export class LLMQueue {
     );
   }
 
+  /**
+   * Canonical polish task for a video (one polished layer per sha — no
+   * target-lang dimension). Translate-style status vocabulary. Re-enqueues
+   * failed/canceled rows so the player's manual "AI 润色" button doubles as
+   * the retry path.
+   */
+  ensurePolishTask(videoSha: string, model?: string): PolishTaskSummary {
+    const effectiveModel = model ?? 'llm';
+    const db = getDb();
+    const existing = db
+      .prepare(
+        `SELECT id, video_sha, status, model, progress_pct, error_msg
+         FROM polish_tasks WHERE video_sha = ?`,
+      )
+      .get(videoSha) as PolishTaskSummary | undefined;
+    if (existing) {
+      if (existing.status === 'failed' || existing.status === 'canceled') {
+        db.prepare(
+          `UPDATE polish_tasks SET status='queued', error_msg=NULL, progress_pct=0 WHERE id=?`,
+        ).run(existing.id);
+        logEvent({
+          level: 'info',
+          event: 'polish_resurrected',
+          taskId: existing.id,
+          fromStatus: existing.status,
+        });
+        existing.status = 'queued';
+        existing.error_msg = null;
+        existing.progress_pct = 0;
+      }
+      return existing;
+    }
+    const id = randomUUID();
+    db.prepare(
+      `INSERT INTO polish_tasks (id, video_sha, status, model, created_at)
+       VALUES (?, ?, 'queued', ?, ?)`,
+    ).run(id, videoSha, effectiveModel, Date.now());
+    return {
+      id,
+      video_sha: videoSha,
+      status: 'queued',
+      model: effectiveModel,
+      progress_pct: 0,
+      error_msg: null,
+    };
+  }
+
   cancel(taskId: string): boolean {
     const db = getDb();
     const tRow = db
@@ -162,6 +213,20 @@ export class LLMQueue {
       db.prepare(`UPDATE translate_tasks SET status='canceled' WHERE id=?`).run(taskId);
       if (this.active?.taskId === taskId) this.active.abort.abort();
       logEvent({ level: 'info', event: 'translate_canceled', taskId });
+      return true;
+    }
+    const pRow = db
+      .prepare(`SELECT status FROM polish_tasks WHERE id=?`)
+      .get(taskId) as Pick<PolishTaskRow, 'status'> | undefined;
+    if (pRow) {
+      if (pRow.status === 'completed' || pRow.status === 'failed' || pRow.status === 'canceled') {
+        return false;
+      }
+      db.prepare(
+        `UPDATE polish_tasks SET status='canceled', completed_at=? WHERE id=?`,
+      ).run(Date.now(), taskId);
+      if (this.active?.taskId === taskId) this.active.abort.abort();
+      logEvent({ level: 'info', event: 'polish_canceled', taskId });
       return true;
     }
     const iRow = db
@@ -192,6 +257,10 @@ export class LLMQueue {
                   priority AS sort_priority
            FROM translate_tasks WHERE status='queued'
            UNION ALL
+           SELECT id, 'polish' AS kind, video_sha, created_at,
+                  1 AS sort_priority
+           FROM polish_tasks WHERE status='queued'
+           UNION ALL
            SELECT id, 'insight' AS kind, video_sha, created_at,
                   0 AS sort_priority
            FROM insight_tasks WHERE status='queued'
@@ -204,6 +273,8 @@ export class LLMQueue {
 
     if (next.kind === 'translate') {
       return this.startTranslate(next.id);
+    } else if (next.kind === 'polish') {
+      return this.startPolish(next.id);
     } else {
       return this.startInsight(next.id);
     }
@@ -377,7 +448,10 @@ export class LLMQueue {
         throw new Error('ORIGINAL_NOT_READY');
       }
       const origCues = parseVtt(readFileSync(origPath, 'utf8'));
-      const totalBatches = Math.max(1, Math.ceil(origCues.length / 40));
+      // Must match translateAll's super-batch size — the initial 'status'
+      // frame's totalBatches has to agree with the batch-progress frames
+      // the worker emits later, or the player's progress bar jumps.
+      const totalBatches = Math.max(1, Math.ceil(origCues.length / SUPER_BATCH_SIZE));
 
       emit({
         event: 'status',
@@ -499,6 +573,145 @@ export class LLMQueue {
     }
   }
 
+  private async startPolish(taskId: string): Promise<void> {
+    const db = getDb();
+    const row = db
+      .prepare(
+        `SELECT id, video_sha, model FROM polish_tasks WHERE id = ?`,
+      )
+      .get(taskId) as { id: string; video_sha: string; model: string };
+    db.prepare(`UPDATE polish_tasks SET status='running' WHERE id=?`).run(taskId);
+    const activeSlot: ActiveLLMTask = {
+      taskId,
+      kind: 'polish',
+      videoSha: row.video_sha,
+      model: row.model,
+      emitter: new EventEmitter(),
+      abort: new AbortController(),
+      doneCues: [],
+      donePromise: Promise.resolve(),
+    };
+    this.active = activeSlot;
+    this.queueEvents.emit('active-changed');
+    const wp = this.runPolishWorker(activeSlot);
+    activeSlot.donePromise = wp.catch(() => {});
+    wp.catch((err) => {
+      logEvent({
+        level: 'error',
+        event: 'llm_worker_crashed',
+        kind: 'polish',
+        taskId,
+        msg: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+    });
+  }
+
+  private async runPolishWorker(active: ActiveLLMTask): Promise<void> {
+    const taskId = active.taskId;
+    const videoSha = active.videoSha;
+    const model = active.model!;
+    const db = getDb();
+    const emit = (frame: SseFrame) => active.emitter.emit('frame', frame);
+
+    try {
+      const origPath = join(SUBCAST_PATHS.cache, videoSha, 'original.vtt');
+      if (!existsSync(origPath)) {
+        throw new Error('ORIGINAL_NOT_READY');
+      }
+      const origCues = parseVtt(readFileSync(origPath, 'utf8'));
+      const hints = loadSettings().polishHints;
+      const totalBatches = Math.max(1, Math.ceil(origCues.length / POLISH_BATCH_SIZE));
+
+      emit({
+        event: 'status',
+        data: { taskId, status: 'running', model, fromCache: false, totalBatches },
+      });
+
+      const out = await polishAll(origCues, {
+        hints,
+        signal: active.abort.signal,
+        onBatchDone: (info) => {
+          active.doneCues!.push(...info.cues);
+          emit({
+            event: 'cue-polished',
+            data: {
+              taskId,
+              batchIdx: info.batchIdx,
+              cues: info.cues.map((c) => ({
+                startMs: c.startMs,
+                endMs: c.endMs,
+                text: c.text,
+              })),
+            },
+          });
+          const pct = Math.round(((info.batchIdx + 1) / info.totalBatches) * 100);
+          emit({
+            event: 'batch-progress',
+            data: { taskId, doneBatches: info.batchIdx + 1, totalBatches: info.totalBatches, progressPct: pct },
+          });
+          db.prepare(`UPDATE polish_tasks SET progress_pct = ? WHERE id = ?`).run(
+            pct,
+            taskId,
+          );
+        },
+      });
+
+      const cacheDir = join(SUBCAST_PATHS.cache, videoSha);
+      await mkdir(cacheDir, { recursive: true });
+      await writeFile(join(cacheDir, `${POLISH_LAYER_LANG}.vtt`), serializeVtt(out), 'utf8');
+      db.prepare(
+        `INSERT INTO subtitles (video_sha, lang, kind, cues_count, completed_at)
+         VALUES (?, ?, 'polished', ?, ?)
+         ON CONFLICT(video_sha, lang) DO UPDATE SET
+           cues_count = excluded.cues_count,
+           completed_at = excluded.completed_at`,
+      ).run(videoSha, POLISH_LAYER_LANG, out.length, Date.now());
+      db.prepare(
+        `UPDATE polish_tasks SET status='completed', progress_pct=100, completed_at=? WHERE id=?`,
+      ).run(Date.now(), taskId);
+
+      emit({ event: 'done', data: { taskId, totalCues: out.length } });
+      logEvent({
+        level: 'info',
+        event: 'polish_completed',
+        taskId,
+        cues: out.length,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const code: TaskErrorCode | 'CANCELED' =
+        msg === 'CANCELED' || active.abort.signal.aborted
+          ? 'CANCELED'
+          : msg === 'ORIGINAL_NOT_READY'
+            ? 'ORIGINAL_NOT_READY'
+            : isLlmConfigError(msg)
+              ? 'MODEL_NOT_CONFIGURED'
+              : 'FATAL_UNKNOWN';
+      if (code === 'CANCELED') {
+        // status row already 'canceled' by cancel()
+        emit({ event: 'status', data: { taskId, status: 'canceled' } });
+      } else {
+        db.prepare(`UPDATE polish_tasks SET status='failed', error_msg=?, error_code=? WHERE id=?`)
+          .run(msg, code, taskId);
+        emit({ event: 'error', data: { taskId, code, msg } });
+      }
+      logEvent({ level: 'error', event: 'polish_failed', taskId, code, msg });
+    } finally {
+      active.emitter.emit('end');
+      this.active = null;
+      this.queueEvents.emit('active-changed');
+      this.tryStartNext().catch((err) => {
+        logEvent({
+          level: 'error',
+          event: 'polish_trystartnext_failed',
+          msg: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+        });
+      });
+    }
+  }
+
   async *attach(taskId: string): AsyncIterable<SseFrame> {
     const db = getDb();
     const tRow = db
@@ -506,6 +719,13 @@ export class LLMQueue {
       .get(taskId);
     if (tRow) {
       yield* this.attachTranslate(taskId);
+      return;
+    }
+    const pRow = db
+      .prepare(`SELECT 1 FROM polish_tasks WHERE id=?`)
+      .get(taskId);
+    if (pRow) {
+      yield* this.attachPolish(taskId);
       return;
     }
     const iRow = db
@@ -660,6 +880,169 @@ export class LLMQueue {
     if (live.doneCues && live.doneCues.length > 0) {
       yield {
         event: 'cue-translated',
+        data: {
+          taskId,
+          batchIdx: -1,
+          cues: live.doneCues.map((c) => ({
+            startMs: c.startMs,
+            endMs: c.endMs,
+            text: c.text,
+          })),
+        },
+      };
+    }
+
+    const buffer: SseFrame[] = [];
+    let resolveNext: (() => void) | null = null;
+    let finished = false;
+    const onFrame = (f: SseFrame) => {
+      buffer.push(f);
+      if (resolveNext) {
+        resolveNext();
+        resolveNext = null;
+      }
+    };
+    const onEnd = () => {
+      finished = true;
+      if (resolveNext) {
+        resolveNext();
+        resolveNext = null;
+      }
+    };
+    live.emitter.on('frame', onFrame);
+    live.emitter.once('end', onEnd);
+    try {
+      while (true) {
+        while (buffer.length > 0) yield buffer.shift()!;
+        if (finished) break;
+        await new Promise<void>((r) => {
+          resolveNext = r;
+        });
+      }
+    } finally {
+      live.emitter.off('frame', onFrame);
+      live.emitter.off('end', onEnd);
+    }
+  }
+
+  /**
+   * Attach to a polish task. Mirrors attachTranslate: completed rows
+   * replay from `polished.vtt`, missing files self-heal by re-queueing,
+   * queued/running rows live-tail the worker emitter.
+   */
+  private async *attachPolish(taskId: string): AsyncIterable<SseFrame> {
+    const db = getDb();
+    const task = db
+      .prepare(
+        `SELECT id, video_sha, status, model, progress_pct, error_msg
+         FROM polish_tasks WHERE id = ?`,
+      )
+      .get(taskId) as PolishTaskSummary | undefined;
+    if (!task) {
+      yield {
+        event: 'error',
+        data: { taskId, code: 'TASK_NOT_FOUND', msg: 'polish task missing' },
+      };
+      return;
+    }
+
+    const vttPath = join(SUBCAST_PATHS.cache, task.video_sha, `${POLISH_LAYER_LANG}.vtt`);
+    if (task.status === 'completed') {
+      if (existsSync(vttPath)) {
+        const cues = parseVtt(await readFile(vttPath, 'utf8'));
+        yield {
+          event: 'status',
+          data: { taskId, status: 'running', model: task.model, fromCache: true },
+        };
+        yield {
+          event: 'cue-polished',
+          data: {
+            taskId,
+            batchIdx: 0,
+            cues: cues.map((c) => ({ startMs: c.startMs, endMs: c.endMs, text: c.text })),
+          },
+        };
+        yield { event: 'done', data: { taskId, totalCues: cues.length, fromCache: true } };
+        return;
+      }
+      logEvent({
+        level: 'warn',
+        event: 'result_file_missing_resurrect',
+        kind: 'polish',
+        taskId,
+        expectedPath: vttPath,
+      });
+      getDb()
+        .prepare(
+          `UPDATE polish_tasks SET status='queued', progress_pct=0, error_msg=NULL WHERE id=?`,
+        )
+        .run(taskId);
+      yield { event: 'status', data: { taskId, status: 'queued' } };
+      await this.tryStartNext();
+    }
+    if (task.status === 'failed') {
+      yield {
+        event: 'error',
+        data: { taskId, code: 'FATAL_UNKNOWN', msg: task.error_msg ?? 'previous run failed' },
+      };
+      return;
+    }
+    if (task.status === 'canceled') {
+      yield { event: 'status', data: { taskId, status: 'canceled' } };
+      return;
+    }
+
+    if (task.status === 'queued' && (!this.active || this.active.taskId !== taskId)) {
+      yield {
+        event: 'status',
+        data: { taskId, status: 'queued', model: task.model, fromCache: false },
+      };
+    }
+
+    if (!this.active || this.active.taskId !== taskId) {
+      await this.tryStartNext();
+    }
+    if (!this.active || this.active.taskId !== taskId) {
+      const waitAbort = new AbortController();
+      const result = await this.waitForSlot(
+        taskId,
+        () =>
+          (
+            getDb()
+              .prepare(`SELECT status FROM polish_tasks WHERE id=?`)
+              .get(taskId) as { status?: string } | undefined
+          )?.status,
+        waitAbort.signal,
+      );
+      if (result === 'terminal') {
+        const fresh = getDb()
+          .prepare(`SELECT status, error_msg FROM polish_tasks WHERE id=?`)
+          .get(taskId) as { status: string; error_msg: string | null } | undefined;
+        if (fresh?.status === 'completed') {
+          yield* this.attachPolish(taskId);
+        } else if (fresh?.status === 'canceled') {
+          yield { event: 'status', data: { taskId, status: 'canceled' } };
+        } else {
+          yield {
+            event: 'error',
+            data: { taskId, code: 'FATAL_UNKNOWN', msg: fresh?.error_msg ?? 'previous run failed' },
+          };
+        }
+        return;
+      }
+      if (result === 'aborted') return;
+    }
+
+    const live = this.active!;
+    if (task.progress_pct > 0) {
+      yield {
+        event: 'batch-progress',
+        data: { taskId, progressPct: task.progress_pct },
+      };
+    }
+    if (live.doneCues && live.doneCues.length > 0) {
+      yield {
+        event: 'cue-polished',
         data: {
           taskId,
           batchIdx: -1,
@@ -862,6 +1245,10 @@ export class LLMQueue {
     const db = getDb();
     if (kind === 'translate') {
       db.prepare(`UPDATE translate_tasks SET status='canceled' WHERE id=?`).run(id);
+    } else if (kind === 'polish') {
+      db.prepare(
+        `UPDATE polish_tasks SET status='canceled', completed_at=? WHERE id=?`,
+      ).run(Date.now(), id);
     } else {
       db.prepare(
         `UPDATE insight_tasks SET status='canceled', completed_at=? WHERE id=?`,
@@ -905,12 +1292,20 @@ export class LLMQueue {
         .prepare(`SELECT COUNT(*) AS n FROM insight_tasks WHERE status IN ('queued','running')`)
         .get() as { n: number }
     ).n;
-    if (translateCount + insightCount === 0) return;
+    const polishCount = (
+      db
+        .prepare(`SELECT COUNT(*) AS n FROM polish_tasks WHERE status IN ('queued','running')`)
+        .get() as { n: number }
+    ).n;
+    if (translateCount + insightCount + polishCount === 0) return;
     db.prepare(
       `UPDATE translate_tasks SET status='canceled' WHERE status IN ('queued','running')`,
     ).run();
     db.prepare(
       `UPDATE insight_tasks SET status='canceled', completed_at=? WHERE status IN ('queued','running')`,
+    ).run(Date.now());
+    db.prepare(
+      `UPDATE polish_tasks SET status='canceled', completed_at=? WHERE status IN ('queued','running')`,
     ).run(Date.now());
     const active = this.active;
     if (active) active.abort.abort();
@@ -920,6 +1315,7 @@ export class LLMQueue {
       reason,
       translateCount,
       insightCount,
+      polishCount,
     });
     await active?.donePromise;
   }

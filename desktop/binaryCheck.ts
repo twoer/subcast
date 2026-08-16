@@ -25,7 +25,16 @@ const IS_WIN = process.platform === 'win32';
 
 /** Set of binaries the packaged app cannot function without. */
 const REQUIRED_BINARIES = ['whisper-cli', 'ffmpeg', 'ffprobe', 'llama-server'] as const;
-export type BinaryName = (typeof REQUIRED_BINARIES)[number];
+/**
+ * Checked + surfaced but never gating: whisper-server is an accelerator
+ * (resident model → no per-chunk spawn); when absent, transcription
+ * silently falls back to whisper-cli, so a missing copy is a warning,
+ * not a broken app.
+ */
+const OPTIONAL_BINARIES = ['whisper-server'] as const;
+export type BinaryName =
+  | (typeof REQUIRED_BINARIES)[number]
+  | (typeof OPTIONAL_BINARIES)[number];
 
 export interface BinaryStatus {
   name: BinaryName;
@@ -57,13 +66,17 @@ function isExecutable(path: string): boolean {
  * result so this stays trivial to unit-test.
  */
 export function checkBundledBinaries(resourcesPath: string): BinaryCheckResult {
-  const statuses: BinaryStatus[] = REQUIRED_BINARIES.map((name) => {
+  const statuses: BinaryStatus[] = [...REQUIRED_BINARIES, ...OPTIONAL_BINARIES].map((name) => {
     const path = join(resourcesPath, `${name}${EXE_SUFFIX}`);
     const exists = existsSync(path);
     const executable = exists && isExecutable(path);
     return { name, path, exists, executable };
   });
-  const missing = statuses.filter((s) => !s.exists || !s.executable);
+  const missing = statuses.filter(
+    (s) =>
+      (REQUIRED_BINARIES as readonly string[]).includes(s.name) &&
+      (!s.exists || !s.executable),
+  );
   return { ok: missing.length === 0, resourcesPath, statuses, missing };
 }
 
