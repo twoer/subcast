@@ -257,7 +257,9 @@ export class LLMQueue {
     if (existing) {
       if (existing.status === 'failed' || existing.status === 'canceled') {
         db.prepare(
-          `UPDATE translate_tasks SET status='queued', error_msg=NULL, progress_pct=0 WHERE id=?`,
+          `UPDATE translate_tasks
+           SET status='queued', error_msg=NULL, error_code=NULL, progress_pct=0
+           WHERE id=?`,
         ).run(existing.id);
         logEvent({
           level: 'info',
@@ -329,7 +331,9 @@ export class LLMQueue {
     if (existing) {
       if (existing.status === 'error' || existing.status === 'canceled') {
         db.prepare(
-          `UPDATE insight_tasks SET status='queued', error_msg=NULL WHERE id=?`,
+          `UPDATE insight_tasks
+           SET status='queued', error_msg=NULL, error_code=NULL
+           WHERE id=?`,
         ).run(existing.id);
         logEvent({
           level: 'info',
@@ -411,7 +415,9 @@ export class LLMQueue {
     if (existing) {
       if (existing.status === 'failed' || existing.status === 'canceled') {
         db.prepare(
-          `UPDATE polish_tasks SET status='queued', error_msg=NULL, progress_pct=0 WHERE id=?`,
+          `UPDATE polish_tasks
+           SET status='queued', error_msg=NULL, error_code=NULL, progress_pct=0
+           WHERE id=?`,
         ).run(existing.id);
         logEvent({
           level: 'info',
@@ -752,7 +758,9 @@ export class LLMQueue {
            completed_at = excluded.completed_at`,
       ).run(videoSha, lang, out.length, Date.now());
       db.prepare(
-        `UPDATE translate_tasks SET status='completed', progress_pct=100, completed_at=? WHERE id=?`,
+        `UPDATE translate_tasks
+         SET status='completed', error_msg=NULL, error_code=NULL, progress_pct=100, completed_at=?
+         WHERE id=?`,
       ).run(Date.now(), taskId);
 
       emit({ event: 'done', data: { taskId, totalCues: out.length } });
@@ -1055,7 +1063,9 @@ export class LLMQueue {
            completed_at = excluded.completed_at`,
       ).run(videoSha, POLISH_LAYER_LANG, out.length, Date.now());
       db.prepare(
-        `UPDATE polish_tasks SET status='completed', progress_pct=100, completed_at=? WHERE id=?`,
+        `UPDATE polish_tasks
+         SET status='completed', error_msg=NULL, error_code=NULL, progress_pct=100, completed_at=?
+         WHERE id=?`,
       ).run(Date.now(), taskId);
 
       emit({ event: 'done', data: { taskId, totalCues: out.length } });
@@ -1322,7 +1332,9 @@ export class LLMQueue {
       });
       getDb()
         .prepare(
-          `UPDATE translate_tasks SET status='queued', progress_pct=0, error_msg=NULL WHERE id=?`,
+          `UPDATE translate_tasks
+           SET status='queued', progress_pct=0, error_msg=NULL, error_code=NULL
+           WHERE id=?`,
         )
         .run(taskId);
       yield { event: 'status', data: { taskId, status: 'queued' } };
@@ -1504,7 +1516,9 @@ export class LLMQueue {
       });
       getDb()
         .prepare(
-          `UPDATE polish_tasks SET status='queued', progress_pct=0, error_msg=NULL WHERE id=?`,
+          `UPDATE polish_tasks
+           SET status='queued', progress_pct=0, error_msg=NULL, error_code=NULL
+           WHERE id=?`,
         )
         .run(taskId);
       yield { event: 'status', data: { taskId, status: 'queued' } };
@@ -1689,7 +1703,11 @@ export class LLMQueue {
         expectedPath: path,
       });
       getDb()
-        .prepare(`UPDATE insight_tasks SET status='queued', error_msg=NULL WHERE id=?`)
+        .prepare(
+          `UPDATE insight_tasks
+           SET status='queued', error_msg=NULL, error_code=NULL
+           WHERE id=?`,
+        )
         .run(taskId);
       yield { event: 'status', data: { taskId, status: 'queued' } };
       await this.tryStartNext();

@@ -29,7 +29,9 @@
     "translateFailed": "翻译失败",
     "translatedCount": "+{n} 译文",
     "aiRunning": "AI 总结中",
-    "aiReady": "AI 总结"
+    "aiReady": "AI 总结",
+    "aiFailed": "AI 失败",
+    "aiModelMissing": "缺少 AI 模型"
   },
   "library": {
     "title": "资源库",
@@ -263,6 +265,11 @@
       "generatingReading": "正在读取转写文本...",
       "generatingSummary": "正在生成摘要...",
       "generatingChapters": "正在生成章节...",
+      "generatingReadingChunks": "正在读取转写分段...",
+      "generatingCombining": "正在合并分段摘要...",
+      "generatingChunkProgress": "已处理 {done}/{total} 段",
+      "generatingCombiningDetail": "正在把 {total} 段摘要合并成最终结果",
+      "generatingFinal": "正在生成最终摘要与章节",
       "cancel": "取消",
       "regenerate": "重新生成",
       "copy": "复制",
@@ -390,6 +397,11 @@
       "sensevoiceIsActive": "SenseVoice 是当前转写引擎，无法删除。",
       "llmNeedsDownload": "当前 AI 模型 {model} 的文件缺失——请重新下载以恢复翻译与摘要功能。",
       "llmDownloadNow": "立即下载",
+      "taskPolicyTitle": "AI 任务模型",
+      "taskPolicyTranslate": "翻译",
+      "taskPolicyPolish": "字幕润色",
+      "taskPolicyInsight": "洞察",
+      "taskPolicyFallback": "回退",
       "legacyLlmTitle": "旧版 Qwen2.5 模型文件",
       "legacyLlmHint": "可安全删除以释放磁盘空间。",
       "legacyLlmNone": "没有可删除的旧版模型文件。"

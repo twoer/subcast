@@ -21,6 +21,7 @@ import { existsSync } from 'node:fs';
 import { loadSettings } from '../../utils/settings';
 import { listInstalledWhisperModels } from '../../utils/whisperInstalled';
 import { isSenseVoiceReady, senseVoiceModelDir } from '../../utils/sensevoice';
+import { taskModelPolicyDecisions } from '../../utils/taskModelPolicy';
 import { scanLlmModels, findLegacyQwen25Models } from '../../../desktop/modelManager/llmScan';
 import { LLM_MODELS, type LlmModelId } from '#shared/llmModels';
 import { llmModelPath, llmModelsDir } from '../../../desktop/modelManager/llmInstall';
@@ -97,6 +98,13 @@ export default defineEventHandler(async (event) => {
       active: settings.llmModel,
       installed: llmInstalled,
       needsDownload: llmNeedsDownload,
+      taskPolicies: settings.llmModel
+        ? taskModelPolicyDecisions({
+            configuredModel: settings.llmModel,
+            installedModels: llmInstalled.map((m) => m.name),
+            dryRun: true,
+          })
+        : [],
       legacy: legacyLlm.map((f) => ({ filename: f.filename, sizeBytes: f.sizeBytes })),
     },
   };

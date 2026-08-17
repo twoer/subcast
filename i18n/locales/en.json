@@ -29,7 +29,9 @@
     "translateFailed": "Translate failed",
     "translatedCount": "+{n} translated",
     "aiRunning": "AI summarizing",
-    "aiReady": "AI summary"
+    "aiReady": "AI summary",
+    "aiFailed": "AI failed",
+    "aiModelMissing": "AI model missing"
   },
   "library": {
     "title": "Library",
@@ -263,6 +265,11 @@
       "generatingReading": "Reading transcript...",
       "generatingSummary": "Writing summary...",
       "generatingChapters": "Writing chapters...",
+      "generatingReadingChunks": "Reading transcript chunks...",
+      "generatingCombining": "Combining chunk summaries...",
+      "generatingChunkProgress": "Processed {done} of {total} chunks",
+      "generatingCombiningDetail": "Combining {total} chunk summaries into the final result",
+      "generatingFinal": "Generating final summary and chapters",
       "cancel": "Cancel",
       "regenerate": "Regenerate",
       "copy": "Copy",
@@ -390,6 +397,11 @@
       "sensevoiceIsActive": "SenseVoice is the active transcription engine and cannot be deleted.",
       "llmNeedsDownload": "The active AI model {model} is missing on disk — re-download it to restore translation and summaries.",
       "llmDownloadNow": "Download now",
+      "taskPolicyTitle": "AI task models",
+      "taskPolicyTranslate": "Translate",
+      "taskPolicyPolish": "Polish transcript",
+      "taskPolicyInsight": "Insight",
+      "taskPolicyFallback": "Fallback",
       "legacyLlmTitle": "Legacy Qwen2.5 model files",
       "legacyLlmHint": "Safe to delete to free up disk space.",
       "legacyLlmNone": "No legacy model files to delete."

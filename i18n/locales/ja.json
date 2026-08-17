@@ -29,7 +29,9 @@
     "translateFailed": "翻訳に失敗しました",
     "translatedCount": "+{n} 翻訳済み",
     "aiRunning": "AI 要約中",
-    "aiReady": "AI 要約"
+    "aiReady": "AI 要約",
+    "aiFailed": "AI 失敗",
+    "aiModelMissing": "AI モデル未設定"
   },
   "library": {
     "title": "ライブラリ",
@@ -263,6 +265,11 @@
       "generatingReading": "文字起こしを読み込み中...",
       "generatingSummary": "要約を生成中...",
       "generatingChapters": "章を生成中...",
+      "generatingReadingChunks": "文字起こしの分割を読み込み中...",
+      "generatingCombining": "分割要約を結合中...",
+      "generatingChunkProgress": "{total} 件中 {done} 件を処理済み",
+      "generatingCombiningDetail": "{total} 件の分割要約を最終結果にまとめています",
+      "generatingFinal": "最終要約と章を生成中",
       "cancel": "キャンセル",
       "regenerate": "再生成",
       "copy": "コピー",
@@ -390,6 +397,11 @@
       "sensevoiceIsActive": "SenseVoice は現在の文字起こしエンジンのため削除できません。",
       "llmNeedsDownload": "現在使用中の AI モデル {model} のファイルが見つかりません。再ダウンロードしてください。",
       "llmDownloadNow": "今すぐダウンロード",
+      "taskPolicyTitle": "AI タスクモデル",
+      "taskPolicyTranslate": "翻訳",
+      "taskPolicyPolish": "字幕の整え",
+      "taskPolicyInsight": "インサイト",
+      "taskPolicyFallback": "代替",
       "legacyLlmTitle": "旧 Qwen2.5 モデルファイル",
       "legacyLlmHint": "削除しても安全です（ディスク容量を解放します）。",
       "legacyLlmNone": "削除できる旧モデルファイルはありません。"

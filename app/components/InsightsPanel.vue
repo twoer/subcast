@@ -47,6 +47,8 @@ const streamedText = ref<string>('');
 const insights = ref<Insights | null>(null);
 const insightPhase = ref<'map' | 'reduce' | null>(null);
 const insightProgressPct = ref<number | null>(null);
+const insightDoneWindows = ref<number | null>(null);
+const insightTotalWindows = ref<number | null>(null);
 let es: EventSource | null = null;
 let currentTaskId: string | null = null;
 
@@ -121,6 +123,8 @@ function startStream(silent = false) {
     streamedText.value = '';
     insightPhase.value = null;
     insightProgressPct.value = null;
+    insightDoneWindows.value = null;
+    insightTotalWindows.value = null;
     errorCode.value = null;
   }
   es = new EventSource(`/api/insights?hash=${encodeURIComponent(props.hash)}`);
@@ -137,17 +141,25 @@ function startStream(silent = false) {
     const data = JSON.parse((e as MessageEvent).data) as {
       phase?: 'map' | 'reduce';
       progressPct?: number;
+      doneWindows?: number;
+      totalWindows?: number;
     };
     insightPhase.value = data.phase ?? null;
     insightProgressPct.value = typeof data.progressPct === 'number' ? data.progressPct : insightProgressPct.value;
+    if (typeof data.doneWindows === 'number') insightDoneWindows.value = data.doneWindows;
+    if (typeof data.totalWindows === 'number') insightTotalWindows.value = data.totalWindows;
   });
   es.addEventListener('progress', (e) => {
     const data = JSON.parse((e as MessageEvent).data) as {
       phase?: 'map' | 'reduce';
       progressPct?: number;
+      doneWindows?: number;
+      totalWindows?: number;
     };
     insightPhase.value = data.phase ?? insightPhase.value;
     if (typeof data.progressPct === 'number') insightProgressPct.value = data.progressPct;
+    if (typeof data.doneWindows === 'number') insightDoneWindows.value = data.doneWindows;
+    if (typeof data.totalWindows === 'number') insightTotalWindows.value = data.totalWindows;
   });
   es.addEventListener('done', (e) => {
     const data = JSON.parse((e as MessageEvent).data);
@@ -155,6 +167,8 @@ function startStream(silent = false) {
     state.value = isOutdated.value ? 'outdated' : 'ready';
     insightPhase.value = null;
     insightProgressPct.value = null;
+    insightDoneWindows.value = null;
+    insightTotalWindows.value = null;
     closeStream();
   });
   es.addEventListener('error', (e) => {
@@ -190,6 +204,8 @@ async function cancel() {
   streamedText.value = '';
   insightPhase.value = null;
   insightProgressPct.value = null;
+  insightDoneWindows.value = null;
+  insightTotalWindows.value = null;
   currentTaskId = null;
 }
 
@@ -243,6 +259,8 @@ async function confirmClear() {
   streamedText.value = '';
   insightPhase.value = null;
   insightProgressPct.value = null;
+  insightDoneWindows.value = null;
+  insightTotalWindows.value = null;
   state.value = 'empty';
 }
 
@@ -331,11 +349,28 @@ const streamingInsights = computed(() => {
 });
 
 const generatingLabel = computed(() => {
-  if (insightPhase.value === 'reduce') return t('player.insights.generatingSummary');
-  if (insightPhase.value === 'map') return t('player.insights.generatingReading');
+  if (insightPhase.value === 'reduce') return t('player.insights.generatingCombining');
+  if (insightPhase.value === 'map') return t('player.insights.generatingReadingChunks');
   if (streamingInsights.value.hasChaptersHeading) return t('player.insights.generatingChapters');
   if (streamingInsights.value.hasSummaryHeading) return t('player.insights.generatingSummary');
   return t('player.insights.generatingReading');
+});
+
+const generatingDetailLabel = computed(() => {
+  const total = insightTotalWindows.value;
+  if (insightPhase.value === 'map' && total && total > 1) {
+    return t('player.insights.generatingChunkProgress', {
+      done: insightDoneWindows.value ?? 0,
+      total,
+    });
+  }
+  if (insightPhase.value === 'reduce' && total && total > 1) {
+    return t('player.insights.generatingCombiningDetail', { total });
+  }
+  if (streamingInsights.value.hasChaptersHeading || streamingInsights.value.hasSummaryHeading) {
+    return t('player.insights.generatingFinal');
+  }
+  return '';
 });
 
 const generatingProgressLabel = computed(() =>
@@ -384,14 +419,21 @@ const generatingProgressLabel = computed(() =>
     <!-- generating: skeleton + progressive fill matching the ready layout -->
     <div v-else-if="state === 'generating'" class="flex flex-1 flex-col min-h-0">
       <!-- status header (fixed) -->
-      <div class="shrink-0 flex items-center gap-2 px-1 pb-3 text-sm">
-        <span class="relative flex h-2 w-2 shrink-0">
+      <div class="shrink-0 flex items-start gap-2 px-1 pb-3 text-sm">
+        <span class="relative mt-1.5 flex h-2 w-2 shrink-0">
           <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/50" />
           <span class="relative inline-flex h-2 w-2 rounded-full bg-primary" />
         </span>
-        <span class="font-medium text-foreground">{{ generatingLabel }}</span>
-        <span v-if="generatingProgressLabel" class="shrink-0 tabular-nums text-xs text-muted-foreground">{{ generatingProgressLabel }}</span>
-        <span class="shrink-0 tabular-nums text-xs text-muted-foreground">{{ elapsedSeconds }}s</span>
+        <div class="min-w-0 flex-1">
+          <div class="flex min-w-0 items-center gap-2">
+            <span class="truncate font-medium text-foreground">{{ generatingLabel }}</span>
+            <span v-if="generatingProgressLabel" class="shrink-0 tabular-nums text-xs text-muted-foreground">{{ generatingProgressLabel }}</span>
+            <span class="shrink-0 tabular-nums text-xs text-muted-foreground">{{ elapsedSeconds }}s</span>
+          </div>
+          <p v-if="generatingDetailLabel" class="mt-0.5 truncate text-xs text-muted-foreground">
+            {{ generatingDetailLabel }}
+          </p>
+        </div>
       </div>
       <!-- scrollable body -->
       <div class="flex flex-1 min-h-0 flex-col gap-4 overflow-y-auto px-1 pb-3 pr-3">

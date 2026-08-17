@@ -30,10 +30,11 @@ export interface FileStatus {
   transcribeError?: string | null;
   translateRunning?: { targetLang: string; progress: number };
   translateQueued?: { targetLang: string };
-  translateFailed?: boolean;
+  translateFailed?: { targetLang: string; errorCode?: string | null };
   /** Count of translated subtitles (langs total minus the original). 0 if nothing transcribed yet. */
   translatedCount: number;
-  insight: 'none' | 'running' | 'done';
+  insight: 'none' | 'running' | 'done' | 'failed';
+  insightErrorCode?: string | null;
 }
 
 export function getFileStatus(item: CacheItemLike, queue: QueueItemLike[]): FileStatus {
@@ -70,9 +71,19 @@ export function getFileStatus(item: CacheItemLike, queue: QueueItemLike[]): File
   const trFailed = mine.find((q) => q.kind === 'translate' && q.status === 'failed');
   const translatedCount = item.langs.length > 0 ? Math.max(0, item.langs.length - 1) : 0;
 
+  const insightRunning = mine.find((q) =>
+    q.kind === 'insight' && (q.status === 'queued' || q.status === 'running')
+  );
+  const insightFailed = mine.find((q) =>
+    q.kind === 'insight' && (q.status === 'error' || q.status === 'failed')
+  );
   let insight: FileStatus['insight'] = 'none';
-  if (item.hasRunningInsight) insight = 'running';
-  else if (item.hasInsights) insight = 'done';
+  let insightErrorCode: string | null | undefined;
+  if (item.hasRunningInsight || insightRunning) insight = 'running';
+  else if (insightFailed) {
+    insight = 'failed';
+    insightErrorCode = insightFailed.errorCode ?? null;
+  } else if (item.hasInsights) insight = 'done';
 
   return {
     transcribe,
@@ -84,8 +95,11 @@ export function getFileStatus(item: CacheItemLike, queue: QueueItemLike[]): File
     translateQueued: !trRunning && trQueued
       ? { targetLang: trQueued.targetLang ?? '?' }
       : undefined,
-    translateFailed: !trRunning && !trQueued && !!trFailed,
+    translateFailed: !trRunning && !trQueued && trFailed
+      ? { targetLang: trFailed.targetLang ?? '?', errorCode: trFailed.errorCode ?? null }
+      : undefined,
     translatedCount,
     insight,
+    insightErrorCode,
   };
 }

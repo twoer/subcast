@@ -19,8 +19,9 @@
  * with the Preferences tab.
  */
 
+import type { Component } from 'vue';
 import {
-  Plus, Boxes, RefreshCw, Trash2, AlertTriangle, CheckCircle2,
+  Plus, Boxes, RefreshCw, Trash2, AlertTriangle, CheckCircle2, Languages, Sparkles, WandSparkles,
 } from 'lucide-vue-next';
 import {
   Select,
@@ -31,10 +32,11 @@ import {
 } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { WHISPER_MODEL_NAMES } from '#shared/whisperModels';
-import { LLM_MODELS, llmDisplayName, type LlmModelId } from '#shared/llmModels';
+import { LLM_MODELS, llmDisplayName, type LlmModelId, type LlmTaskKind } from '#shared/llmModels';
 import { Badge } from '~/components/ui/badge';
 import { fmtBytes } from '~/utils/format';
 import type { Settings, Hardware, TranscribeEngine } from '@/types/settings';
+import type { LlmTaskPolicyDecision } from '@/types/setupWizard';
 
 const draft = defineModel<Settings | null>('draft', { required: true });
 const settings = defineModel<Settings | null>('settings', { required: true });
@@ -60,6 +62,7 @@ interface ModelsResp {
     active: LlmModelId | undefined;
     installed: LlmModelRow[];
     needsDownload?: boolean;
+    taskPolicies?: LlmTaskPolicyDecision[];
     legacy?: LegacyLlmRow[];
   };
 }
@@ -94,6 +97,14 @@ const { set: setActiveModelsCache, refresh: refreshActiveModels } = useActiveMod
 
 const WHISPER_MODELS = WHISPER_MODEL_NAMES;
 const LLM_MODEL_IDS = Object.keys(LLM_MODELS) as LlmModelId[];
+type UserFacingLlmTask = Extract<LlmTaskKind, 'translate' | 'polish' | 'insight'>;
+type UserFacingLlmTaskPolicy = LlmTaskPolicyDecision & { task: UserFacingLlmTask };
+const USER_FACING_LLM_TASKS = ['translate', 'polish', 'insight'] as const satisfies readonly UserFacingLlmTask[];
+const LLM_TASK_ICONS: Record<UserFacingLlmTask, Component> = {
+  translate: Languages,
+  polish: WandSparkles,
+  insight: Sparkles,
+};
 
 const modelsData = ref<ModelsResp | null>(null);
 const modelsLoading = ref(false);
@@ -109,6 +120,13 @@ const llmInstall = ref<LlmInstallSnapshot | null>(null);
 let llmPollTimer: ReturnType<typeof setInterval> | null = null;
 
 const llmNeedsDownload = computed(() => modelsData.value?.llm.needsDownload === true);
+const llmTaskPolicyRows = computed<UserFacingLlmTaskPolicy[]>(() => {
+  const policies = modelsData.value?.llm.taskPolicies ?? [];
+  return USER_FACING_LLM_TASKS.flatMap((task) => {
+    const policy = policies.find((p): p is UserFacingLlmTaskPolicy => p.task === task);
+    return policy ? [policy] : [];
+  });
+});
 const legacyLlmFiles = computed(() => modelsData.value?.llm.legacy ?? []);
 const legacyLlmTotal = computed(() =>
   legacyLlmFiles.value.reduce((sum, f) => sum + f.sizeBytes, 0),
@@ -126,6 +144,12 @@ function engineName(id: TranscribeEngine): string {
   if (id === 'auto') return t('app.engineAutoName');
   if (id === 'sensevoice') return 'SenseVoice';
   return 'Whisper';
+}
+
+function llmTaskPolicyLabel(task: UserFacingLlmTask): string {
+  if (task === 'translate') return t('settings.models.taskPolicyTranslate');
+  if (task === 'polish') return t('settings.models.taskPolicyPolish');
+  return t('settings.models.taskPolicyInsight');
 }
 
 const senseVoiceReady = computed(() => modelsData.value?.sensevoice?.ready ?? false);
@@ -435,6 +459,66 @@ onMounted(() => {
         <p class="text-xs text-muted-foreground">
           {{ t('settings.llmHint', { model: hardware?.recommended.llmModel ?? '' }) }}
         </p>
+
+        <div
+          v-if="llmNeedsDownload || llmTaskPolicyRows.length > 0"
+          class="mt-3 space-y-3 border-t border-border/50 pt-3"
+        >
+          <Alert
+            v-if="llmNeedsDownload && !(llmInstall && llmInstall.state === 'running')"
+            variant="destructive"
+          >
+            <AlertTriangle class="h-4 w-4 shrink-0" />
+            <AlertDescription class="flex items-center gap-3">
+              <span class="flex-1">
+                {{ t('settings.models.llmNeedsDownload', { model: modelsData?.llm.active ?? '' }) }}
+              </span>
+              <Button size="xs" @click="downloadActiveLlm">
+                {{ t('settings.models.llmDownloadNow') }}
+              </Button>
+            </AlertDescription>
+          </Alert>
+
+          <div
+            v-if="llmTaskPolicyRows.length > 0"
+            class="space-y-1.5"
+            :class="{ 'opacity-60': llmNeedsDownload }"
+          >
+            <div class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {{ t('settings.models.taskPolicyTitle') }}
+            </div>
+            <div class="space-y-1">
+              <div
+                v-for="policy in llmTaskPolicyRows"
+                :key="policy.task"
+                class="flex items-center justify-between gap-3 rounded-md bg-accent/30 px-2 py-1.5"
+              >
+                <span class="flex min-w-0 items-center gap-2 text-sm text-foreground">
+                  <component
+                    :is="LLM_TASK_ICONS[policy.task]"
+                    class="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <span class="truncate">{{ llmTaskPolicyLabel(policy.task) }}</span>
+                </span>
+                <span class="inline-flex shrink-0 items-center gap-1.5">
+                  <span class="font-mono text-xs text-muted-foreground">
+                    {{ llmDisplayName(policy.modelId) }}
+                  </span>
+                  <Badge
+                    v-if="policy.fallback"
+                    variant="secondary"
+                    size="sm"
+                    class="uppercase tracking-wider"
+                  >
+                    <AlertTriangle class="h-3 w-3 shrink-0" />
+                    {{ t('settings.models.taskPolicyFallback') }}
+                  </Badge>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="flex items-center gap-3 border-t border-border/50 pt-4">
@@ -619,22 +703,6 @@ onMounted(() => {
           <Boxes class="h-3.5 w-3.5" />
           {{ t('settings.models.llm') }}
         </h2>
-
-        <Alert
-          v-if="llmNeedsDownload && !(llmInstall && llmInstall.state === 'running')"
-          variant="destructive"
-          class="flex-1"
-        >
-          <AlertTriangle class="h-4 w-4" />
-          <AlertDescription class="flex items-center gap-3">
-            <span class="flex-1">
-              {{ t('settings.models.llmNeedsDownload', { model: modelsData?.llm.active ?? '' }) }}
-            </span>
-            <Button size="xs" @click="downloadActiveLlm">
-              {{ t('settings.models.llmDownloadNow') }}
-            </Button>
-          </AlertDescription>
-        </Alert>
 
         <div
           v-if="llmInstall && llmInstall.state === 'running'"

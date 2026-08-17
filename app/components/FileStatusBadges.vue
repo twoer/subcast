@@ -12,14 +12,14 @@ defineProps<{ status: FileStatus }>();
       v-if="status.transcribe === 'running'"
       class="inline-flex items-center gap-1 rounded-sm border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-3xs font-medium text-primary"
     >
-      <Loader2 class="h-3 w-3 animate-spin" />
+      <Loader2 class="h-3 w-3 shrink-0 animate-spin" />
       {{ $t('fileStatus.transcribing', { pct: status.transcribeProgress ?? 0 }) }}
     </span>
     <span
       v-else-if="status.transcribe === 'queued'"
       class="inline-flex items-center gap-1 rounded-sm border border-border bg-muted/60 px-1.5 py-0.5 text-3xs font-medium text-muted-foreground"
     >
-      <Clock class="h-3 w-3" />
+      <Clock class="h-3 w-3 shrink-0" />
       {{ $t('fileStatus.transcribeQueued') }}
     </span>
     <span
@@ -27,14 +27,14 @@ defineProps<{ status: FileStatus }>();
       class="inline-flex items-center gap-1 rounded-sm border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 text-3xs font-medium text-destructive"
       :title="status.transcribeError ?? undefined"
     >
-      <AlertCircle class="h-3 w-3" />
+      <AlertCircle class="h-3 w-3 shrink-0" />
       {{ $t('fileStatus.transcribeFailed') }}
     </span>
     <span
       v-else-if="status.transcribe === 'done'"
       class="inline-flex items-center gap-1 rounded-sm border border-success/30 bg-success/10 px-1.5 py-0.5 text-3xs font-medium text-success"
     >
-      <Check class="h-3 w-3" />
+      <Check class="h-3 w-3 shrink-0" />
       {{ $t('fileStatus.transcribed') }}
     </span>
 
@@ -42,7 +42,7 @@ defineProps<{ status: FileStatus }>();
       v-if="status.translateRunning"
       class="inline-flex items-center gap-1 rounded-sm border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-3xs font-medium text-primary"
     >
-      <Loader2 class="h-3 w-3 animate-spin" />
+      <Loader2 class="h-3 w-3 shrink-0 animate-spin" />
       {{
         $t('fileStatus.translating', {
           lang: status.translateRunning.targetLang,
@@ -54,37 +54,54 @@ defineProps<{ status: FileStatus }>();
       v-else-if="status.translateQueued"
       class="inline-flex items-center gap-1 rounded-sm border border-border bg-muted/60 px-1.5 py-0.5 text-3xs font-medium text-muted-foreground"
     >
-      <Clock class="h-3 w-3" />
+      <Clock class="h-3 w-3 shrink-0" />
       {{ $t('fileStatus.translateQueued', { lang: status.translateQueued.targetLang }) }}
+    </span>
+    <span
+      v-else-if="status.translateFailed"
+      class="inline-flex items-center gap-1 rounded-sm border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 text-3xs font-medium text-destructive"
+      :title="status.translateFailed.errorCode ? $t(`player.errors.${status.translateFailed.errorCode}`) : undefined"
+    >
+      <AlertCircle class="h-3 w-3 shrink-0" />
+      {{
+        status.translateFailed.errorCode === 'MODEL_NOT_CONFIGURED'
+          ? $t('fileStatus.aiModelMissing')
+          : $t('fileStatus.translateFailed')
+      }}
     </span>
     <span
       v-else-if="status.translatedCount > 0"
       class="inline-flex items-center gap-1 rounded-sm border border-border bg-muted/60 px-1.5 py-0.5 text-3xs font-medium text-muted-foreground"
     >
-      <Languages class="h-3 w-3" />
+      <Languages class="h-3 w-3 shrink-0" />
       {{ $t('fileStatus.translatedCount', { n: status.translatedCount }) }}
-    </span>
-    <span
-      v-else-if="status.translateFailed"
-      class="inline-flex items-center gap-1 rounded-sm border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 text-3xs font-medium text-destructive"
-    >
-      <AlertCircle class="h-3 w-3" />
-      {{ $t('fileStatus.translateFailed') }}
     </span>
 
     <span
       v-if="status.insight === 'running'"
       class="inline-flex items-center gap-1 rounded-sm border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-3xs font-medium text-primary"
     >
-      <Loader2 class="h-3 w-3 animate-spin" />
+      <Loader2 class="h-3 w-3 shrink-0 animate-spin" />
       {{ $t('fileStatus.aiRunning') }}
     </span>
     <span
       v-else-if="status.insight === 'done'"
       class="inline-flex items-center gap-1 rounded-sm border border-border bg-muted/60 px-1.5 py-0.5 text-3xs font-medium text-muted-foreground"
     >
-      <Sparkles class="h-3 w-3" />
+      <Sparkles class="h-3 w-3 shrink-0" />
       {{ $t('fileStatus.aiReady') }}
+    </span>
+    <span
+      v-else-if="status.insight === 'failed'"
+      class="inline-flex items-center gap-1 rounded-sm border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 text-3xs font-medium text-destructive"
+      :title="status.insightErrorCode ? $t(`player.errors.${status.insightErrorCode}`) : undefined"
+    >
+      <AlertCircle class="h-3 w-3 shrink-0" />
+      {{
+        status.insightErrorCode === 'MODEL_NOT_CONFIGURED'
+          ? $t('fileStatus.aiModelMissing')
+          : $t('fileStatus.aiFailed')
+      }}
     </span>
   </div>
 </template>

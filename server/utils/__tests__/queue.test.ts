@@ -172,13 +172,30 @@ describe('translateQueue.ensureTask + bumpPriority', () => {
     const db = getDb();
     const t = translateQueue.ensureTask(HASH_A, 'zh-CN');
     db.prepare(
-      `UPDATE translate_tasks SET status='failed', error_msg='llm crashed', progress_pct=42 WHERE id=?`,
+      `UPDATE translate_tasks
+       SET status='failed', error_msg='llm crashed', error_code='MODEL_NOT_CONFIGURED', progress_pct=42
+       WHERE id=?`,
     ).run(t.id);
 
     const r = translateQueue.ensureTask(HASH_A, 'zh-CN');
     expect(r.status).toBe('queued');
     expect(r.error_msg).toBe(null);
     expect(r.progress_pct).toBe(0);
+
+    const row = db
+      .prepare(`SELECT status, error_msg, error_code, progress_pct FROM translate_tasks WHERE id=?`)
+      .get(t.id) as {
+        status: string;
+        error_msg: string | null;
+        error_code: string | null;
+        progress_pct: number;
+      };
+    expect(row).toMatchObject({
+      status: 'queued',
+      error_msg: null,
+      error_code: null,
+      progress_pct: 0,
+    });
   });
 
   it('treats (videoSha, lang) as the uniqueness key — same hash + different lang = different row', () => {

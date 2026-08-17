@@ -190,6 +190,49 @@ describe('/api/insights SSE', () => {
     expect(kinds).not.toContain('token');
     expect(events.map((e) => e.data).join('\n')).not.toContain('VIDEO_TOO_LONG');
 
+    const phaseFrames = events
+      .filter((e) => e.event === 'phase')
+      .map((e) => JSON.parse(e.data) as {
+        phase: 'map' | 'reduce';
+        doneWindows: number;
+        totalWindows: number;
+        progressPct: number;
+      });
+    const progressFrames = events
+      .filter((e) => e.event === 'progress')
+      .map((e) => JSON.parse(e.data) as {
+        phase: 'map' | 'reduce';
+        doneWindows: number;
+        totalWindows: number;
+        progressPct: number;
+      });
+    expect(phaseFrames).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          phase: 'reduce',
+          doneWindows: expect.any(Number),
+          totalWindows: expect.any(Number),
+          progressPct: 90,
+        }),
+      ]),
+    );
+    expect(progressFrames).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          phase: 'map',
+          doneWindows: expect.any(Number),
+          totalWindows: expect.any(Number),
+          progressPct: expect.any(Number),
+        }),
+        expect.objectContaining({
+          phase: 'reduce',
+          doneWindows: expect.any(Number),
+          totalWindows: expect.any(Number),
+          progressPct: 100,
+        }),
+      ]),
+    );
+
     const done = JSON.parse(events[events.length - 1]!.data);
     expect(done.insights.summary).toContain('Mock summary');
     expect(llmCalls.length).toBeGreaterThan(1);

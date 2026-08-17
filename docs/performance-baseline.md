@@ -82,6 +82,43 @@ Environment: MacBook Pro · Apple M3 Pro · 36 GB RAM · macOS arm64.
 | Artifact cache switch check | PASS with caveat | Re-request reused matching 8b fingerprinted artifact; switching setting to uninstalled 4b did not reuse 8b artifact and surfaced `MODEL_NOT_CONFIGURED` |
 | User-visible issues | Two fixed during smoke/review | Missing-model SSE error exposed sidecar stderr/path-like text; fixed by sanitizing user-visible LLM task errors and mapping model-load failures to `MODEL_NOT_CONFIGURED`. Final review also fixed `/api/queue/list` Insight rows so structured `errorCode` reaches the UI. |
 
+### v0.5.1 model UX hardening checkpoint — 2026-08-17
+
+> Scope: post-0.5.1 user-facing model UX hardening without a version bump. This covers Settings task-policy visibility, file/queue error clarity, long Insight progress copy, and API-level smoke on local media.
+
+Environment: MacBook Pro · Apple M3 Pro · 36 GB RAM · macOS arm64 · dev server with `SUBCAST_HOME=.dev-userdata`, `SUBCAST_DESKTOP=true`, `debugMode=false`.
+
+Commit range:
+
+- `origin/main..a99fa78` in this branch at the checkpoint.
+- User-facing hardening commits: `efc9b69`, `adb0e08`, `22c2a77`, `a99fa78`.
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| `pnpm test` | PASS | 86 files passed, 2 smoke files skipped; 613 passed / 2 skipped |
+| `pnpm typecheck` | PASS with known warnings | Nuxt duplicated `SpawnResult` import warning; Vue/Volar `vue-router/volar/sfc-route-blocks` export warning |
+| `pnpm lint` | PASS with known warnings | 2 existing website warnings in `website/.vitepress/theme/components/HomeCompare.vue` |
+| Packaged artifact verification | Skipped | No packaging, sidecar path, builder config, or release asset changes in this hardening slice |
+
+| Runtime smoke item | Result | Notes |
+|--------------------|--------|-------|
+| Import test media | PASS | `/Users/zhangkun/Documents/Backup/downloads-260816/测试音频/sample-3s.mp3` and `0413_59s.mp3` imported through `/api/desktop/upload-from-path` |
+| Short-file transcribe | PASS | `sample-3s.mp3`, SenseVoice, 1 cue, ~1s |
+| Multi-chunk transcribe | PASS | `0413_59s.mp3`, SenseVoice, 7 chunks / 7 cues, ~1s |
+| Translate | PASS | `0413_59s.mp3` to `en-US`, Qwen3-8B, 7 translated cues, ~24s |
+| Polish | PASS | `0413_59s.mp3`, Qwen3-8B, 7 polished cues, ~13s |
+| Insight | PASS | `0413_59s.mp3`, Qwen3-8B, English Insight artifact written, ~21s |
+| Missing-model error | PASS | Temporarily switched active LLM to uninstalled `4b`; translate SSE returned `MODEL_NOT_CONFIGURED` with sanitized user message and no raw path/stderr markers |
+| Diagnostics export privacy scan | PASS | `debugMode=false`; no matches for local paths, test source directory, media filenames, prompt markers, transcript snippets, or Insight output snippets in exported diagnostic zip |
+
+Known warnings:
+
+- Full test run includes an existing `[log] write failed` stderr line in `server/utils/__tests__/llm-queue.test.ts` when a temp log directory is absent.
+- Full test run includes an expected downloader fallback stderr line in `desktop/modelManager/__tests__/llmInstall.test.ts`.
+- `pnpm typecheck` and `pnpm lint` warnings are unchanged from the prior checkpoint.
+
+Release decision: **no 0.5.2 yet**. The hardening work is useful and verified, but it is not a packaging/runtime emergency. Keep accumulating confidence and only prepare 0.5.2 if a follow-up packaged smoke or tester feedback shows these changes should ship immediately.
+
 ---
 
 ## Recipes

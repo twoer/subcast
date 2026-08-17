@@ -29,7 +29,9 @@
     "translateFailed": "Error al traducir",
     "translatedCount": "+{n} traducidos",
     "aiRunning": "Generando resumen con IA",
-    "aiReady": "Resumen IA"
+    "aiReady": "Resumen IA",
+    "aiFailed": "IA fallida",
+    "aiModelMissing": "Falta modelo IA"
   },
   "library": {
     "title": "Biblioteca",
@@ -263,6 +265,11 @@
       "generatingReading": "Leyendo la transcripción...",
       "generatingSummary": "Escribiendo el resumen...",
       "generatingChapters": "Escribiendo los capítulos...",
+      "generatingReadingChunks": "Leyendo fragmentos de la transcripción...",
+      "generatingCombining": "Combinando resúmenes de fragmentos...",
+      "generatingChunkProgress": "{done} de {total} fragmentos procesados",
+      "generatingCombiningDetail": "Combinando {total} resúmenes de fragmentos en el resultado final",
+      "generatingFinal": "Generando resumen y capítulos finales",
       "cancel": "Cancelar",
       "regenerate": "Regenerar",
       "copy": "Copiar",
@@ -390,6 +397,11 @@
       "sensevoiceIsActive": "SenseVoice es el motor de transcripción activo y no se puede eliminar.",
       "llmNeedsDownload": "Falta en disco el modelo de IA activo {model}: vuelve a descargarlo para restaurar traducción y resúmenes.",
       "llmDownloadNow": "Descargar ahora",
+      "taskPolicyTitle": "Modelos por tarea de IA",
+      "taskPolicyTranslate": "Traducir",
+      "taskPolicyPolish": "Pulir subtítulos",
+      "taskPolicyInsight": "Insights",
+      "taskPolicyFallback": "Reserva",
       "legacyLlmTitle": "Archivos de modelos Qwen2.5 antiguos",
       "legacyLlmHint": "Puedes eliminarlos para liberar espacio.",
       "legacyLlmNone": "No hay archivos de modelos antiguos para eliminar."

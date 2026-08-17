@@ -4,6 +4,7 @@
 import { AlertCircle, Check, Upload, ListVideo, X, Film, FileText, History, ArrowRight, FileStack, RotateCcw, Link2 } from 'lucide-vue-next';
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip';
 import { getFileStatus } from '~/utils/fileStatus';
+import { displayQueueModel } from '~/utils/modelDisplay';
 import { isTaskErrorCode } from '#shared/errorCodes';
 import { useQueueList, type QueueItem } from '~/composables/useQueueList';
 import { useBatchList } from '~/composables/useBatchList';
@@ -298,18 +299,6 @@ function friendlyBatchError(batch: BatchJobSummary): string {
 // conveys queued/running/done/failed via colour, so the line just names
 // the task ("what was/is being done") plus its parameters.
 //
-// Task rows store internal ids in the model column (engine name for
-// transcribe, the 'llm' placeholder for every Qwen3-backed task) — map
-// them to user-facing names before joining into the description.
-function displayModel(model: string): string {
-  switch (model) {
-    case 'sensevoice': return 'SenseVoice';
-    case 'whisper': return 'Whisper';
-    case 'llm': return 'Qwen3';
-    default: return model;
-  }
-}
-
 function displayDiarizeModelPart(model: string, index: 0 | 1): string {
   const parts = model.split(' · ');
   const part = parts[index] ?? model;
@@ -322,18 +311,18 @@ function displayDiarizeModelPart(model: string, index: 0 | 1): string {
 
 function fmtKindLabel(item: QueueItem): string {
   if (item.kind === 'insight') {
-    return `${insightLabel(item.uiLanguage)} · ${displayModel(item.model)}`;
+    return `${insightLabel(item.uiLanguage)} · ${displayQueueModel(item.model)}`;
   }
   if (item.kind === 'transcribe') {
-    return `${t('index.kindTranscribe')} · ${displayModel(item.model)}`;
+    return `${t('index.kindTranscribe')} · ${displayQueueModel(item.model)}`;
   }
   if (item.kind === 'diarize') {
     return t('index.kindDiarize');
   }
   if (item.kind === 'polish') {
-    return `${t('index.kindPolish')} · ${displayModel(item.model)}`;
+    return `${t('index.kindPolish')} · ${displayQueueModel(item.model)}`;
   }
-  return `${t('index.kindTranslate')} ${item.targetLang} · ${displayModel(item.model)}`;
+  return `${t('index.kindTranslate')} ${item.targetLang} · ${displayQueueModel(item.model)}`;
 }
 
 function statusBadgeClass(s: QueueItem['status']) {

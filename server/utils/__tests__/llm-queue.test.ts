@@ -158,12 +158,22 @@ describe('LLMQueue', () => {
     it('resurrects error row back to queued', () => {
       const t = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', '8b');
       getDb()
-        .prepare(`UPDATE insight_tasks SET status='error', error_msg='boom' WHERE id=?`)
+        .prepare(
+          `UPDATE insight_tasks
+           SET status='error', error_msg='boom', error_code='PARSE_FAILED'
+           WHERE id=?`,
+        )
         .run(t.id);
       const r = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', '8b');
       expect(r.id).toBe(t.id);
       expect(r.status).toBe('queued');
       expect(r.error_msg).toBeNull();
+
+      const row = getDb()
+        .prepare(`SELECT error_msg, error_code FROM insight_tasks WHERE id=?`)
+        .get(t.id) as { error_msg: string | null; error_code: string | null };
+      expect(row.error_msg).toBeNull();
+      expect(row.error_code).toBeNull();
     });
 
     it('resurrects canceled row back to queued', () => {
@@ -196,6 +206,34 @@ describe('LLMQueue', () => {
     });
   });
 
+  describe('ensurePolishTask', () => {
+    it('resurrects failed rows back to queued and clears stale errors', () => {
+      const t = llmQueue.ensurePolishTask(HASH_A, '8b');
+      getDb()
+        .prepare(
+          `UPDATE polish_tasks
+           SET status='failed', error_msg='boom', error_code='MODEL_NOT_CONFIGURED', progress_pct=37
+           WHERE id=?`,
+        )
+        .run(t.id);
+
+      const r = llmQueue.ensurePolishTask(HASH_A, '8b');
+      expect(r.id).toBe(t.id);
+      expect(r.status).toBe('queued');
+      expect(r.error_msg).toBeNull();
+      expect(r.progress_pct).toBe(0);
+
+      const row = getDb()
+        .prepare(`SELECT error_msg, error_code, progress_pct FROM polish_tasks WHERE id=?`)
+        .get(t.id) as {
+          error_msg: string | null;
+          error_code: string | null;
+          progress_pct: number;
+        };
+      expect(row).toMatchObject({ error_msg: null, error_code: null, progress_pct: 0 });
+    });
+  });
+
   describe('attach self-heal on missing result file', () => {
     let cacheDir: string;
 
@@ -219,38 +257,92 @@ describe('LLMQueue', () => {
     it('insight: done row + missing insights.json → demoted to queued', async () => {
       const t = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', '8b');
       getDb()
-        .prepare(`UPDATE insight_tasks SET status='done', completed_at=? WHERE id=?`)
+        .prepare(
+          `UPDATE insight_tasks
+           SET status='done', error_msg='old error', error_code='PARSE_FAILED', completed_at=?
+           WHERE id=?`,
+        )
         .run(Date.now(), t.id);
       // insights.json deliberately not written
       const frames: Array<{ event: string; data: { status?: string } }> = [];
       for await (const f of llmQueue.attach(t.id)) {
-        frames.push(f as { event: string; data: { status?: string } });
+        const frame = f as { event: string; data: { status?: string } };
+        frames.push(frame);
+        if (frame.event === 'status' && frame.data.status === 'queued') break;
         if (frames.length >= 5) break;
       }
       const queuedFrame = frames.find((f) => f.event === 'status' && f.data.status === 'queued');
       expect(queuedFrame).toBeDefined();
       const row = getDb()
-        .prepare(`SELECT status FROM insight_tasks WHERE id=?`)
-        .get(t.id) as { status: string };
+        .prepare(`SELECT status, error_msg, error_code FROM insight_tasks WHERE id=?`)
+        .get(t.id) as {
+          status: string;
+          error_msg: string | null;
+          error_code: string | null;
+        };
       expect(row.status).not.toBe('done');
+      expect(row.error_msg).toBeNull();
+      expect(row.error_code).toBeNull();
     });
 
     it('translate: completed row + missing {lang}.vtt → demoted to queued', async () => {
       const t = translateQueue.ensureTask(HASH_A, 'zh-CN');
       getDb()
-        .prepare(`UPDATE translate_tasks SET status='completed', completed_at=? WHERE id=?`)
+        .prepare(
+          `UPDATE translate_tasks
+           SET status='completed', error_msg='old error', error_code='MODEL_NOT_CONFIGURED', completed_at=?
+           WHERE id=?`,
+        )
         .run(Date.now(), t.id);
       const frames: Array<{ event: string; data: { status?: string } }> = [];
       for await (const f of llmQueue.attach(t.id)) {
-        frames.push(f as { event: string; data: { status?: string } });
+        const frame = f as { event: string; data: { status?: string } };
+        frames.push(frame);
+        if (frame.event === 'status' && frame.data.status === 'queued') break;
         if (frames.length >= 5) break;
       }
       const queuedFrame = frames.find((f) => f.event === 'status' && f.data.status === 'queued');
       expect(queuedFrame).toBeDefined();
       const row = getDb()
-        .prepare(`SELECT status FROM translate_tasks WHERE id=?`)
-        .get(t.id) as { status: string };
+        .prepare(`SELECT status, error_msg, error_code FROM translate_tasks WHERE id=?`)
+        .get(t.id) as {
+          status: string;
+          error_msg: string | null;
+          error_code: string | null;
+        };
       expect(row.status).not.toBe('completed');
+      expect(row.error_msg).toBeNull();
+      expect(row.error_code).toBeNull();
+    });
+
+    it('polish: completed row + missing polished.vtt → demoted to queued', async () => {
+      const t = llmQueue.ensurePolishTask(HASH_A, '8b');
+      getDb()
+        .prepare(
+          `UPDATE polish_tasks
+           SET status='completed', error_msg='old error', error_code='MODEL_NOT_CONFIGURED', completed_at=?
+           WHERE id=?`,
+        )
+        .run(Date.now(), t.id);
+      const frames: Array<{ event: string; data: { status?: string } }> = [];
+      for await (const f of llmQueue.attach(t.id)) {
+        const frame = f as { event: string; data: { status?: string } };
+        frames.push(frame);
+        if (frame.event === 'status' && frame.data.status === 'queued') break;
+        if (frames.length >= 5) break;
+      }
+      const queuedFrame = frames.find((f) => f.event === 'status' && f.data.status === 'queued');
+      expect(queuedFrame).toBeDefined();
+      const row = getDb()
+        .prepare(`SELECT status, error_msg, error_code FROM polish_tasks WHERE id=?`)
+        .get(t.id) as {
+          status: string;
+          error_msg: string | null;
+          error_code: string | null;
+        };
+      expect(row.status).not.toBe('completed');
+      expect(row.error_msg).toBeNull();
+      expect(row.error_code).toBeNull();
     });
   });
 

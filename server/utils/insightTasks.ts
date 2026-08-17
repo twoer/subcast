@@ -84,7 +84,11 @@ export async function runInsightWorker(
       };
       writeInsightArtifact(videoSha, uiLanguage, artifactFingerprint, payload);
 
-      db.prepare(`UPDATE insight_tasks SET status='done', completed_at=? WHERE id=?`)
+      db.prepare(
+        `UPDATE insight_tasks
+         SET status='done', error_msg=NULL, error_code=NULL, completed_at=?
+         WHERE id=?`,
+      )
         .run(Date.now(), taskId);
       emit({ event: 'done', data: { insights: payload, fromCache: false } });
       return;

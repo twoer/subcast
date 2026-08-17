@@ -428,6 +428,30 @@ git add -f docs/performance-baseline.md docs/plans/2026-08-17-next-model-ux-hard
 git commit -m "docs: record model ux hardening smoke"
 ```
 
+## Execution Checkpoint — 2026-08-17
+
+Status: Tasks 1-5 completed through `a99fa78` plus this documentation checkpoint.
+
+Completed commits:
+
+- `efc9b69 fix: harden player translation state`
+- `adb0e08 feat: show llm task policy in settings`
+- `22c2a77 feat: clarify model task errors`
+- `a99fa78 feat: clarify long insight progress`
+
+Verification:
+
+- `pnpm test`: PASS, 86 files passed / 2 skipped; 613 passed / 2 skipped.
+- `pnpm typecheck`: PASS with existing Nuxt/Volar warnings.
+- `pnpm lint`: PASS with existing VitePress warnings.
+- API-level smoke on `sample-3s.mp3` and `0413_59s.mp3`: transcribe, translate, polish, and Insight passed with Qwen3-8B and SenseVoice.
+- Missing-model smoke: uninstalled `4b` returned sanitized `MODEL_NOT_CONFIGURED` without raw paths/stderr.
+- Diagnostics privacy scan: PASS with `debugMode=false`.
+
+Packaging verification: skipped because this plan did not change packaging, sidecar paths, builder config, or release assets.
+
+Release decision: no 0.5.2 yet. Treat this as a verified model UX hardening checkpoint rather than an immediate release trigger.
+
 ## Verification Plan
 
 Before declaring this plan complete:
