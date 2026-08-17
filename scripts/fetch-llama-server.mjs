@@ -35,8 +35,9 @@ const REPO = process.cwd();
 // Upstream release-asset filenames. Upstream renamed the assets around
 // b5xxx: macOS switched from .zip to .tar.gz and the Windows baseline
 // from `bin-win-avx2-x64` to `bin-win-cpu-x64` (still the AVX2 CPU
-// build — broad CPU support, no GPU dependencies). Switch the win32-x64
-// entry to `cuda-cu12.4` later if/when we ship a GPU variant.
+// build — broad CPU support, no GPU dependencies). Runtime profiles may
+// report NVIDIA hardware, but win32-x64 MUST stay on this CPU asset until
+// a CUDA variant also stages cuBLAS/cuDART DLLs and has driver-failure UX.
 const ASSETS = {
   'darwin-arm64': `llama-${LLAMA_CPP_VERSION}-bin-macos-arm64.tar.gz`,
   'darwin-x64':   `llama-${LLAMA_CPP_VERSION}-bin-macos-x64.tar.gz`,

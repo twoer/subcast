@@ -64,7 +64,10 @@
     "cancel": "取消",
     "cancelTaskTitle": "取消此任務？",
     "cancelTaskDesc": "「{name}」目前的任務會停止，已完成的資料會盡量保留。",
-    "cancelTaskConfirm": "確認取消",
+    "cancelTaskConfirm": "確定",
+    "cancelBatchTitle": "取消此批次任務？",
+    "cancelBatchDesc": "「{name}」會停止，佇列中與執行中的項目會被取消，已完成的結果會盡量保留。",
+    "cancelBatchConfirm": "確定",
     "chunkTooltip": "{total} 個語音片段（每段 ≤30 秒，音樂/靜音已被 VAD 過濾）",
     "transcribing": "轉錄中",
     "translating": "翻譯中",
@@ -74,6 +77,10 @@
     "kindInsightZh": "AI 摘要 (中文)",
     "kindInsightEn": "AI 摘要 (英文)",
     "kindDiarize": "語者辨識",
+    "engine": "引擎",
+    "model": "模型",
+    "detectedSpeakerCount": "辨識到 {count} 位語者",
+    "targetSpeakerCount": "目標 {count} 位語者",
     "noVideo": "拖入的內容裡沒有影片或音訊檔案",
     "urlImport": {
       "or": "或貼上連結",
@@ -475,10 +482,10 @@
     }
   },
   "help": {
-    "title": "說明",
-    "subtitle": "使用說明、版本資訊與更新紀錄。",
+    "title": "說明與支援",
+    "subtitle": "查找使用指南、解決問題，或瞭解版本資訊。",
     "tabs": {
-      "help": "說明",
+      "help": "使用說明",
       "about": "關於",
       "changelog": "更新紀錄"
     },
@@ -491,7 +498,11 @@
         "stability": "翻譯/潤色更穩：大模型輸出加結構化約束（JSON Schema），從源頭消滅「數錯行數」導致的重試與漏譯；LLM 服務異常時秒級報錯並帶原因，不再靜默等待 30 秒。"
       },
       "title": "更新紀錄",
-      "body": "近期版本的重要變更。完整提交紀錄以程式碼倉庫為準。",
+      "body": "先看使用者能感受到的變更，需要時再展開技術細節。",
+      "current": "目前版本",
+      "technicalDetails": "查看技術細節",
+      "olderVersions": "查看較早的 {count} 個版本",
+      "allReleases": "完整發布紀錄",
       "v048": {
         "urlImport": "首頁拖曳區新增「匯入連結」：貼上 ScreenPal / B 站 / YouTube 等 1500+ 站台的網頁地址，內建 yt-dlp 自動下載，即時顯示百分比進度，完成後跳轉播放器開始轉寫。",
         "cancel": "取消按鈕現在真的會取消:通知伺服器停止執行中的 yt-dlp(或丟棄排隊中的匯入),而不是只隱藏進度條、讓下載在背景繼續跑。",
@@ -616,6 +627,7 @@
       "privacyLabel": "隱私模式",
       "licenseLabel": "開源授權",
       "depsHeader": "使用以下開源元件",
+      "dependenciesHint": "展開查看 Subcast 使用的主要模型、執行環境與開源授權。",
       "licenseLine": "© 2026 twoer · 基於",
       "buttons": {
         "documentation": "說明文件",
@@ -625,17 +637,28 @@
       }
     },
     "help": {
-      "title": "說明",
-      "introBody": "首次安裝常見問題速查 + 出問題時找哪裡。完整文件請見倉庫 README。",
+      "title": "說明與支援",
+      "introBody": "先從常用入口開始；遇到異常時，再查看下方的常見問題與進階疑難排解工具。",
+      "quickActions": {
+        "title": "你想做什麼？",
+        "documentation": "查看使用文件",
+        "latestRelease": "查看最新版本",
+        "exportDiagnostics": "匯出診斷資訊",
+        "reportIssue": "回報問題"
+      },
       "diagnostics": {
         "title": "匯出診斷",
-        "body": "Help → Export Diagnostics…（系統列選單裡也有）會把近 7 天的結構化日誌 + 一份 system.json 打包成 zip。不包含媒體內容、字幕文字、檔名 —— 提交 issue 時附上即可。",
+        "body": "診斷包包含近 7 天的結構化日誌與一份 system.json，不包含媒體內容、字幕文字或檔名。回報問題時可將 ZIP 一併附上。",
         "export": "匯出 ZIP"
       },
       "updates": {
-        "title": "更新",
+        "title": "版本與更新",
         "windowsBody": "Windows 會在背景自動下載差分包，下次啟動時自動套用。",
-        "macBody": "macOS 手動：Help → Check for Updates… 會在瀏覽器開啟發布頁，自行下載並替換 Applications 內的 .app。"
+        "macBody": "macOS 需要手動更新：從選單列選擇「說明 → 檢查更新…」，下載新版本後替換「應用程式」中的 Subcast。",
+        "webBody": "目前是網頁開發模式。可開啟完整發布紀錄查看最新桌面版本。"
+      },
+      "advanced": {
+        "title": "進階疑難排解工具"
       },
       "faq": {
         "title": "常見問題",
@@ -647,6 +670,7 @@
         "zombieBody": "翻譯會被標記為「上次未完成」，而不是偷偷重新呼叫模型浪費運算。在首頁點「重試」即可。"
       },
       "links": {
+        "project": "專案資源：",
         "docs": "查看文件",
         "repository": "程式碼倉庫",
         "reportIssue": "回報問題"

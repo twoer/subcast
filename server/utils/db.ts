@@ -61,6 +61,100 @@ function ensureColumn(db: Database.Database, table: string, column: string, defi
   }
 }
 
+function tableExists(db: Database.Database, table: string): boolean {
+  return Boolean(
+    db.prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name=?`).get(table),
+  );
+}
+
+function uniqueIndexExists(db: Database.Database, table: string, columns: string[]): boolean {
+  const indexes = db.prepare(`PRAGMA index_list(${table})`).all() as {
+    name: string;
+    unique: number;
+  }[];
+  return indexes.some((idx) => {
+    if (idx.unique !== 1) return false;
+    const cols = db.prepare(`PRAGMA index_info(${idx.name})`).all() as { name: string }[];
+    return cols.map((c) => c.name).join('\0') === columns.join('\0');
+  });
+}
+
+function ensureLlmInvocationColumns(db: Database.Database): void {
+  for (const table of ['translate_tasks', 'polish_tasks', 'insight_tasks']) {
+    if (!tableExists(db, table)) continue;
+    ensureColumn(db, table, 'invocation_spec_json', 'TEXT');
+    ensureColumn(db, table, 'invocation_fingerprint', 'TEXT');
+  }
+}
+
+function ensureTranscribePlanKindColumn(db: Database.Database): void {
+  if (!tableExists(db, 'transcribe_tasks')) return;
+  ensureColumn(db, 'transcribe_tasks', 'plan_kind', "TEXT NOT NULL DEFAULT 'segment'");
+}
+
+function ensureInsightInvocationSchema(db: Database.Database): void {
+  if (!tableExists(db, 'insight_tasks')) return;
+  ensureLlmInvocationColumns(db);
+  if (
+    uniqueIndexExists(db, 'insight_tasks', [
+      'video_sha',
+      'ui_language',
+      'invocation_fingerprint',
+    ])
+  ) {
+    return;
+  }
+
+  db.exec(`
+    ALTER TABLE insight_tasks RENAME TO insight_tasks_legacy_invocation;
+
+    CREATE TABLE insight_tasks (
+      id                     TEXT PRIMARY KEY,
+      video_sha              TEXT NOT NULL REFERENCES videos(sha256),
+      status                 TEXT NOT NULL,
+      model                  TEXT NOT NULL,
+      ui_language            TEXT NOT NULL,
+      error_msg              TEXT,
+      error_code             TEXT,
+      invocation_spec_json   TEXT,
+      invocation_fingerprint TEXT,
+      created_at             INTEGER NOT NULL,
+      completed_at           INTEGER,
+      UNIQUE (video_sha, ui_language, invocation_fingerprint)
+    );
+    CREATE INDEX IF NOT EXISTS idx_insight_status ON insight_tasks(status);
+
+    INSERT INTO insight_tasks (
+      id,
+      video_sha,
+      status,
+      model,
+      ui_language,
+      error_msg,
+      error_code,
+      invocation_spec_json,
+      invocation_fingerprint,
+      created_at,
+      completed_at
+    )
+    SELECT
+      id,
+      video_sha,
+      status,
+      model,
+      ui_language,
+      error_msg,
+      error_code,
+      invocation_spec_json,
+      COALESCE(invocation_fingerprint, 'legacy:' || id),
+      created_at,
+      completed_at
+    FROM insight_tasks_legacy_invocation;
+
+    DROP TABLE insight_tasks_legacy_invocation;
+  `);
+}
+
 // Shared by migration step 14 and the post-migration integrity check below:
 // both must stay byte-identical, so keep one DDL string.
 const POLISH_TASKS_DDL = `
@@ -348,6 +442,31 @@ function migrate(db: Database.Database): void {
     db.exec(POLISH_TASKS_DDL);
     db.pragma('user_version = 14');
   }
+  if (version < 15) {
+    // Chunk-plan geometry marker for the transcribe worker. 'packed' =
+    // whisper chunks came from packVadSegmentsForWhisper (multiple VAD
+    // segments concatenated per request); 'segment' = the legacy
+    // one-request-per-segment planner (the pre-15 default, so rows
+    // written before this column exists resume with their original
+    // geometry). Load-bearing on resume: chunk_idx → absolute range
+    // mapping differs between the two planners, so a resumed task MUST
+    // replan with whichever planner produced its persisted rows.
+    // Foreign-build seeds may predate transcribe_tasks entirely — only
+    // stamp the marker when the table exists; every real pre-15
+    // database has it.
+    ensureTranscribePlanKindColumn(db);
+    db.pragma('user_version = 15');
+  }
+  if (version < 16) {
+    // Stable invocation identity for local LLM work. Task rows now carry
+    // the exact model/prompt/schema/generation snapshot used to produce
+    // their artifact; Insight also keys uniqueness by that fingerprint so
+    // changing model or prompt cannot accidentally reuse a done row for the
+    // same video + UI language.
+    ensureLlmInvocationColumns(db);
+    ensureInsightInvocationSchema(db);
+    db.pragma('user_version = 16');
+  }
   // Post-migration integrity: the source_url column is now load-bearing
   // (urlImportQueue.lookupExistingImport queries it). If a prior branch
   // bumped user_version past 13 without our migration running, the column
@@ -364,6 +483,13 @@ function migrate(db: Database.Database): void {
   // (queue/list queries it unconditionally), so re-create it the same way.
   if (version >= 14) {
     db.exec(POLISH_TASKS_DDL);
+  }
+  if (version >= 15) {
+    ensureTranscribePlanKindColumn(db);
+  }
+  if (version >= 16) {
+    ensureLlmInvocationColumns(db);
+    ensureInsightInvocationSchema(db);
   }
 }
 

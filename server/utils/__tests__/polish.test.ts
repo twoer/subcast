@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { LLMBackend } from '../llmClient';
+import type { LLMBackend, LLMChatResult } from '../llmClient';
 import type { Cue } from '../vtt';
 
 const chatMock = vi.hoisted(() => vi.fn<LLMBackend['chat']>());
@@ -36,6 +36,17 @@ beforeEach(() => {
   chatMock.mockReset();
   vi.mocked(logEvent).mockClear();
 });
+
+function chatResult(content: string): LLMChatResult {
+  return {
+    content,
+    finishReason: 'stop',
+    usage: { promptTokens: 11, completionTokens: 7 },
+    timing: { prefillMs: 2, decodeMs: 3, totalMs: 5 },
+    retries: 0,
+    coldStart: false,
+  };
+}
 
 describe('buildPolishMessages', () => {
   it('injects user hints as a term list when present', () => {
@@ -76,7 +87,7 @@ describe('polishAll', () => {
     chatMock.mockImplementation(async (opts) => {
       const m = opts.messages.at(-1)?.content.match(/(\d+) 条字幕待修正/);
       const n = Number(m?.[1]);
-      return JSON.stringify(Array.from({ length: n }, () => `润色 ${emitted++}`));
+      return chatResult(JSON.stringify(Array.from({ length: n }, () => `润色 ${emitted++}`)));
     });
   }
 
@@ -101,7 +112,7 @@ describe('polishAll', () => {
 
   it('falls back to the original text when the model never complies', async () => {
     const input = [cue(0, '球叉运算'), cue(1, '音化同步')];
-    chatMock.mockResolvedValue('抱歉，我无法处理。'); // no JSON array at all
+    chatMock.mockResolvedValue(chatResult('抱歉，我无法处理。')); // no JSON array at all
 
     const out = await polishAll(input, { hints: '布尔运算' });
 
@@ -114,6 +125,23 @@ describe('polishAll', () => {
     expect(vi.mocked(logEvent)).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'polish_fallback_summary', fallbackCount: 1 }),
     );
+    expect(vi.mocked(logEvent)).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'polish_batch_mismatch',
+      finishReason: 'stop',
+      retries: 0,
+      coldStart: false,
+      promptTokens: 11,
+      completionTokens: 7,
+      prefillMs: 2,
+      decodeMs: 3,
+      totalMs: 5,
+    }));
+    for (const [entry] of vi.mocked(logEvent).mock.calls) {
+      expect(entry).not.toHaveProperty('rawPreview');
+      expect(JSON.stringify(entry)).not.toContain('球叉运算');
+      expect(JSON.stringify(entry)).not.toContain('音化同步');
+      expect(JSON.stringify(entry)).not.toContain('布尔运算');
+    }
   });
 
   it('recovers via the smaller retry batch on a count mismatch', async () => {
@@ -124,8 +152,8 @@ describe('polishAll', () => {
       const m = opts.messages.at(-1)?.content.match(/(\d+) 条字幕待修正/);
       const n = Number(m?.[1]);
       // First (12-cue) attempt drops one item; the 10-cue retries comply.
-      if (n === 12) return JSON.stringify(Array.from({ length: 11 }, (_, i) => `x ${i}`));
-      return JSON.stringify(Array.from({ length: n }, () => `ok ${call}`));
+      if (n === 12) return chatResult(JSON.stringify(Array.from({ length: 11 }, (_, i) => `x ${i}`)));
+      return chatResult(JSON.stringify(Array.from({ length: n }, () => `ok ${call}`)));
     });
 
     const out = await polishAll(input);
@@ -137,7 +165,7 @@ describe('polishAll', () => {
   });
 
   it('keeps the original text for empty-string model output', async () => {
-    chatMock.mockResolvedValue(JSON.stringify(['润色 0', '']));
+    chatMock.mockResolvedValue(chatResult(JSON.stringify(['润色 0', ''])));
 
     const out = await polishAll([cue(0, '原文 0'), cue(1, '原文 1')]);
 
@@ -146,7 +174,7 @@ describe('polishAll', () => {
   });
 
   it('throws CANCELED when the signal aborts between batches', async () => {
-    chatMock.mockImplementation(async () => '[]');
+    chatMock.mockImplementation(async () => chatResult('[]'));
     const ac = new AbortController();
     ac.abort();
     // 26 cues → 2 batches; the first loop pass checks the signal.

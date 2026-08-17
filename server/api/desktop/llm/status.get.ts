@@ -23,6 +23,7 @@ import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { createError, defineEventHandler } from 'h3';
 import { detectHardware } from '../../../utils/hardware';
+import { resolveRuntimeProfile } from '../../../utils/runtimeProfile';
 import { loadSettings, remapLegacyLlmTier } from '../../../utils/settings';
 import { logEvent } from '../../../utils/log';
 import { scanLlmModels } from '../../../../desktop/modelManager/llmScan';
@@ -78,10 +79,21 @@ export default defineEventHandler(async (event) => {
     sizeBytes: m.sizeBytes,
     installed: m.path === llmModelPath(m.name),
   }));
+  const runtimeProfile = resolveRuntimeProfile(hw);
   return {
     active: settings.llmModel,
     recommended: recommendLlmModel({ totalMemoryGB: hw.totalMemoryGB }),
     totalMemoryGB: hw.totalMemoryGB,
+    runtimeProfile: {
+      id: runtimeProfile.id,
+      requestedBackend: runtimeProfile.requestedBackend,
+      verifiedBackend: runtimeProfile.verifiedBackend,
+      verified: runtimeProfile.verified,
+      gpuBackend: runtimeProfile.gpuBackend,
+      parallelSlots: runtimeProfile.parallelSlots,
+      perSlotContext: runtimeProfile.perSlotContext,
+      warnings: runtimeProfile.warnings,
+    },
     migrationHint: readAndConsumeMigrationHint(),
     installed: tagged.filter((m) => m.installed),
     scanned: tagged.filter((m) => !m.installed),

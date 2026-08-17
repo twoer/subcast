@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 // Aggregated queue snapshot for the index page panel. Returns active +
 // recent (last 24h) tasks across transcribe, translate, and insight queues.
-import { getDb, SUBCAST_PATHS } from '../../utils/db';
+import { getDb } from '../../utils/db';
 import { logEvent } from '../../utils/log';
 import type {
   InsightTaskRow,
@@ -235,7 +235,7 @@ export default defineEventHandler(() => {
       event: 'queue_list_empty',
       cutoffMs: cutoff,
       nowMs: Date.now(),
-      home: SUBCAST_PATHS.home,
+      homeScope: process.env.SUBCAST_HOME ? 'configured' : 'default',
       totals,
       filtered: { transcribe: transcribes.length, translate: translates.length, insight: insights.length },
     });

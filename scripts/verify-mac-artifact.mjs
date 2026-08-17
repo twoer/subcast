@@ -282,6 +282,10 @@ if (!existsSync(libsDir)) {
 }
 
 // llama-server (dynamic since llama.cpp ~b5xxx): mirror the whisper checks.
+// This verifies the macOS Metal-capable runtime profile has the native
+// sidecar and dylib layout it expects; backend *verification* still happens
+// at runtime via `/api/desktop/llm/status` because llama.cpp support varies
+// by host and release.
 const llamaServer = join(resourcesDir, 'llama-server');
 if (existsSync(llamaServer)) {
   const version = run(llamaServer, ['--version']);

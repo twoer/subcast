@@ -5,11 +5,11 @@
  *
  * If Subcast was SIGKILLed (Force Quit, OOM-killer, crashed Electron),
  * the `before-quit` shutdown handler in `main.ts` never ran, so any
- * child sidecars (`llama-server`, `whisper-cli`) survived their parent
- * and were re-parented to PID 1 (launchd on macOS, init/systemd on
- * Linux). They keep listening on their bound TCP ports and would
- * conflict with the next Subcast launch trying to start the same
- * service.
+ * child sidecars (`llama-server`, `whisper-server`, `whisper-cli`)
+ * survived their parent and were re-parented to PID 1 (launchd on macOS,
+ * init/systemd on Linux). They keep listening on their bound TCP ports,
+ * which would conflict with the next Subcast launch trying to start the
+ * same service.
  *
  * On boot we therefore enumerate processes via `ps -A -o pid=,ppid=,comm=`
  * (portable to both macOS and Linux), keep the ones whose PPID is 1 and
@@ -30,6 +30,13 @@ export interface Orphan {
   pid: number;
   name: string;
 }
+
+/** Sidecar executables that must not survive the Electron/Nitro process. */
+export const ORPHAN_SIDECAR_NAMES = [
+  'llama-server',
+  'whisper-server',
+  'whisper-cli',
+] as const;
 
 export interface FindOrphansOpts {
   /**

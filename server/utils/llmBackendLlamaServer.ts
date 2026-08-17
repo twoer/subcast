@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import type { LLMBackend, LLMChatOptions, LLMChunk } from './llmClient';
-import { getLlmServer } from './llmServer';
+import type { LLMBackend, LLMChatOptions, LLMChatResult, LLMChunk, LLMFinishReason } from './llmClient';
+import { getLlmServer, type ModelLease } from './llmServer';
 import { stripThinkBlocks, ThinkStreamFilter } from './thinkFilter';
 
 /**
@@ -55,12 +55,8 @@ function dynamicTimeoutMs(opts: LLMChatOptions): number {
  * Must only be called *after* `getLlmServer().ensure()` resolves so that
  * `getPort()` has a value.
  */
-function endpoint(path: string): string {
-  const port = getLlmServer().getPort();
-  if (port == null) {
-    throw new Error('llama-server reported no port after ensure(); refusing to send request');
-  }
-  return `http://127.0.0.1:${port}${path}`;
+function endpoint(lease: ModelLease, path: string): string {
+  return `${lease.endpoint}${path}`;
 }
 
 /**
@@ -87,6 +83,14 @@ interface ChatChoice {
 }
 interface ChatResponseBody {
   choices?: ChatChoice[];
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+  };
+  timings?: {
+    prompt_ms?: number;
+    predicted_ms?: number;
+  };
 }
 
 /**
@@ -116,45 +120,136 @@ function buildBody(opts: LLMChatOptions, stream: boolean): Record<string, unknow
 }
 
 /**
+ * Short backoff ladder for transient failures: connection resets while
+ * llama-server is mid-respawn (model switch, crash-restart, idle reload)
+ * and 5xx blips. Deliberately does NOT retry timeouts — a wedged server
+ * would just multiply the wall time; the caller's ladder handles those.
+ */
+const TRANSIENT_RETRY_DELAYS_MS = [250, 1_000];
+
+/**
+ * undici surfaces connection-level failures (ECONNREFUSED, ECONNRESET,
+ * socket hangup) as TypeError('fetch failed'); AbortSignal.timeout
+ * surfaces TimeoutError. Only the former is transient.
+ */
+function isConnectionFailure(err: unknown): boolean {
+  return err instanceof TypeError;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/** True when another retry is allowed (budget left and not aborted). */
+function canRetry(opts: LLMChatOptions, attempt: number): boolean {
+  return attempt < TRANSIENT_RETRY_DELAYS_MS.length && !opts.signal?.aborted;
+}
+
+function normalizeFinishReason(reason: string | null | undefined): LLMFinishReason | undefined {
+  if (reason === 'stop' || reason === 'length') return reason;
+  if (reason === 'cancel' || reason === 'error') return reason;
+  return undefined;
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+/**
  * HTTP client for the llama-server sidecar (OpenAI-compatible API).
  * Lazy-spawns / re-uses the sidecar via `getLlmServer().ensure()` before
  * every request — both methods are safe to call without manual lifecycle
  * coordination.
  */
 export class LlamaServerBackend implements LLMBackend {
-  async chat(opts: LLMChatOptions): Promise<string> {
-    await getLlmServer().ensure();
-    const res = await fetch(endpoint('/v1/chat/completions'), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(buildBody(opts, false)),
-      signal: composeSignal(opts),
-    });
-    if (!res.ok) {
-      // Surface the response body so the Task 1.5 failure-counter can
-      // distinguish e.g. OOM ("ggml_metal_graph_compute: ...") from
-      // transient 5xx and react accordingly.
-      const text = await res.text().catch(() => '<no body>');
-      throw new Error(`llama-server returned ${res.status}: ${text}`);
+  async chat(opts: LLMChatOptions): Promise<LLMChatResult> {
+    let lease = await getLlmServer().ensureLease();
+    let coldStart = lease.coldStart;
+    const startedAt = Date.now();
+    for (let attempt = 0; ; attempt++) {
+      let res: Response;
+      try {
+        res = await fetch(endpoint(lease, '/v1/chat/completions'), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(buildBody(opts, false)),
+          signal: composeSignal(opts),
+        });
+      } catch (err) {
+        if (isConnectionFailure(err) && canRetry(opts, attempt)) {
+          await sleep(TRANSIENT_RETRY_DELAYS_MS[attempt]!);
+          lease = await getLlmServer().ensureLease();
+          coldStart ||= lease.coldStart;
+          continue;
+        }
+        throw err;
+      }
+      if (!res.ok) {
+        // Surface the response body so callers can distinguish e.g. OOM
+        // ("ggml_metal_graph_compute: ...") from other 5xx and react.
+        const text = await res.text().catch(() => '<no body>');
+        if (res.status >= 500 && canRetry(opts, attempt)) {
+          await sleep(TRANSIENT_RETRY_DELAYS_MS[attempt]!);
+          lease = await getLlmServer().ensureLease();
+          coldStart ||= lease.coldStart;
+          continue;
+        }
+        if (res.status >= 500) getLlmServer().noteHttpFailure();
+        throw new Error(`llama-server returned ${res.status}: ${text}`);
+      }
+      const body = (await res.json()) as ChatResponseBody;
+      // Natural completion — clear the consecutive-failure counter so a
+      // single recovered crash earlier in the session doesn't latch us into
+      // MODEL_UNUSABLE on the next spawn cycle.
+      getLlmServer().noteSuccess();
+      return {
+        content: stripThinkBlocks(body.choices?.[0]?.message?.content ?? ''),
+        finishReason: normalizeFinishReason(body.choices?.[0]?.finish_reason),
+        usage: {
+          promptTokens: optionalNumber(body.usage?.prompt_tokens),
+          completionTokens: optionalNumber(body.usage?.completion_tokens),
+        },
+        timing: {
+          prefillMs: optionalNumber(body.timings?.prompt_ms),
+          decodeMs: optionalNumber(body.timings?.predicted_ms),
+          totalMs: Date.now() - startedAt,
+        },
+        retries: attempt,
+        coldStart,
+      };
     }
-    const body = (await res.json()) as ChatResponseBody;
-    // Natural completion — clear the consecutive-failure counter so a
-    // single recovered crash earlier in the session doesn't latch us into
-    // MODEL_UNUSABLE on the next spawn cycle.
-    getLlmServer().noteSuccess();
-    return stripThinkBlocks(body.choices?.[0]?.message?.content ?? '');
   }
 
   async *chatStream(opts: LLMChatOptions): AsyncIterable<LLMChunk> {
-    await getLlmServer().ensure();
-    const res = await fetch(endpoint('/v1/chat/completions'), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(buildBody(opts, true)),
-      signal: composeSignal(opts),
-    });
-    if (!res.ok || !res.body) {
+    let lease = await getLlmServer().ensureLease();
+    // Retry only PRE-response failures — once the SSE stream has started
+    // delivering bytes, a mid-stream break cannot be transparently
+    // replayed to the consumer.
+    let res: Response;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        res = await fetch(endpoint(lease, '/v1/chat/completions'), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(buildBody(opts, true)),
+          signal: composeSignal(opts),
+        });
+      } catch (err) {
+        if (isConnectionFailure(err) && canRetry(opts, attempt)) {
+          await sleep(TRANSIENT_RETRY_DELAYS_MS[attempt]!);
+          lease = await getLlmServer().ensureLease();
+          continue;
+        }
+        throw err;
+      }
+      if (res.ok && res.body) break;
       const text = res.body ? await res.text().catch(() => '<no body>') : '<no body>';
+      if (res.status >= 500 && canRetry(opts, attempt)) {
+        await sleep(TRANSIENT_RETRY_DELAYS_MS[attempt]!);
+        lease = await getLlmServer().ensureLease();
+        continue;
+      }
+      if (res.status >= 500) getLlmServer().noteHttpFailure();
       throw new Error(`llama-server stream returned ${res.status}: ${text}`);
     }
 

@@ -64,7 +64,10 @@
     "cancel": "Cancelar",
     "cancelTaskTitle": "¿Cancelar esta tarea?",
     "cancelTaskDesc": "La tarea actual de «{name}» se detendrá. Los datos completados se conservarán cuando sea posible.",
-    "cancelTaskConfirm": "Cancelar tarea",
+    "cancelTaskConfirm": "Aceptar",
+    "cancelBatchTitle": "¿Cancelar este lote?",
+    "cancelBatchDesc": "El lote «{name}» se detendrá. Los elementos en cola y en ejecución se cancelarán; los resultados completados se conservarán cuando sea posible.",
+    "cancelBatchConfirm": "Aceptar",
     "chunkTooltip": "{total} fragmentos de habla (≤30 s cada uno, música/silencio prefiltrados por VAD)",
     "transcribing": "Transcribiendo",
     "translating": "Traduciendo",
@@ -74,6 +77,10 @@
     "kindInsightZh": "Resumen IA (chino)",
     "kindInsightEn": "Resumen IA (inglés)",
     "kindDiarize": "Identificación de hablantes",
+    "engine": "Motor",
+    "model": "Modelo",
+    "detectedSpeakerCount": "{count} hablantes detectados",
+    "targetSpeakerCount": "Objetivo: {count} hablantes",
     "noVideo": "No hay archivos de vídeo o audio en lo que has arrastrado",
     "urlImport": {
       "or": "o pega un enlace",
@@ -475,10 +482,10 @@
     }
   },
   "help": {
-    "title": "Ayuda",
-    "subtitle": "Ayuda de uso, información de versión y notas de la versión.",
+    "title": "Ayuda y soporte",
+    "subtitle": "Consulta una guía, soluciona un problema o revisa la información de versión.",
     "tabs": {
-      "help": "Ayuda",
+      "help": "Obtener ayuda",
       "about": "Acerca de",
       "changelog": "Novedades"
     },
@@ -491,7 +498,11 @@
         "stability": "Traducción/pulido más fiables: la salida del LLM queda restringida por un JSON Schema, eliminando de raíz los reintentos por recuento erróneo y las líneas caídas; un servidor LLM bloqueado ahora falla en segundos con la causa real en vez de un timeout silencioso de 30 s."
       },
       "title": "Novedades",
-      "body": "Cambios importantes en versiones recientes. El historial completo de commits se encuentra en el repositorio.",
+      "body": "Empieza por los cambios visibles y despliega los detalles técnicos cuando los necesites.",
+      "current": "Versión actual",
+      "technicalDetails": "Mostrar detalles técnicos",
+      "olderVersions": "Mostrar {count} versiones anteriores",
+      "allReleases": "Todas las versiones",
       "v048": {
         "urlImport": "Nueva opción «Importar enlace» en la zona de arrastre de la página de inicio: pega una URL de ScreenPal / Bilibili / YouTube y 1500+ sitios más; el yt-dlp integrado la descarga con un porcentaje en vivo y luego salta al reproductor para iniciar la transcripción.",
         "cancel": "El botón cancelar ahora cancela de verdad: indica al servidor que detenga el yt-dlp en ejecución (o descarte una importación en cola) en lugar de solo ocultar la barra de progreso mientras la descarga seguía en segundo plano.",
@@ -616,6 +627,7 @@
       "privacyLabel": "Modo privacidad",
       "licenseLabel": "Licencia",
       "depsHeader": "Construido con estos componentes de código abierto",
+      "dependenciesHint": "Despliega para revisar los principales modelos, entornos y licencias de código abierto que usa Subcast.",
       "licenseLine": "© 2026 twoer · Bajo licencia",
       "buttons": {
         "documentation": "Documentación",
@@ -625,17 +637,28 @@
       }
     },
     "help": {
-      "title": "Ayuda",
-      "introBody": "Referencia rápida para las particularidades de la configuración inicial y dónde mirar cuando algo va mal. La documentación completa está en el README del repositorio.",
+      "title": "Ayuda y soporte",
+      "introBody": "Empieza con una acción habitual. Si algo no funciona, continúa con los problemas comunes o las herramientas avanzadas de abajo.",
+      "quickActions": {
+        "title": "¿Qué quieres hacer?",
+        "documentation": "Abrir documentación",
+        "latestRelease": "Ver última versión",
+        "exportDiagnostics": "Exportar diagnóstico",
+        "reportIssue": "Reportar un problema"
+      },
       "diagnostics": {
         "title": "Exportar diagnóstico",
-        "body": "Help → Export Diagnostics… (también en el menú de la bandeja) crea un ZIP con los últimos 7 días de registros estructurados y una instantánea system.json — sin contenido multimedia, texto de subtítulos ni nombres de archivo. Adjunta el ZIP al abrir un issue.",
+        "body": "El paquete de diagnóstico contiene los últimos 7 días de registros estructurados y una instantánea system.json. No incluye contenido multimedia, texto de subtítulos ni nombres de archivo. Puedes adjuntar el ZIP al reportar un problema.",
         "export": "Exportar ZIP"
       },
       "updates": {
-        "title": "Actualizaciones",
+        "title": "Versión y actualizaciones",
         "windowsBody": "Windows descarga actualizaciones diferenciales en segundo plano y las aplica en el siguiente inicio.",
-        "macBody": "macOS es manual: Help → Check for Updates… abre la página de la versión en el navegador; descarga y arrastra la nueva app a Aplicaciones."
+        "macBody": "Las actualizaciones de macOS son manuales. Elige Ayuda → Buscar actualizaciones…, descarga la nueva versión y reemplaza Subcast en Aplicaciones.",
+        "webBody": "Esta es la compilación web de desarrollo. Abre el historial completo para encontrar la última versión de escritorio."
+      },
+      "advanced": {
+        "title": "Solución avanzada de problemas"
       },
       "faq": {
         "title": "Problemas comunes",
@@ -647,6 +670,7 @@
         "zombieBody": "La marcamos como fallida en lugar de volver a ejecutar inferencia silenciosamente. Pulsa Reintentar en la página de inicio cuando estés listo."
       },
       "links": {
+        "project": "Recursos del proyecto:",
         "docs": "Documentación",
         "repository": "Repositorio",
         "reportIssue": "Reportar problema"

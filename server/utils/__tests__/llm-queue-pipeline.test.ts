@@ -38,7 +38,14 @@ function mockCompliantChat() {
     const last = opts.messages[opts.messages.length - 1]!.content;
     const m = last.match(/INPUT \((\d+)/);
     const n = m ? Number(m[1]) : 1;
-    return JSON.stringify(Array.from({ length: n }, () => `out ${chatSeq++}`));
+    return {
+      content: JSON.stringify(Array.from({ length: n }, () => `out ${chatSeq++}`)),
+      finishReason: 'stop',
+      usage: {},
+      timing: { totalMs: 1 },
+      retries: 0,
+      coldStart: false,
+    };
   });
 }
 
@@ -142,7 +149,7 @@ describe('transcriptSource readiness', () => {
   it('pickNextLlmTask gates translate/polish on readyShas but exempts insight', async () => {
     const t = translateQueue.ensureTask(HASH_A, 'zh-CN');
     await settle(5);
-    const insight = llmQueue.ensureInsightTask(HASH_A, 'en', 'llm');
+    const insight = llmQueue.ensureInsightTask(HASH_A, 'en', '8b');
     // Nothing ready → only the insight row is dispatchable.
     expect(pickNextLlmTask(false, new Set<string>())?.id).toBe(insight.id);
     // Ready → FIFO returns the older translate.

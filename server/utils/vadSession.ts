@@ -25,15 +25,15 @@ const MODEL_FILENAME = 'silero_vad.onnx';
 let session: InferenceSession | null = null;
 let initPromise: Promise<InferenceSession> | null = null;
 
-function modelPath(): string {
+function resolveModel(): { path: string; source: 'desktop' | 'dev' } {
   const root = process.env.SUBCAST_RESOURCES_PATH;
   if (root) {
     // Desktop: extraResources lands under `<resourcesPath>/models/...`
     const desktopPath = join(root, 'models', MODEL_FILENAME);
-    if (existsSync(desktopPath)) return desktopPath;
+    if (existsSync(desktopPath)) return { path: desktopPath, source: 'desktop' };
   }
   // Dev / web mode + fallback when desktop bundle path is missing.
-  return join(process.cwd(), 'binaries', 'models', MODEL_FILENAME);
+  return { path: join(process.cwd(), 'binaries', 'models', MODEL_FILENAME), source: 'dev' };
 }
 
 /**
@@ -44,7 +44,7 @@ export async function getVadSession(): Promise<InferenceSession> {
   if (session) return session;
   if (initPromise) return initPromise;
   initPromise = (async () => {
-    const path = modelPath();
+    const { path, source } = resolveModel();
     if (!existsSync(path)) {
       throw new Error(`silero_vad.onnx not found at ${path}`);
     }
@@ -56,7 +56,7 @@ export async function getVadSession(): Promise<InferenceSession> {
     logEvent({
       level: 'debug',
       event: 'vad_session_init',
-      path,
+      modelSource: source,
       initMs: Date.now() - startedAt,
     });
     session = s;

@@ -39,6 +39,16 @@ export interface LlmStatusResp {
   active: LlmModelId | undefined;
   recommended: LlmModelId;
   totalMemoryGB: number;
+  runtimeProfile: {
+    id: string;
+    requestedBackend: 'metal' | 'cuda' | 'cpu' | 'unknown';
+    verifiedBackend: 'metal' | 'cuda' | 'cpu' | 'unknown';
+    verified: boolean;
+    gpuBackend: 'metal' | 'cuda' | 'cpu' | 'unknown';
+    parallelSlots: number;
+    perSlotContext: number;
+    warnings: string[];
+  };
   migrationHint: LlmModelId | undefined;
   installed: LlmInstalledHit[];
   scanned: LlmScannedHit[];

@@ -13,7 +13,6 @@ import { useDesktopOpenFileUpload } from '~/composables/useDesktopOpenFileUpload
 import { useUrlImport } from '~/composables/useUrlImport';
 import { useClipboardFeedback } from '~/composables/useClipboardFeedback';
 import { useUploadStatus } from '~/composables/useUploadStatus';
-import { fmtBytes } from '~/utils/format';
 import type { BatchJobSummary } from '#shared/batch';
 
 interface HealthFix {
@@ -44,6 +43,8 @@ interface CacheEntry {
   ext: string;
   videoBytes: number;
   cacheBytes: number;
+  /** Media duration in seconds; null while a background probe is pending or unavailable. */
+  durationS: number | null;
   langs: string[];
   createdAt: number;
   lastOpenedAt: number;
@@ -55,6 +56,7 @@ const { items: queueItems, loaded: queueLoaded, refresh: refreshQueue } = useQue
 const { items: batchItems, refresh: refreshBatches } = useBatchList();
 const healthData = ref<HealthResp | null>(null);
 const pendingCancelTask = ref<QueueItem | null>(null);
+const pendingCancelBatch = ref<BatchJobSummary | null>(null);
 let healthHandle: ReturnType<typeof setInterval> | null = null;
 
 /**
@@ -187,6 +189,10 @@ function requestCancelTask(item: QueueItem) {
   pendingCancelTask.value = item;
 }
 
+function requestCancelBatch(batch: BatchJobSummary) {
+  pendingCancelBatch.value = batch;
+}
+
 async function confirmCancelTask() {
   const item = pendingCancelTask.value;
   if (!item) return;
@@ -223,6 +229,17 @@ async function cancelBatch(batch: BatchJobSummary): Promise<void> {
   await refreshBatches();
 }
 
+async function confirmCancelBatch(): Promise<void> {
+  const batch = pendingCancelBatch.value;
+  if (!batch) return;
+  pendingCancelBatch.value = null;
+  try {
+    await cancelBatch(batch);
+  } catch {
+    /* surfaced via next refresh */
+  }
+}
+
 async function retryBatch(batch: BatchJobSummary): Promise<void> {
   await $fetch(`/api/batches/${batch.id}/retry`, { method: 'POST' });
   await Promise.all([refreshBatches(), refreshQueue()]);
@@ -244,14 +261,37 @@ function insightLabel(lang: string | undefined): string {
   return lang === 'zh-CN' ? t('index.kindInsightZh') : t('index.kindInsightEn');
 }
 
+function isCanceledByUserMessage(message: string | null | undefined): boolean {
+  return /^cancel(?:l)?ed by user[.!]?$/i.test(message?.trim() ?? '');
+}
+
 // Render a structured error code via i18n; fall back to the raw message
 // when the code is unknown (worker emitted a code we don't have a key
 // for, or the row predates the error_code column).
 function friendlyTaskError(item: QueueItem): string {
+  if (isCanceledTask(item)) return '';
   if (isTaskErrorCode(item.errorCode)) {
     return t(`player.errors.${item.errorCode}`);
   }
   return item.errorMsg ?? '';
+}
+
+// Older task rows only recorded the English message, while newer rows use
+// the structured CANCELED code. Normalize both here so a cancellation is
+// presented as a status instead of a red failure plus a raw backend message.
+function isCanceledTask(item: QueueItem): boolean {
+  return item.status === 'canceled'
+    || item.errorCode === 'CANCELED'
+    || isCanceledByUserMessage(item.errorMsg);
+}
+
+function displayTaskStatus(item: QueueItem): QueueItem['status'] {
+  return isCanceledTask(item) ? 'canceled' : item.status;
+}
+
+function friendlyBatchError(batch: BatchJobSummary): string {
+  if (batch.status === 'canceled' || isCanceledByUserMessage(batch.errorMsg)) return '';
+  return batch.errorMsg ?? '';
 }
 
 // Kind label: noun form regardless of status. The status badge already
@@ -270,6 +310,16 @@ function displayModel(model: string): string {
   }
 }
 
+function displayDiarizeModelPart(model: string, index: 0 | 1): string {
+  const parts = model.split(' · ');
+  const part = parts[index] ?? model;
+  switch (part.toLowerCase()) {
+    case 'sherpa-onnx': return 'Sherpa ONNX';
+    case 'campplus': return 'CAMPPlus';
+    default: return part;
+  }
+}
+
 function fmtKindLabel(item: QueueItem): string {
   if (item.kind === 'insight') {
     return `${insightLabel(item.uiLanguage)} · ${displayModel(item.model)}`;
@@ -278,10 +328,7 @@ function fmtKindLabel(item: QueueItem): string {
     return `${t('index.kindTranscribe')} · ${displayModel(item.model)}`;
   }
   if (item.kind === 'diarize') {
-    // Show K parameter when the task has progressed past Stage 2;
-    // pending/running tasks don't have it yet.
-    const suffix = item.topK ? ` · K=${item.topK}` : '';
-    return `${t('index.kindDiarize')}${suffix} · ${displayModel(item.model)}`;
+    return t('index.kindDiarize');
   }
   if (item.kind === 'polish') {
     return `${t('index.kindPolish')} · ${displayModel(item.model)}`;
@@ -497,12 +544,18 @@ function statusBadgeClass(s: QueueItem['status']) {
                     :title="item.originalName"
                   >{{ item.displayName || item.originalName }}</NuxtLink>
                 </div>
-                <div class="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                <div class="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <MediaMetaPills
+                    :duration-s="item.durationS"
+                    :bytes="item.videoBytes + item.cacheBytes"
+                  />
                   <FileStatusBadges :status="getFileStatus(item, queueItems)" />
-                  <span v-if="item.langs.length === 0 && getFileStatus(item, queueItems).transcribe === 'none'">
+                  <span
+                    v-if="item.langs.length === 0 && getFileStatus(item, queueItems).transcribe === 'none'"
+                    class="text-2xs"
+                  >
                     {{ t('index.library.noSubs') }}
                   </span>
-                  <span class="font-mono">{{ fmtBytes(item.videoBytes + item.cacheBytes) }}</span>
                 </div>
               </div>
               <span class="shrink-0 text-2xs text-muted-foreground">
@@ -555,8 +608,12 @@ function statusBadgeClass(s: QueueItem['status']) {
                     :model-value="batchProgressPct(batch)"
                     class="mt-2 h-1.5"
                   />
-                  <p v-if="batch.errorMsg" class="mt-1 truncate text-xs text-destructive">
-                    {{ batch.errorMsg }}
+                  <p
+                    v-if="friendlyBatchError(batch)"
+                    class="mt-1 truncate text-xs text-destructive"
+                    :title="friendlyBatchError(batch)"
+                  >
+                    {{ friendlyBatchError(batch) }}
                   </p>
                 </div>
                 <div class="flex shrink-0 items-center gap-1">
@@ -569,7 +626,7 @@ function statusBadgeClass(s: QueueItem['status']) {
                         :aria-label="t('batch.retryFailed')"
                         @click="retryBatch(batch)"
                       >
-                        <RotateCcw />
+                        <RotateCcw class="h-4 w-4 shrink-0" />
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>{{ t('batch.retryFailed') }}</TooltipContent>
@@ -581,9 +638,9 @@ function statusBadgeClass(s: QueueItem['status']) {
                         size="icon-xs"
                         class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                         :aria-label="t('index.cancel')"
-                        @click="cancelBatch(batch)"
+                        @click="requestCancelBatch(batch)"
                       >
-                        <X />
+                        <X class="h-4 w-4 shrink-0" />
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>{{ t('index.cancel') }}</TooltipContent>
@@ -605,20 +662,44 @@ function statusBadgeClass(s: QueueItem['status']) {
                   class="max-w-xs truncate font-medium text-foreground hover:underline"
                   :title="item.videoName"
                 >{{ item.videoName }}</NuxtLink>
-                <Badge variant="outline" size="sm" :class="statusBadgeClass(item.status)">
-                  {{ t(`index.status.${item.status}`) }}
+                <Badge variant="outline" size="sm" :class="statusBadgeClass(displayTaskStatus(item))">
+                  {{ t(`index.status.${displayTaskStatus(item)}`) }}
                 </Badge>
               </div>
-              <div class="mt-1 text-xs text-muted-foreground">{{ fmtKindLabel(item) }}</div>
+              <div
+                v-if="item.kind === 'diarize'"
+                class="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
+              >
+                <span class="shrink-0">{{ fmtKindLabel(item) }}</span>
+                <Badge variant="secondary" size="sm" class="gap-1 font-normal text-muted-foreground">
+                  <span>{{ t('index.engine') }}</span>
+                  <span>{{ displayDiarizeModelPart(item.model, 0) }}</span>
+                </Badge>
+                <Badge variant="secondary" size="sm" class="gap-1 font-normal text-muted-foreground">
+                  <span>{{ t('index.model') }}</span>
+                  <span>{{ displayDiarizeModelPart(item.model, 1) }}</span>
+                </Badge>
+                <Badge
+                  v-if="item.finalSpeakerCount != null || item.topK != null"
+                  variant="secondary"
+                  size="sm"
+                  class="font-normal text-muted-foreground"
+                >
+                  {{ item.finalSpeakerCount != null
+                    ? t('index.detectedSpeakerCount', { count: item.finalSpeakerCount })
+                    : t('index.targetSpeakerCount', { count: item.topK }) }}
+                </Badge>
+              </div>
+              <div v-else class="mt-1 text-xs text-muted-foreground">{{ fmtKindLabel(item) }}</div>
               <Progress
                 v-if="item.status === 'running' || item.status === 'queued'"
                 :model-value="item.progressPct"
                 class="mt-2 h-1.5"
               />
               <p
-                v-if="item.errorMsg || item.errorCode"
+                v-if="friendlyTaskError(item)"
                 class="mt-1 truncate text-xs text-destructive"
-                :title="item.errorMsg ?? ''"
+                :title="friendlyTaskError(item)"
               >{{ friendlyTaskError(item) }}</p>
             </div>
             <div class="whitespace-nowrap font-mono text-xs tabular-nums text-muted-foreground">
@@ -641,7 +722,7 @@ function statusBadgeClass(s: QueueItem['status']) {
                     :aria-label="t('index.cancel')"
                     @click="requestCancelTask(item)"
                   >
-                    <X />
+                    <X class="h-4 w-4 shrink-0" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>{{ t('index.cancel') }}</TooltipContent>
@@ -713,8 +794,35 @@ function statusBadgeClass(s: QueueItem['status']) {
             {{ t('common.cancel') }}
           </Button>
           <Button variant="destructive" @click="confirmCancelTask">
-            <X class="h-4 w-4" />
-            {{ t('index.cancelTaskConfirm') }}
+            <span class="inline-flex items-center gap-1.5">
+              <X class="h-4 w-4 shrink-0" />
+              <span>{{ t('index.cancelTaskConfirm') }}</span>
+            </span>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog
+      :open="pendingCancelBatch !== null"
+      @update:open="(v: boolean) => { if (!v) pendingCancelBatch = null }"
+    >
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{{ t('index.cancelBatchTitle') }}</DialogTitle>
+          <DialogDescription>
+            {{ t('index.cancelBatchDesc', { name: pendingCancelBatch?.name ?? '' }) }}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="ghost" @click="pendingCancelBatch = null">
+            {{ t('common.cancel') }}
+          </Button>
+          <Button variant="destructive" @click="confirmCancelBatch">
+            <span class="inline-flex items-center gap-1.5">
+              <X class="h-4 w-4 shrink-0" />
+              <span>{{ t('index.cancelBatchConfirm') }}</span>
+            </span>
           </Button>
         </DialogFooter>
       </DialogContent>

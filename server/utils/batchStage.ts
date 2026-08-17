@@ -8,6 +8,7 @@ import { pipeline } from 'node:stream/promises';
 
 import { getDb, SUBCAST_PATHS } from './db';
 import { logEvent } from './log';
+import { backfillVideoDurationS } from './videoDuration';
 import { generateWaveform } from './waveform';
 
 export const BATCH_STAGE_ID_RE = /^[0-9a-f-]{36}$/i;
@@ -144,6 +145,7 @@ export async function commitBatchStage(stageId: string): Promise<BatchStageMeta>
        ON CONFLICT(sha256) DO UPDATE SET last_opened_at = excluded.last_opened_at, deleted_at = NULL`,
     )
     .run(meta.sha256, meta.originalName, meta.ext, meta.sizeBytes, now, now);
+  backfillVideoDurationS(meta.sha256, finalPath);
   prewarmWaveform(finalPath, meta.sha256);
   return meta;
 }

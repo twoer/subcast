@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
 import { describe, it, expect, vi } from 'vitest';
-import { findOrphans } from '../orphanCleanup';
+import { findOrphans, ORPHAN_SIDECAR_NAMES } from '../orphanCleanup';
 
 describe('findOrphans', () => {
   it('returns processes matching name and parent === 1', async () => {
@@ -25,6 +25,14 @@ describe('findOrphans', () => {
       { pid: 1001, name: 'llama-server' },
       { pid: 1002, name: 'whisper-cli' },
     ]);
+  });
+
+  it('includes the resident whisper server in the production cleanup list', async () => {
+    const exec = vi.fn(async () => ({
+      stdout: '1005 1 /opt/subcast/whisper-server\n',
+    }));
+    const orphans = await findOrphans(ORPHAN_SIDECAR_NAMES, { exec });
+    expect(orphans).toEqual([{ pid: 1005, name: 'whisper-server' }]);
   });
 
   it('matches Windows .exe suffix on the binary name', async () => {

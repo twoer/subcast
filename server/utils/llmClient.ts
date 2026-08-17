@@ -41,8 +41,26 @@ export interface LLMChunk {
   finishReason?: 'stop' | 'length' | 'cancel';
 }
 
+export type LLMFinishReason = 'stop' | 'length' | 'cancel' | 'error';
+
+export interface LLMChatResult {
+  content: string;
+  finishReason?: LLMFinishReason;
+  usage: {
+    promptTokens?: number;
+    completionTokens?: number;
+  };
+  timing: {
+    prefillMs?: number;
+    decodeMs?: number;
+    totalMs: number;
+  };
+  retries: number;
+  coldStart?: boolean;
+}
+
 export interface LLMBackend {
-  chat(opts: LLMChatOptions): Promise<string>;
+  chat(opts: LLMChatOptions): Promise<LLMChatResult>;
   chatStream(opts: LLMChatOptions): AsyncIterable<LLMChunk>;
 }
 

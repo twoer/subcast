@@ -13,7 +13,7 @@ vi.hoisted(() => {
 
 /* eslint-disable import/first -- SUBCAST_HOME must be set before db import */
 import type { BatchOptions } from '../../types/batch';
-import { createBatchJob, getBatchJob } from '../batchRepo';
+import { cancelBatch, createBatchJob, getBatchJob } from '../batchRepo';
 import { runBatchOnce, type BatchRunnerAdapter } from '../batchRunner';
 import { getDb } from '../db';
 /* eslint-enable import/first */
@@ -115,6 +115,42 @@ describe('runBatchOnce', () => {
     expect(item.stepStatus.translate?.['zh-CN']).toBe('skipped');
   });
 
+  it('starts independent target-language translations without serial waiting', async () => {
+    const { id } = createBatchJob({
+      name: 'Batch',
+      preset: 'translate',
+      options: options({ targetLangs: ['zh-CN', 'ja-JP'], insights: false, diarize: false }),
+      videoShas: [HASH_A],
+    });
+    const calls: string[] = [];
+    const completions: Record<string, () => void> = {};
+    const adapter = fakeAdapter(calls);
+    adapter.hasTranscript = () => true;
+    adapter.runTranslate = async (_hash, lang) => {
+      calls.push(`translate:${lang}:start`);
+      await new Promise<void>((resolve) => {
+        completions[lang] = resolve;
+      });
+      calls.push(`translate:${lang}:done`);
+    };
+
+    const running = runBatchOnce(id, { adapter });
+    await vi.waitFor(() => {
+      expect(calls).toEqual(['translate:zh-CN:start', 'translate:ja-JP:start']);
+    });
+    completions['zh-CN']!();
+    completions['ja-JP']!();
+    await running;
+
+    expect(calls).toEqual([
+      'translate:zh-CN:start',
+      'translate:ja-JP:start',
+      'translate:zh-CN:done',
+      'translate:ja-JP:done',
+    ]);
+    expect(getBatchJob(id)).toMatchObject({ status: 'completed' });
+  });
+
   it('marks one failed item and continues with the next file', async () => {
     const { id } = createBatchJob({
       name: 'Batch',
@@ -138,5 +174,43 @@ describe('runBatchOnce', () => {
     expect(job).toMatchObject({ status: 'failed', doneItems: 1, failedItems: 1 });
     expect(job.items[0]).toMatchObject({ status: 'failed', errorMsg: 'failed a:translate:zh-CN' });
     expect(job.items[1]).toMatchObject({ status: 'completed' });
+  });
+
+  it('keeps cancellation terminal when the active worker settles afterward', async () => {
+    const { id } = createBatchJob({
+      name: 'Batch',
+      preset: 'transcribe',
+      options: options({ targetLangs: [], insights: false, diarize: false }),
+      videoShas: [HASH_A, HASH_B],
+    });
+    const calls: string[] = [];
+    let rejectActive!: (reason: Error) => void;
+    const adapter = fakeAdapter(calls);
+    adapter.runTranscribe = async (hash) => {
+      calls.push(`${hash[0]}:transcribe`);
+      if (hash === HASH_A) {
+        await new Promise<void>((_resolve, reject) => {
+          rejectActive = reject;
+        });
+      }
+    };
+
+    const running = runBatchOnce(id, { adapter });
+    await vi.waitFor(() => expect(calls).toEqual(['a:transcribe']));
+
+    cancelBatch(id);
+    rejectActive(new Error('Canceled by user'));
+    await running;
+
+    expect(calls).toEqual(['a:transcribe']);
+    expect(getBatchJob(id)).toMatchObject({
+      status: 'canceled',
+      doneItems: 0,
+      failedItems: 0,
+      items: [
+        { status: 'canceled', errorMsg: 'Canceled by user' },
+        { status: 'canceled', errorMsg: 'Canceled by user' },
+      ],
+    });
   });
 });

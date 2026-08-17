@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
+import { rmSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 
 const { tmpRoot } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -18,8 +18,29 @@ vi.mock('../llmClient', () => {
   // Deterministic stub backend: yields the same canned markdown the
   // previous Ollama mock did, but through the new LLMBackend interface.
   const stub = {
-    async chat() {
-      return '## Summary\n\nMock summary text.\n\n## Chapters\n\n- [00:00:00] Intro — start\n';
+    async chat(opts?: { responseSchema?: unknown }) {
+      if (opts?.responseSchema) {
+        return {
+          content: JSON.stringify({
+            summary: 'Partial window summary.',
+            summaryBullets: ['Partial point'],
+            chapters: [{ startMs: 0, title: 'Partial', description: 'Window' }],
+          }),
+          finishReason: 'stop',
+          usage: {},
+          timing: { totalMs: 1 },
+          retries: 0,
+          coldStart: false,
+        };
+      }
+      return {
+        content: '## Summary\n\nMock summary text.\n\n## Chapters\n\n- [00:00:00] Intro — start\n',
+        finishReason: 'stop',
+        usage: {},
+        timing: { totalMs: 1 },
+        retries: 0,
+        coldStart: false,
+      };
     },
     async *chatStream() {
       yield { delta: '## Summary\n\n' };
@@ -39,6 +60,9 @@ vi.mock('../llmClient', () => {
 import { join } from 'node:path';
 import handler from '../../api/insights.get';
 import { getDb, SUBCAST_PATHS } from '../db';
+import { saveSettings } from '../settings';
+import { buildInsightArtifactFingerprint } from '../artifactFingerprint';
+import { readLatestInsightArtifact } from '../artifactStore';
 /* eslint-enable import/first */
 
 const HASH = 'b'.repeat(64);
@@ -89,6 +113,18 @@ beforeAll(() => {
   ).run(HASH, 'Clip.mp4', '.mp4', 0, Date.now(), Date.now());
 });
 
+beforeEach(() => {
+  saveSettings({ llmModel: '8b' });
+  getDb().prepare(`DELETE FROM insight_tasks`).run();
+  writeFileSync(
+    join(SUBCAST_PATHS.cache, HASH, 'original.vtt'),
+    'WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nHello world.\n',
+  );
+  rmSync(join(SUBCAST_PATHS.cache, HASH, 'insights.json'), { force: true });
+  rmSync(join(SUBCAST_PATHS.cache, HASH, 'artifacts'), { recursive: true, force: true });
+  rmSync(join(SUBCAST_PATHS.cache, HASH, 'insights.json.raw.txt'), { force: true });
+});
+
 afterAll(() => {
   rmSync(tmpRoot, { recursive: true, force: true });
 });
@@ -107,6 +143,81 @@ describe('/api/insights SSE', () => {
     const done = JSON.parse(events[events.length - 1]!.data);
     expect(done.insights.summary).toContain('Mock summary');
     expect(done.insights.chapters.length).toBeGreaterThanOrEqual(0);
+
+    const start = JSON.parse(events[0]!.data);
+    expect(start.model).toBe('8b');
+    const transcript = readFileSync(join(SUBCAST_PATHS.cache, HASH, 'original.vtt'), 'utf8');
+    const artifactFingerprint = buildInsightArtifactFingerprint({
+      videoSha: HASH,
+      transcript,
+      uiLanguage: 'en',
+      modelId: '8b',
+    });
+    const written = readLatestInsightArtifact(HASH, 'en', artifactFingerprint)?.payload as {
+      _meta: Record<string, unknown>;
+    };
+    expect(written._meta.modelId).toBe('8b');
+    expect(written._meta.ollamaModel).toBeUndefined();
+    expect(written._meta.rawMarkdown).toBeUndefined();
+    expect(written._meta.artifactFingerprint).toBe(artifactFingerprint);
+  });
+
+  it('uses map/reduce progress frames for long transcripts instead of rejecting by prompt length', async () => {
+    const longTranscript = [
+      'WEBVTT',
+      '',
+      ...Array.from({ length: 900 }, (_, i) => [
+        `00:${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}.000 --> 00:${String(Math.floor((i + 1) / 60)).padStart(2, '0')}:${String((i + 1) % 60).padStart(2, '0')}.000`,
+        `This is a deliberately long transcript line ${i}. ${'context '.repeat(24)}`,
+      ].join('\n')),
+    ].join('\n\n');
+    writeFileSync(join(SUBCAST_PATHS.cache, HASH, 'original.vtt'), longTranscript);
+
+    const events: Array<{ event?: string; data: string }> = [];
+    const event = makeEvent({ hash: HASH }, events);
+    await handler(event);
+
+    const kinds = events.map((e) => e.event);
+    expect(kinds).toContain('phase');
+    expect(kinds).toContain('progress');
+    expect(kinds).not.toContain('token');
+    expect(events.map((e) => e.data).join('\n')).not.toContain('VIDEO_TOO_LONG');
+
+    const done = JSON.parse(events[events.length - 1]!.data);
+    expect(done.insights.summary).toContain('Mock summary');
+  });
+
+  it('ignores legacy ollama_model when choosing the Insight model', async () => {
+    getDb()
+      .prepare(
+        `INSERT INTO settings (key, value) VALUES ('ollama_model', ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      )
+      .run('qwen2.5:7b');
+    const events: Array<{ event?: string; data: string }> = [];
+    const event = makeEvent({ hash: HASH }, events);
+    await handler(event);
+
+    const start = JSON.parse(events[0]!.data);
+    expect(start.model).toBe('8b');
+  });
+
+  it('emits MODEL_NOT_CONFIGURED when no LLM model is configured', async () => {
+    saveSettings({ llmModel: undefined });
+    const events: Array<{ event?: string; data: string }> = [];
+    const event = makeEvent({ hash: HASH }, events);
+    await handler(event);
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        event: 'error',
+        data: expect.stringContaining('MODEL_NOT_CONFIGURED'),
+      }),
+    ]);
+    const count = getDb()
+      .prepare(`SELECT COUNT(*) AS n FROM insight_tasks`)
+      .get() as { n: number };
+    expect(count.n).toBe(0);
   });
 
   it('400 on bad hash', async () => {

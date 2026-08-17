@@ -64,3 +64,80 @@ export function planChunksByDuration(durationSec: number, opts: PlanOptions): Ch
   }
   return plans;
 }
+
+/**
+ * One speech run packed gaplessly into a whisper request. The request
+ * audio is the CONCATENATION of `pieces` (silence between VAD segments
+ * excluded), so `reqStartMs` → `absStartMs` maps request-local cue
+ * timestamps back to absolute media time.
+ */
+export interface PackedPiece {
+  /** Offset of this piece inside the packed request audio (ms). */
+  reqStartMs: number;
+  /** Absolute start in the source media (ms). */
+  absStartMs: number;
+  durMs: number;
+}
+
+/** A whisper chunk plan built from several concatenated VAD segments. */
+export interface PackedChunkPlan {
+  /** Absolute span (first piece start → last piece end) — display/progress only. */
+  startMs: number;
+  endMs: number;
+  /** Total speech = sum of piece durations (excludes inter-segment silence). */
+  speechMs: number;
+  pieces: PackedPiece[];
+}
+
+/**
+ * Pack VAD speech segments into gapless whisper requests of at most
+ * `maxSpeechSec` of actual speech each. Feeding whisper concatenated
+ * speech (instead of one request per tiny VAD segment) removes the
+ * per-request floor — whisper pads every request to its 30 s mel
+ * window, so 300 × 2 s fragments cost 300 full windows plus HTTP and
+ * parse overhead, while the same audio packs into ~20 dense requests.
+ * The speech-only property of the VAD design is preserved (no silence
+ * is reintroduced), so the hallucination profile is unchanged.
+ *
+ * Segments longer than the cap are split at the cap like
+ * `planChunksFromVad`. Pure and deterministic, so resume replays the
+ * same packing.
+ */
+export function packVadSegmentsForWhisper(
+  segments: ReadonlyArray<{ startMs: number; endMs: number }>,
+  opts: { maxSpeechSec: number },
+): PackedChunkPlan[] {
+  if (!Number.isFinite(opts.maxSpeechSec) || opts.maxSpeechSec <= 0) {
+    throw new Error('maxSpeechSec must be a positive finite number');
+  }
+  const maxMs = opts.maxSpeechSec * 1000;
+  const plans: PackedChunkPlan[] = [];
+  let pieces: PackedPiece[] = [];
+  let speechMs = 0;
+  const flush = (): void => {
+    if (pieces.length === 0) return;
+    const last = pieces[pieces.length - 1]!;
+    plans.push({
+      startMs: pieces[0]!.absStartMs,
+      endMs: last.absStartMs + last.durMs,
+      speechMs,
+      pieces,
+    });
+    pieces = [];
+    speechMs = 0;
+  };
+  for (const seg of segments) {
+    if (seg.endMs <= seg.startMs) continue; // skip zero/negative spans defensively
+    let cursor = seg.startMs;
+    while (cursor < seg.endMs) {
+      const end = Math.min(seg.endMs, cursor + maxMs);
+      const durMs = end - cursor;
+      if (speechMs > 0 && speechMs + durMs > maxMs) flush();
+      pieces.push({ reqStartMs: speechMs, absStartMs: cursor, durMs });
+      speechMs += durMs;
+      cursor = end;
+    }
+  }
+  flush();
+  return plans;
+}

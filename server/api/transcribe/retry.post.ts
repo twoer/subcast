@@ -10,7 +10,7 @@
  * it:
  *   - original + translated subtitles
  *   - cached .vtt files (original.vtt, <lang>.vtt)
- *   - insights.json + insights.json.raw.txt
+ *   - insights.json + legacy insights.json.raw.txt if present
  *   - transcribe_tasks + translate_tasks + insight_tasks rows
  *
  * Keeps:

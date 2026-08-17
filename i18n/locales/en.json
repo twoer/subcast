@@ -64,7 +64,10 @@
     "cancel": "Cancel",
     "cancelTaskTitle": "Cancel this task?",
     "cancelTaskDesc": "The current task for \"{name}\" will stop. Completed data will be kept where possible.",
-    "cancelTaskConfirm": "Cancel task",
+    "cancelTaskConfirm": "Confirm",
+    "cancelBatchTitle": "Cancel this batch?",
+    "cancelBatchDesc": "The batch \"{name}\" will stop. Queued and running items will be canceled; completed results will be kept where possible.",
+    "cancelBatchConfirm": "Confirm",
     "chunkTooltip": "{total} speech chunks (≤30 s each, music/silence pre-filtered by VAD)",
     "transcribing": "Transcribing",
     "translating": "Translating",
@@ -74,6 +77,10 @@
     "kindInsightZh": "AI Summary (Chinese)",
     "kindInsightEn": "AI Summary (English)",
     "kindDiarize": "Speaker identification",
+    "engine": "Engine",
+    "model": "Model",
+    "detectedSpeakerCount": "{count} speakers detected",
+    "targetSpeakerCount": "Target: {count} speakers",
     "noVideo": "No video or audio file in the drop",
     "urlImport": {
       "or": "or paste a link",
@@ -475,10 +482,10 @@
     }
   },
   "help": {
-    "title": "Help",
-    "subtitle": "Usage help, version information, and release notes.",
+    "title": "Help & Support",
+    "subtitle": "Find a guide, troubleshoot a problem, or review version information.",
     "tabs": {
-      "help": "Help",
+      "help": "Get Help",
       "about": "About",
       "changelog": "Changelog"
     },
@@ -491,7 +498,11 @@
         "stability": "More reliable translation/polish: LLM output is constrained by a JSON Schema, eliminating count-mismatch retries and dropped lines at the source; a wedged LLM server now fails in seconds with the actual cause instead of a silent 30s timeout."
       },
       "title": "Changelog",
-      "body": "Important changes in recent versions. The repository remains the source of truth for the full commit history.",
+      "body": "Start with user-visible changes, then expand the technical details when needed.",
+      "current": "Current version",
+      "technicalDetails": "Show technical details",
+      "olderVersions": "Show {count} older versions",
+      "allReleases": "All releases",
       "v048": {
         "urlImport": "New \"Import link\" in the home drop zone: paste a web URL from ScreenPal / Bilibili / YouTube and 1500+ other sites, the bundled yt-dlp downloads it with a live percentage, then jumps to the player to start transcribing.",
         "cancel": "The cancel button now actually cancels: it signals the server to stop the running yt-dlp (or drop a queued import) instead of only hiding the progress bar while the download kept running in the background.",
@@ -616,6 +627,7 @@
       "privacyLabel": "Privacy mode",
       "licenseLabel": "License",
       "depsHeader": "Built with these open-source components",
+      "dependenciesHint": "Expand to review the main models, runtimes, and open-source licenses used by Subcast.",
       "licenseLine": "© 2026 twoer · Licensed under",
       "buttons": {
         "documentation": "Documentation",
@@ -625,17 +637,28 @@
       }
     },
     "help": {
-      "title": "Help",
-      "introBody": "Quick reference for first-time setup quirks and where to look when something misbehaves. The full docs live in the repository README.",
+      "title": "Help & Support",
+      "introBody": "Start with a common action. If something is not working, continue to common issues or advanced troubleshooting below.",
+      "quickActions": {
+        "title": "What would you like to do?",
+        "documentation": "Open documentation",
+        "latestRelease": "View latest release",
+        "exportDiagnostics": "Export diagnostics",
+        "reportIssue": "Report an issue"
+      },
       "diagnostics": {
         "title": "Export diagnostics",
-        "body": "Help → Export Diagnostics… (also in the tray menu) zips the last 7 days of structured logs plus a system.json snapshot — no media content, transcript text, or filenames are included. Attach the zip when filing an issue.",
+        "body": "The diagnostic bundle contains the last 7 days of structured logs and a system.json snapshot. It does not include media content, transcript text, or filenames. Attach the ZIP when filing an issue.",
         "export": "Export ZIP"
       },
       "updates": {
-        "title": "Updates",
+        "title": "Version & updates",
         "windowsBody": "Windows auto-downloads differential updates in the background and applies them on next launch.",
-        "macBody": "macOS is manual: Help → Check for Updates… opens the release page in your browser; download and drag the new app into Applications."
+        "macBody": "macOS updates are manual. Choose Help → Check for Updates…, download the new version, then replace Subcast in Applications.",
+        "webBody": "This is the web development build. Open the complete release history to find the latest desktop version."
+      },
+      "advanced": {
+        "title": "Advanced troubleshooting"
       },
       "faq": {
         "title": "Common issues",
@@ -647,6 +670,7 @@
         "zombieBody": "We mark it failed instead of silently re-running inference. Hit Retry on the home page when ready."
       },
       "links": {
+        "project": "Project resources:",
         "docs": "Documentation",
         "repository": "Repository",
         "reportIssue": "Report Issue"

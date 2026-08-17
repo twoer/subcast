@@ -64,7 +64,10 @@
     "cancel": "キャンセル",
     "cancelTaskTitle": "このタスクをキャンセルしますか？",
     "cancelTaskDesc": "「{name}」の現在のタスクを停止します。完了済みのデータは可能な限り保持されます。",
-    "cancelTaskConfirm": "キャンセルする",
+    "cancelTaskConfirm": "確定",
+    "cancelBatchTitle": "このバッチをキャンセルしますか？",
+    "cancelBatchDesc": "「{name}」を停止します。キュー中および実行中の項目はキャンセルされ、完了済みの結果は可能な限り保持されます。",
+    "cancelBatchConfirm": "確定",
     "chunkTooltip": "{total} 個の音声チャンク（各 ≤30 秒、音楽 / 無音は VAD で除外済み）",
     "transcribing": "文字起こし中",
     "translating": "翻訳中",
@@ -74,6 +77,10 @@
     "kindInsightZh": "AI 要約（中国語）",
     "kindInsightEn": "AI 要約（英語）",
     "kindDiarize": "話者識別",
+    "engine": "エンジン",
+    "model": "モデル",
+    "detectedSpeakerCount": "{count} 人の話者を検出",
+    "targetSpeakerCount": "目標話者数: {count} 人",
     "noVideo": "ドロップされた中に動画 / 音声ファイルがありません",
     "urlImport": {
       "or": "またはリンクを貼り付け",
@@ -475,10 +482,10 @@
     }
   },
   "help": {
-    "title": "ヘルプ",
-    "subtitle": "使い方、バージョン情報、更新履歴。",
+    "title": "ヘルプとサポート",
+    "subtitle": "使い方を調べ、問題を解決し、バージョン情報を確認できます。",
     "tabs": {
-      "help": "ヘルプ",
+      "help": "使い方",
       "about": "概要",
       "changelog": "更新履歴"
     },
@@ -491,7 +498,11 @@
         "stability": "翻訳/推敲の安定性向上：LLM 出力に JSON Schema による構造制約を追加し、行数不一致によるリトライ・訳漏れを根本から解消。LLM サーバー異常時は数秒で原因付きエラーを出し、30 秒の無音待機は廃止。"
       },
       "title": "更新履歴",
-      "body": "最近のバージョンでの重要な変更。コミット全履歴はリポジトリを参照してください。",
+      "body": "まず利用者向けの変更を確認し、必要に応じて技術的な詳細を展開できます。",
+      "current": "現在のバージョン",
+      "technicalDetails": "技術的な詳細を表示",
+      "olderVersions": "過去の {count} バージョンを表示",
+      "allReleases": "すべてのリリース",
       "v048": {
         "urlImport": "ホームのドロップゾーンに「リンクをインポート」を追加:ScreenPal / Bilibili / YouTube など 1500+ サイトの URL を貼り付けると、内蔵 yt-dlp がライブのパーセント表示でダウンロードし、完了後にプレーヤーへ遷移して文字起こしを開始します。",
         "cancel": "キャンセルボタンが本当にキャンセルするようになりました:進捗バーを隠すだけで裏でダウンロードが続くのではなく、サーバーに実行中の yt-dlp の停止(またはキューのインポート破棄)を指示します。",
@@ -616,6 +627,7 @@
       "privacyLabel": "プライバシーモード",
       "licenseLabel": "ライセンス",
       "depsHeader": "以下のオープンソースコンポーネントを使用",
+      "dependenciesHint": "Subcast が使用する主なモデル、ランタイム、オープンソースライセンスを確認できます。",
       "licenseLine": "© 2026 twoer ·",
       "buttons": {
         "documentation": "ドキュメント",
@@ -625,17 +637,28 @@
       }
     },
     "help": {
-      "title": "ヘルプ",
-      "introBody": "初回インストール時のよくある問題と、問題発生時の確認場所のクイックリファレンス。詳細なドキュメントはリポジトリの README にあります。",
+      "title": "ヘルプとサポート",
+      "introBody": "よく使う操作から始めてください。問題がある場合は、下のよくある質問または高度なトラブルシューティングに進めます。",
+      "quickActions": {
+        "title": "何をしますか？",
+        "documentation": "ドキュメントを開く",
+        "latestRelease": "最新バージョンを見る",
+        "exportDiagnostics": "診断情報をエクスポート",
+        "reportIssue": "問題を報告"
+      },
       "diagnostics": {
         "title": "診断をエクスポート",
-        "body": "Help → Export Diagnostics…（トレイメニューにもあります）で、過去 7 日間の構造化ログと system.json を ZIP にまとめます。メディア内容、字幕テキスト、ファイル名は含まれません — issue 報告時に添付してください。",
+        "body": "診断パッケージには過去 7 日間の構造化ログと system.json が含まれます。メディア内容、字幕テキスト、ファイル名は含まれません。問題報告時に ZIP を添付できます。",
         "export": "ZIP をエクスポート"
       },
       "updates": {
-        "title": "更新",
+        "title": "バージョンと更新",
         "windowsBody": "Windows ではバックグラウンドで差分パッケージを自動ダウンロードし、次回起動時に自動適用します。",
-        "macBody": "macOS は手動：Help → Check for Updates… でブラウザにリリースページを開き、自分でダウンロードして Applications 内の .app を置き換えてください。"
+        "macBody": "macOS の更新は手動です。「ヘルプ → アップデートを確認…」から新しいバージョンをダウンロードし、Applications の Subcast を置き換えてください。",
+        "webBody": "現在は Web 開発ビルドです。完全なリリース履歴から最新のデスクトップ版を確認できます。"
+      },
+      "advanced": {
+        "title": "高度なトラブルシューティング"
       },
       "faq": {
         "title": "よくある質問",
@@ -647,6 +670,7 @@
         "zombieBody": "翻訳は「前回未完了」とマークされ、こっそりモデルを再呼び出ししてリソースを浪費しないようにしています。ホームで「再試行」をクリックしてください。"
       },
       "links": {
+        "project": "プロジェクト：",
         "docs": "ドキュメントを見る",
         "repository": "リポジトリ",
         "reportIssue": "問題を報告"

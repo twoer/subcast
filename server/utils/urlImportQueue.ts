@@ -8,6 +8,7 @@ import { extname, join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { YT_DLP_PATH } from './ytDlpPaths';
 import { getDb, SUBCAST_PATHS } from './db';
+import { backfillVideoDurationS } from './videoDuration';
 import { generateWaveform } from './waveform';
 import { logEvent } from './log';
 
@@ -597,6 +598,7 @@ class UrlImportQueue {
     }
     const originalName = await this.guessOriginalName(task.url, realExt);
     upsertVideo(sha, originalName, realExt, task.url);
+    backfillVideoDurationS(sha, finalPath);
     void this.prewarmWaveform(finalPath, sha);
     task.phase = 'done';
     this.emit(task.id, { phase: 'done', hash: sha });

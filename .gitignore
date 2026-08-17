@@ -68,5 +68,8 @@ docs/superpowers/
 # Sidecar scratch / runtime artifacts (Python __pycache__, etc.)
 server/sidecars/__pycache__/
 
+# Local project docs kept out of future commits.
+docs/
+
 # Local tooling config (mcporter for autoglm-browser-agent, etc.) — machine-specific.
 config/

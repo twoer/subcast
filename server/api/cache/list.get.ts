@@ -1,7 +1,11 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { existsSync, statSync, readdirSync } from 'node:fs';
+import { existsSync, statSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { getDb, SUBCAST_PATHS } from '../../utils/db';
+import { backfillVideoDurationS } from '../../utils/videoDuration';
+import { loadSettings } from '../../utils/settings';
+import { buildInsightArtifactFingerprint } from '../../utils/artifactFingerprint';
+import { readLatestInsightArtifact } from '../../utils/artifactStore';
 import { POLISH_LAYER_LANG } from '#shared/polishLayer';
 import type { VideoRow } from '../../types/db';
 
@@ -12,6 +16,8 @@ interface CacheEntry {
   ext: string;
   videoBytes: number;
   cacheBytes: number;
+  /** Media duration in seconds; null until the first transcription probes the wav. */
+  durationS: number | null;
   langs: string[];
   createdAt: number;
   lastOpenedAt: number;
@@ -37,16 +43,36 @@ function dirSize(dir: string): number {
   return total;
 }
 
+function hasCurrentInsights(videoSha: string): boolean {
+  const legacyPath = join(SUBCAST_PATHS.cache, videoSha, 'insights.json');
+  const transcriptPath = join(SUBCAST_PATHS.cache, videoSha, 'original.vtt');
+  if (existsSync(legacyPath)) return true;
+  if (!existsSync(transcriptPath)) return false;
+  const model = loadSettings().llmModel;
+  if (!model) return false;
+  const transcript = readFileSync(transcriptPath, 'utf8');
+  for (const uiLanguage of ['zh-CN', 'en'] as const) {
+    const fingerprint = buildInsightArtifactFingerprint({
+      videoSha,
+      transcript,
+      uiLanguage,
+      modelId: model,
+    });
+    if (readLatestInsightArtifact(videoSha, uiLanguage, fingerprint)) return true;
+  }
+  return false;
+}
+
 export default defineEventHandler(() => {
   const db = getDb();
   const rows = db
     .prepare(
-      `SELECT sha256, original_name, display_name, ext, size_bytes, created_at, last_opened_at
+      `SELECT sha256, original_name, display_name, ext, size_bytes, duration_s, created_at, last_opened_at
        FROM videos WHERE deleted_at IS NULL ORDER BY last_opened_at DESC`,
     )
     .all() as Array<Pick<
       VideoRow,
-      'sha256' | 'original_name' | 'display_name' | 'ext' | 'size_bytes' | 'created_at' | 'last_opened_at'
+      'sha256' | 'original_name' | 'display_name' | 'ext' | 'size_bytes' | 'duration_s' | 'created_at' | 'last_opened_at'
     >>;
 
   // The GROUP_CONCAT(lang) aggregate is synthesized at query time — not a
@@ -72,6 +98,10 @@ export default defineEventHandler(() => {
     const videoPath = join(SUBCAST_PATHS.videos, `${r.sha256}${r.ext}`);
     const cacheDir = join(SUBCAST_PATHS.cache, r.sha256);
     const videoBytes = existsSync(videoPath) ? statSync(videoPath).size : 0;
+    // Sweep NULL durations (rows predating the transcribe-time backfill,
+    // or never transcribed) — fire-and-forget; this response still reports
+    // null and the next refresh picks the probed value up.
+    if (r.duration_s == null && videoBytes > 0) backfillVideoDurationS(r.sha256, videoPath);
     const cacheBytes = dirSize(cacheDir);
     const rawLangs = langsBySha.get(r.sha256) ?? [];
     // The polish layer rides the same subtitles registry but is not a
@@ -79,7 +109,7 @@ export default defineEventHandler(() => {
     // language dropdowns don't grow a bogus "polished" entry.
     const hasPolished = rawLangs.includes(POLISH_LAYER_LANG);
     const langs = rawLangs.filter((l) => l !== POLISH_LAYER_LANG);
-    const hasInsights = existsSync(join(SUBCAST_PATHS.cache, r.sha256, 'insights.json'));
+    const hasInsights = hasCurrentInsights(r.sha256);
     const hasRunningInsight = (
       hasRunningInsightStmt.get(r.sha256) as { has_running: number }
     ).has_running === 1;
@@ -90,6 +120,7 @@ export default defineEventHandler(() => {
       ext: r.ext,
       videoBytes,
       cacheBytes,
+      durationS: r.duration_s,
       langs,
       createdAt: r.created_at,
       lastOpenedAt: r.last_opened_at,

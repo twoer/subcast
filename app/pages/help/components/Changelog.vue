@@ -6,7 +6,9 @@
  * the matching translated copy lives under `help.changelog.v<NNN>.*`
  * in every locale.
  */
-import { CalendarClock } from 'lucide-vue-next';
+import { CalendarClock, ChevronRight, ExternalLink } from 'lucide-vue-next';
+import { RELEASES_URL } from '../links';
+import ChangelogEntry from './ChangelogEntry.vue';
 
 const { t } = useI18n();
 
@@ -106,39 +108,57 @@ const CHANGELOG = [
     ],
   },
 ];
+
+const recentEntries = CHANGELOG.slice(0, 2);
+const olderEntries = CHANGELOG.slice(2);
 </script>
 
 <template>
   <section class="card space-y-5">
-    <div>
-      <h2 class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        <CalendarClock class="h-3.5 w-3.5" />
-        {{ t('help.changelog.title') }}
-      </h2>
-      <p class="mt-2 text-sm text-muted-foreground">{{ t('help.changelog.body') }}</p>
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div class="min-w-0">
+        <h2 class="flex items-center gap-2 text-sm font-semibold text-foreground">
+          <CalendarClock class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span>{{ t('help.changelog.title') }}</span>
+        </h2>
+        <p class="mt-2 text-sm leading-relaxed text-muted-foreground">{{ t('help.changelog.body') }}</p>
+      </div>
+      <a
+        :href="RELEASES_URL"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+      >
+        <span>{{ t('help.changelog.allReleases') }}</span>
+        <ExternalLink class="size-3.5 shrink-0 opacity-70" aria-hidden="true" />
+      </a>
     </div>
 
     <ol class="space-y-5">
-      <li
-        v-for="entry in CHANGELOG"
+      <ChangelogEntry
+        v-for="(entry, index) in recentEntries"
         :key="entry.version"
-        class="border-t border-border/60 pt-5 first:border-t-0 first:pt-0"
-      >
-        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h3 class="font-mono text-sm font-semibold text-foreground">v{{ entry.version }}</h3>
-          <time class="font-mono text-xs text-muted-foreground">{{ entry.date }}</time>
-        </div>
-        <ul class="mt-2 space-y-1.5 text-sm text-foreground">
-          <li
-            v-for="item in entry.items"
-            :key="item"
-            class="flex items-baseline gap-2"
-          >
-            <span aria-hidden="true" class="select-none">·</span>
-            <span>{{ t(item) }}</span>
-          </li>
-        </ul>
-      </li>
+        :version="entry.version"
+        :date="entry.date"
+        :items="entry.items"
+        :current="index === 0"
+      />
     </ol>
+
+    <details class="group border-t border-border/60 pt-4">
+      <summary class="flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-muted-foreground marker:hidden hover:text-foreground [&::-webkit-details-marker]:hidden">
+        <ChevronRight class="size-4 shrink-0 transition-transform duration-200 group-open:rotate-90" aria-hidden="true" />
+        <span>{{ t('help.changelog.olderVersions', { count: olderEntries.length }) }}</span>
+      </summary>
+      <ol class="mt-5 space-y-5">
+        <ChangelogEntry
+          v-for="entry in olderEntries"
+          :key="entry.version"
+          :version="entry.version"
+          :date="entry.date"
+          :items="entry.items"
+        />
+      </ol>
+    </details>
   </section>
 </template>

@@ -44,7 +44,7 @@ import {
 import { installAppMenu } from './menu.js';
 import { seedBundledSenseVoice } from './modelManager/seedBundledSenseVoice.js';
 import { connectToDevServer, startNitro } from './nitroEmbed.js';
-import { killOrphans } from './orphanCleanup.js';
+import { killOrphans, ORPHAN_SIDECAR_NAMES } from './orphanCleanup.js';
 import { resolveResourcesPath } from './paths.js';
 import { installTray } from './trayMenu.js';
 import { disposeUpdater, installUpdater } from './updater.js';
@@ -223,12 +223,12 @@ async function bootstrap(): Promise<void> {
 
   // Reap orphan sidecars left behind by a hard kill (Force Quit, OOM,
   // power loss). When Electron dies without running `before-quit`,
-  // any running `llama-server` / `whisper-cli` is re-parented to PID 1
+  // any running Subcast sidecar is re-parented to PID 1
   // and continues to hold its TCP port — which makes the next launch
   // fail to bind. Cleanup is best-effort; failure here shouldn't
   // block boot. No-op on Windows (v1 doesn't ship AI sidecars there).
   try {
-    const cleaned = await killOrphans(['llama-server', 'whisper-cli']);
+    const cleaned = await killOrphans(ORPHAN_SIDECAR_NAMES);
     if (cleaned > 0) {
       console.log(`[subcast] killed ${cleaned} orphan sidecar(s) from prior crash`);
     }

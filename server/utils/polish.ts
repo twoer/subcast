@@ -23,14 +23,37 @@
  * proper-noun correction.
  */
 
-import { llmBackend, type LLMMessage } from './llmClient';
+import { llmBackend, type LLMChatResult, type LLMMessage } from './llmClient';
 import { logEvent } from './log';
 import { jsonStringArraySchema, parseJsonArray } from './translate';
 import type { Cue } from './vtt';
 
 export const BATCH_SIZE = 25;
 const RETRY_BATCH_SIZE = 10;
-const RAW_PREVIEW_CHARS = 160;
+
+interface LlmResultMetrics {
+  finishReason: string | null;
+  retries: number;
+  coldStart: boolean | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  prefillMs: number | null;
+  decodeMs: number | null;
+  totalMs: number;
+}
+
+function llmMetrics(result: LLMChatResult): LlmResultMetrics {
+  return {
+    finishReason: result.finishReason ?? null,
+    retries: result.retries,
+    coldStart: result.coldStart ?? null,
+    promptTokens: result.usage.promptTokens ?? null,
+    completionTokens: result.usage.completionTokens ?? null,
+    prefillMs: result.timing.prefillMs ?? null,
+    decodeMs: result.timing.decodeMs ?? null,
+    totalMs: result.timing.totalMs,
+  };
+}
 
 export function buildPolishMessages(
   batch: readonly Cue[],
@@ -82,27 +105,31 @@ export function buildPolishMessages(
   ];
 }
 
-function previewRaw(raw: string): string {
-  return raw.replace(/\s+/g, ' ').trim().slice(0, RAW_PREVIEW_CHARS);
-}
-
 async function tryPolishBatch(
   batch: readonly Cue[],
   hints: string,
   context: ReadonlyArray<{ src: string; polished: string }>,
   signal?: AbortSignal,
-): Promise<{ ok: boolean; items: string[]; rawPreview: string }> {
-  const raw = await llmBackend().chat({
+): Promise<{
+  ok: boolean;
+  items: string[];
+  parseOk: boolean;
+  actualCount: number | null;
+  metrics: LlmResultMetrics;
+}> {
+  const result = await llmBackend().chat({
     messages: buildPolishMessages(batch, hints, context),
     temperature: 0,
     responseSchema: jsonStringArraySchema(batch.length),
     signal,
   });
-  const parsed = parseJsonArray(raw);
+  const parsed = parseJsonArray(result.content);
   return {
     ok: parsed !== null && parsed.length === batch.length,
     items: parsed ?? [],
-    rawPreview: previewRaw(raw),
+    parseOk: parsed !== null,
+    actualCount: parsed?.length ?? null,
+    metrics: llmMetrics(result),
   };
 }
 
@@ -145,7 +172,9 @@ export async function polishOneBatch(
       batchIdx,
       attempt: 1,
       expectedCount: batch.length,
-      rawPreview: attempt1.rawPreview,
+      actualCount: attempt1.actualCount,
+      parseOk: attempt1.parseOk,
+      ...attempt1.metrics,
     });
     // One retry on smaller batches — a long batch occasionally trips
     // the count contract; a short one rarely does.
@@ -162,7 +191,9 @@ export async function polishOneBatch(
           batchIdx,
           attempt: 2,
           expectedCount: sub.length,
-          rawPreview: attempt2.rawPreview,
+          actualCount: attempt2.actualCount,
+          parseOk: attempt2.parseOk,
+          ...attempt2.metrics,
         });
         break;
       }

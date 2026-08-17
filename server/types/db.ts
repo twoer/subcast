@@ -44,6 +44,8 @@ export interface TranscribeTaskRow {
   language: string | null;
   total_chunks: number | null;
   done_chunks: number;
+  /** Chunk-plan geometry marker ('packed' | 'segment'); see db migration 15. */
+  plan_kind: 'packed' | 'segment';
   error_msg: string | null;
   error_code: string | null;
   created_at: number;
@@ -70,6 +72,8 @@ export interface TranslateTaskRow {
   priority: number;
   error_msg: string | null;
   error_code: string | null;
+  invocation_spec_json: string | null;
+  invocation_fingerprint: string | null;
   created_at: number;
   completed_at: number | null;
 }
@@ -82,6 +86,8 @@ export interface PolishTaskRow {
   progress_pct: number;
   error_msg: string | null;
   error_code: string | null;
+  invocation_spec_json: string | null;
+  invocation_fingerprint: string | null;
   created_at: number;
   completed_at: number | null;
 }
@@ -99,6 +105,8 @@ export interface InsightTaskRow {
   ui_language: 'zh-CN' | 'en';
   error_msg: string | null;
   error_code: string | null;
+  invocation_spec_json: string | null;
+  invocation_fingerprint: string | null;
   created_at: number;
   completed_at: number | null;
 }

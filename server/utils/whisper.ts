@@ -2,13 +2,14 @@
 import { existsSync } from 'node:fs';
 import { readFile, unlink, writeFile } from 'node:fs/promises';
 import type { WhisperModelName } from '#shared/whisperModels';
+import type { PackedPiece } from '#shared/chunking';
 import { parseVtt, type Cue } from './vtt';
 import { getWhisperServer } from './whisperServer';
 import { WHISPER_CLI_PATH, whisperModelPath } from './whisperPaths';
 import { FFMPEG_PATH, FFPROBE_PATH } from './ffmpegPaths';
 import { logEvent } from './log';
 import { runProcess } from './process';
-import { sliceWavToBuffer } from './wavSlice';
+import { concatWavPiecesToBuffer, sliceWavToBuffer } from './wavSlice';
 
 export interface TranscribeOptions {
   model?: WhisperModelName;
@@ -20,6 +21,14 @@ export interface TranscribeOptions {
    * default greedy pass produces repetitive output.
    */
   noContext?: boolean;
+  /**
+   * Whisper language id (e.g. 'en', 'zh') pinned for the request.
+   * whisper.cpp's per-request `auto` re-runs language-id decode passes
+   * on every call — measured ~1-1.7 s each regardless of chunk length —
+   * so the transcribe worker probes once per task (whisper-cli `-dl`)
+   * and pins every chunk. Undefined keeps the historical 'auto'.
+   */
+  language?: string;
   /**
    * Cancellation hook. Plumbed through to every child process; when fired
    * the worker's ffmpeg / whisper-cli children are killed within
@@ -97,10 +106,103 @@ function assertWhisperReady(model: string): string {
   return modelPath;
 }
 
+/** Matches whisper.cpp's `-dl` line: `whisper_full_with_state: auto-detected language: en (p = 0.999859)`. */
+const DETECTED_LANG_RE = /auto-detected language:\s*([a-z]{2,3})\b/i;
+
+/**
+ * Parse whisper-cli `--detect-language` output (stdout + stderr mixed);
+ * null when no detection line is present. Exported for tests.
+ */
+export function parseDetectedLanguage(out: string): string | null {
+  const m = DETECTED_LANG_RE.exec(out);
+  return m ? m[1]!.toLowerCase() : null;
+}
+
+/**
+ * Probe the wav's dominant language once via whisper-cli's
+ * `--detect-language` (whisper's own langid decodes, ~1-2 s warm on the
+ * turbo tier) so every subsequent chunk request can pin `language`
+ * instead of paying whisper.cpp's per-request auto-detect passes
+ * (measured ~1-1.7 s per request, independent of chunk length).
+ *
+ * Samples a 30 s window starting at `startSec` — prefer the first
+ * planned speech region over t=0 (intros/music often precede speech).
+ * Best-effort by contract: any failure returns null so callers degrade
+ * to per-request 'auto' rather than failing the task.
+ */
+export async function detectWavLanguageViaCli(
+  wavPath: string,
+  opts: { model?: WhisperModelName; startSec?: number; signal?: AbortSignal } = {},
+): Promise<string | null> {
+  const modelPath = assertWhisperReady(opts.model ?? 'base');
+  const startSec = Math.max(0, opts.startSec ?? 0);
+  const probePath = wavPath.replace(/\.wav$/, '-langprobe.wav');
+  try {
+    // -dl crops to whisper's 30 s mel window itself; slice 30 s so the
+    // probe temp file stays small on long recordings.
+    const { wav } = sliceWavToBuffer(wavPath, startSec, startSec + 30);
+    await writeFile(probePath, wav);
+    const r = await runProcess(
+      WHISPER_CLI_PATH,
+      ['-m', modelPath, '-f', probePath, '-dl'],
+      { label: 'whisper-lang-probe', timeoutMs: 120_000, signal: opts.signal },
+    );
+    return parseDetectedLanguage(`${r.stdout}\n${r.stderr}`);
+  } catch {
+    return null;
+  } finally {
+    await unlink(probePath).catch(() => {});
+  }
+}
+
+/**
+ * Map request-local cue timestamps from a packed (gaplessly
+ * concatenated) whisper request back to absolute media time using the
+ * piece list. Concatenated speech flows across seams, so one cue may
+ * legitimately start in one piece and end in the next: the end is
+ * mapped through its own piece, but capped at GAP-past-seam so a cue
+ * never spans a long silence gap (it would pin the subtitle on screen
+ * through minutes of silence). Cues starting outside every piece are
+ * dropped. Exported for tests.
+ */
+const REMAP_SEAM_TOLERANCE_MS = 2_000;
+
+export function remapCuesToPieces(
+  cues: readonly Cue[],
+  pieces: ReadonlyArray<PackedPiece>,
+): Cue[] {
+  const out: Cue[] = [];
+  for (const cue of cues) {
+    const startPiece = pieces.find(
+      (p) => cue.startMs >= p.reqStartMs && cue.startMs < p.reqStartMs + p.durMs,
+    );
+    if (!startPiece) continue;
+    const absStart = startPiece.absStartMs + (cue.startMs - startPiece.reqStartMs);
+    const startPieceAbsEnd = startPiece.absStartMs + startPiece.durMs;
+    // End: prefer the piece the cue ends in (seam-crossing speech);
+    // clamp to at most one seam-tolerance past the start piece.
+    const endPiece = pieces.find(
+      (p) => cue.endMs > p.reqStartMs && cue.endMs <= p.reqStartMs + p.durMs,
+    );
+    const absEndRaw = endPiece
+      ? endPiece.absStartMs + (cue.endMs - endPiece.reqStartMs)
+      : startPieceAbsEnd;
+    const absEnd = Math.min(absEndRaw, startPieceAbsEnd + REMAP_SEAM_TOLERANCE_MS);
+    if (absEnd > absStart) out.push({ startMs: absStart, endMs: absEnd, text: cue.text });
+  }
+  return out;
+}
+
 /**
  * Slice the wav at [startSec, endSec) and transcribe just that segment,
  * returning cues with timestamps **adjusted to absolute time** in the
  * source video (i.e., already offset by startSec*1000).
+ *
+ * With `pieces` (packed chunks, see `packVadSegmentsForWhisper`), the
+ * request audio is the gapless concatenation of the piece ranges and
+ * returned cues are remapped through the piece list instead of a single
+ * offset. `startSec`/`endSec` then describe the absolute span for
+ * metadata only.
  *
  * Two execution paths, tried in order:
  *
@@ -113,7 +215,7 @@ function assertWhisperReady(model: string): string {
  * up its own per-chunk wav slice and VTT artifact (CLI path only). The
  * caller passes an explicit `(startSec, endSec)` range — chunk planning is
  * no longer the concern of this function (see `shared/chunking.ts` for the
- * two planners).
+ * planners).
  */
 export async function transcribeChunk(
   wavPath: string,
@@ -121,21 +223,27 @@ export async function transcribeChunk(
   startSec: number,
   endSec: number,
   opts: TranscribeOptions = {},
+  pieces?: ReadonlyArray<PackedPiece>,
 ): Promise<Cue[]> {
   const model = opts.model ?? 'base';
   const modelPath = assertWhisperReady(model);
   const signal = opts.signal;
 
-  const chunkSec = Math.max(0, endSec - startSec);
+  const chunkSec = pieces
+    ? pieces.reduce((s, p) => s + p.durMs, 0) / 1000
+    : Math.max(0, endSec - startSec);
   const sliceWavPath = wavPath.replace(/\.wav$/, `-chunk${chunkIdx}.wav`);
 
   // Slice once, in memory, for BOTH paths — the parent is our own
   // pcm_s16le extract, so a byte-range copy is exact and saves the
-  // per-chunk ffmpeg spawn. ffmpeg remains the fallback for any layout
-  // the in-memory slicer refuses.
+  // per-chunk ffmpeg spawn. Packed chunks concatenate their piece
+  // ranges (silence excluded). ffmpeg remains the fallback for any
+  // layout the in-memory slicer refuses.
   let sliceBuf: Buffer | null = null;
   try {
-    sliceBuf = sliceWavToBuffer(wavPath, startSec, endSec).wav;
+    sliceBuf = pieces
+      ? concatWavPiecesToBuffer(wavPath, pieces).wav
+      : sliceWavToBuffer(wavPath, startSec, endSec).wav;
   } catch (err) {
     logEvent({
       level: 'warn',
@@ -144,11 +252,17 @@ export async function transcribeChunk(
       error: err instanceof Error ? err.message : String(err),
     });
   }
+  if (pieces && sliceBuf === null) {
+    // The contiguous ffmpeg fallback below would transcribe the span
+    // INCLUDING the silence the packing excluded — silently wrong
+    // output. Fail the chunk loudly instead.
+    throw new Error(`packed chunk ${chunkIdx} slice failed`);
+  }
 
   // Path 1: resident whisper-server (pure inference + HTTP per chunk).
   if (sliceBuf !== null) {
     try {
-      return await transcribeChunkViaServer(sliceBuf, startSec, opts);
+      return await transcribeChunkViaServer(sliceBuf, startSec, opts, pieces);
     } catch (err) {
       if (opts.signal?.aborted) throw err;
       logServerFallback(chunkIdx, err);
@@ -195,7 +309,7 @@ export async function transcribeChunk(
       '-f', sliceWavPath,
       '--output-vtt',
       '-of', ofPrefix,
-      '-l', 'auto',
+      '-l', opts.language ?? 'auto',
     ];
     if (typeof opts.temperature === 'number') {
       args.push('-tp', String(opts.temperature));
@@ -218,10 +332,11 @@ export async function transcribeChunk(
     }
 
     const vttPath = `${ofPrefix}.vtt`;
-    const vtt = await readFile(vttPath, 'utf8');
+    const vtt = await readFile(vttPath, 'utf-8');
     const rawCues = parseVtt(vtt);
     await unlink(vttPath).catch(() => {});
 
+    if (pieces) return remapCuesToPieces(rawCues, pieces);
     const offsetMs = Math.round(startSec * 1000);
     return rawCues.map((cue) => ({
       startMs: cue.startMs + offsetMs,
@@ -244,6 +359,7 @@ async function transcribeChunkViaServer(
   sliceWav: Buffer,
   startSec: number,
   opts: TranscribeOptions,
+  pieces?: ReadonlyArray<PackedPiece>,
 ): Promise<Cue[]> {
   const server = getWhisperServer();
   await server.ensure();
@@ -256,7 +372,7 @@ async function transcribeChunkViaServer(
   // BlobPart even though undici accepts it at runtime.
   form.append('file', new Blob([new Uint8Array(sliceWav)]), 'chunk.wav');
   form.append('response_format', 'vtt');
-  form.append('language', 'auto');
+  form.append('language', opts.language ?? 'auto');
   if (typeof opts.temperature === 'number') {
     form.append('temperature', String(opts.temperature));
   }
@@ -282,8 +398,10 @@ async function transcribeChunkViaServer(
   }
   const vtt = await res.text();
   server.noteSuccess();
+  const cues = parseVtt(vtt);
+  if (pieces) return remapCuesToPieces(cues, pieces);
   const offsetMs = Math.round(startSec * 1000);
-  return parseVtt(vtt).map((cue) => ({
+  return cues.map((cue) => ({
     startMs: cue.startMs + offsetMs,
     endMs: cue.endMs + offsetMs,
     text: cue.text,

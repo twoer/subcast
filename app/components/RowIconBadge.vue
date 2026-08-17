@@ -32,7 +32,9 @@ const config = computed(() => {
     const isAudio = AUDIO_EXTS.has(ext);
     return {
       icon: isAudio ? AudioLines : Film,
-      tint: 'bg-primary/10 text-primary',
+      tint: isAudio
+        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+        : 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
     };
   }
   if (props.kind === 'transcribe') {
@@ -69,6 +71,6 @@ const config = computed(() => {
     class="grid h-9 w-9 shrink-0 place-items-center rounded-md"
     :class="config.tint"
   >
-    <component :is="config.icon" class="h-4 w-4" />
+    <component :is="config.icon" class="h-4 w-4 shrink-0" />
   </div>
 </template>

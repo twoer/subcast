@@ -1,11 +1,17 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
+
+vi.mock('../log', () => ({ logEvent: vi.fn() }));
+
+/* eslint-disable import/first -- log mock must precede imports that capture logEvent */
 import { aggregatePeak, generateWaveform, normalizePeaks } from '../waveform';
 import { FFMPEG_PATH } from '../ffmpegPaths';
+import { logEvent } from '../log';
+/* eslint-enable import/first */
 
 describe('aggregatePeak', () => {
   it('splits samples into N buckets and returns max(|x|) per bucket', () => {
@@ -77,9 +83,29 @@ describe('generateWaveform', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  beforeEach(() => {
+    vi.mocked(logEvent).mockClear();
+  });
+
   it('returns 500 peaks for any input length', async () => {
     const peaks = await generateWaveform(wavPath);
     expect(peaks).toHaveLength(500);
+  });
+
+  it('does not log the source audio path when spawning ffmpeg', async () => {
+    await generateWaveform(wavPath);
+
+    expect(logEvent).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'waveform_spawn',
+      sampleRate: 1000,
+      buckets: 500,
+    }));
+    const spawnLog = vi.mocked(logEvent).mock.calls.find(([entry]) =>
+      entry.event === 'waveform_spawn'
+    )?.[0];
+    expect(spawnLog).toBeDefined();
+    expect(spawnLog).not.toHaveProperty('audioPath');
+    expect(spawnLog).not.toHaveProperty('path');
   });
 
   it('peaks are normalized: max equals 1.0 (within float tolerance)', async () => {

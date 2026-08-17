@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { LlmServer, llamaServerSpawnArgs } from '../llmServer';
 import type { ChildProcess } from 'node:child_process';
+import { activeRuntimeProfile, resolveRuntimeProfile } from '../runtimeProfile';
 
 function makeFakeProc(): ChildProcess & EventEmitter {
   const ev = new EventEmitter() as EventEmitter & { stdout?: unknown; stderr?: unknown; kill?: unknown; pid?: unknown };
@@ -45,6 +46,56 @@ describe('LlmServer state machine', () => {
     expect(spawnFn).toHaveBeenCalledTimes(1);
     resolveSpawn!({ proc: fakeProc, port: 51302 });
     await Promise.all([a, b]);
+    server.dispose();
+  });
+
+  it('ensureLease() returns a model-specific lease and reuses the same model', async () => {
+    const fakeProc = makeFakeProc();
+    const spawnFn = vi.fn(async () => ({ proc: fakeProc, port: 51302 }));
+    const server = new LlmServer({
+      idleShutdownMs: 60_000,
+      modelPath: '/models/qwen3-8b.gguf',
+      spawnFn,
+    });
+
+    const first = await server.ensureLease({ modelId: '8b' });
+    const second = await server.ensureLease({ modelId: '8b' });
+
+    expect(first).toMatchObject({
+      endpoint: 'http://127.0.0.1:51302',
+      modelId: '8b',
+      modelPath: '/models/qwen3-8b.gguf',
+      backend: 'llama-server',
+      runtimeProfileId: activeRuntimeProfile().id,
+      coldStart: true,
+    });
+    expect(second).toMatchObject({ modelId: '8b', coldStart: false });
+    expect(spawnFn).toHaveBeenCalledTimes(1);
+    server.dispose();
+  });
+
+  it('ensureLease() stops and respawns when the requested model changes', async () => {
+    const firstProc = makeFakeProc();
+    const secondProc = makeFakeProc();
+    (firstProc.kill as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      firstProc.emit('exit', 0);
+    });
+    const spawnFn = vi
+      .fn()
+      .mockResolvedValueOnce({ proc: firstProc, port: 51302 })
+      .mockResolvedValueOnce({ proc: secondProc, port: 51303 });
+    const server = new LlmServer({ idleShutdownMs: 60_000, modelPath: '/models/test.gguf', spawnFn });
+
+    await server.ensureLease({ modelId: '8b' });
+    const next = await server.ensureLease({ modelId: '4b' });
+
+    expect(firstProc.kill).toHaveBeenCalledWith('SIGTERM');
+    expect(spawnFn).toHaveBeenCalledTimes(2);
+    expect(next).toMatchObject({
+      endpoint: 'http://127.0.0.1:51303',
+      modelId: '4b',
+      coldStart: true,
+    });
     server.dispose();
   });
 
@@ -176,17 +227,111 @@ describe('LlmServer state machine', () => {
 });
 
 describe('llamaServerSpawnArgs (P4 concurrency contract)', () => {
-  it('runs two parallel slots with 8192 ctx per slot', () => {
-    const args = llamaServerSpawnArgs('/models/qwen3-8b.gguf', 0);
+  it('derives parallel slots and context from the runtime profile', () => {
+    const profile = resolveRuntimeProfile({
+      platform: 'macOS',
+      arch: 'arm64',
+      totalMemoryGB: 16,
+      gpu: 'apple-silicon',
+    });
+    const args = llamaServerSpawnArgs('/models/qwen3-8b.gguf', 0, profile);
     expect(args[args.indexOf('--parallel') + 1]).toBe('2');
     // llama-server splits ctx across slots — total must be scaled so each
     // slot keeps the 8192 the insights path needs.
     expect(args[args.indexOf('--ctx-size') + 1]).toBe('16384');
+    expect(args[args.indexOf('--n-gpu-layers') + 1]).toBe('999');
+    expect(args[args.indexOf('--load-mode') + 1]).toBe('mmap+mlock');
+  });
+
+  it('uses CPU profile flags when GPU acceleration is not enabled', () => {
+    const profile = resolveRuntimeProfile({
+      platform: 'Windows',
+      arch: 'x64',
+      totalMemoryGB: 16,
+      gpu: 'nvidia',
+    });
+    const args = llamaServerSpawnArgs('/models/qwen3-8b.gguf', 0, profile);
+    expect(args[args.indexOf('--n-gpu-layers') + 1]).toBe('0');
+    expect(args[args.indexOf('--load-mode') + 1]).toBe('mmap');
+    expect(args[args.indexOf('--flash-attn') + 1]).toBe('off');
   });
 
   it('never passes a bare -fa / --flash-attn (b10435 argv trap)', () => {
     const args = llamaServerSpawnArgs('/models/qwen3-8b.gguf', 0);
     expect(args).not.toContain('-fa');
-    expect(args).not.toContain('--flash-attn');
+    const idx = args.indexOf('--flash-attn');
+    if (idx >= 0) {
+      expect(args[idx + 1]).toMatch(/^(auto|off)$/);
+    }
+  });
+});
+
+describe('touch (pending-work keepalive)', () => {
+  it('resets the idle timer when running; never spawns when idle', async () => {
+    vi.useFakeTimers();
+    try {
+      const fakeProc = makeFakeProc();
+      (fakeProc.kill as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        fakeProc.emit('exit', 0);
+      });
+      const spawnFn = vi.fn(async () => ({ proc: fakeProc, port: 51302 }));
+      const server = new LlmServer({ idleShutdownMs: 1_000, spawnFn });
+      await server.ensure();
+      expect(server.state).toBe('running');
+
+      server.touch();
+      vi.advanceTimersByTime(999);
+      expect(server.state).toBe('running'); // survived past original window
+
+      // No timer set: touch is a no-op on an idle (unloaded) server.
+      vi.advanceTimersByTime(1);
+      expect(server.state).not.toBe('running');
+      server.touch();
+      vi.advanceTimersByTime(5_000);
+      expect(spawnFn).toHaveBeenCalledTimes(1); // never re-spawned
+      server.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('noteHttpFailure (alive-but-failing recycle)', () => {
+  it('leaves a running server alone until the third consecutive 5xx, then stops it', async () => {
+    const fakeProc = makeFakeProc();
+    (fakeProc.kill as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      fakeProc.emit('exit', 0);
+    });
+    const spawnFn = vi.fn(async () => ({ proc: fakeProc, port: 51302 }));
+    const server = new LlmServer({ idleShutdownMs: 60_000, spawnFn });
+    await server.ensure();
+    expect(server.state).toBe('running');
+
+    server.noteHttpFailure();
+    server.noteHttpFailure();
+    expect(server.state).toBe('running'); // not yet
+
+    server.noteHttpFailure();
+    await new Promise((r) => setTimeout(r, 0)); // let void stop() run
+    expect(server.state).not.toBe('running');
+    server.dispose();
+  });
+
+  it('noteSuccess resets the 5xx streak', async () => {
+    const fakeProc = makeFakeProc();
+    (fakeProc.kill as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      fakeProc.emit('exit', 0);
+    });
+    const spawnFn = vi.fn(async () => ({ proc: fakeProc, port: 51302 }));
+    const server = new LlmServer({ idleShutdownMs: 60_000, spawnFn });
+    await server.ensure();
+
+    server.noteHttpFailure();
+    server.noteHttpFailure();
+    server.noteSuccess(); // recovered between failures
+    server.noteHttpFailure();
+    server.noteHttpFailure();
+    expect(server.state).toBe('running'); // streak never reached 3
+    server.dispose();
   });
 });

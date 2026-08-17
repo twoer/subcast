@@ -22,9 +22,15 @@ import {
 import { llmQueueImpl } from './llmQueue';
 import { getWhisperServer } from './whisperServer';
 import { isWhisperModelReady } from './whisperInstalled';
-import { extractWav, probeDurationS, transcribeChunk } from './whisper';
+import { detectWavLanguageViaCli, extractWav, probeDurationS, transcribeChunk } from './whisper';
 import { releaseWavSliceCache } from './wavSlice';
-import { planChunksByDuration, planChunksFromVad, type ChunkPlan } from '#shared/chunking';
+import {
+  packVadSegmentsForWhisper,
+  planChunksByDuration,
+  planChunksFromVad,
+  type ChunkPlan,
+  type PackedChunkPlan,
+} from '#shared/chunking';
 import type { TaskErrorCode } from '#shared/errorCodes';
 import type {
   QueueActiveTask as ActiveTask,
@@ -214,6 +220,15 @@ export class TranscribeQueue {
 
       const durationS = await probeDurationS(wavPath, active.abort.signal);
 
+      // Backfill the video row's duration: no import path (local upload
+      // or URL import) populates it today, leaving NULLs that starve the
+      // UI's duration display and any duration-keyed scheduling. The wav
+      // probe is the first reliable source; `IS NULL` keeps a legit
+      // earlier value (e.g. from a future importer) authoritative.
+      db.prepare(
+        `UPDATE videos SET duration_s = ? WHERE sha256 = ? AND duration_s IS NULL`,
+      ).run(durationS, videoSha);
+
       // Prewarm the whisper-server sidecar before VAD planning — the
       // cold model load (~20 s for the 1.6 GB turbo tier, one-time per
       // idle window) then overlaps with VAD instead of blocking chunk 1.
@@ -246,7 +261,7 @@ export class TranscribeQueue {
       // Kept when VAD planning succeeds so the auto→whisper replan below
       // can reuse them without a second VAD pass.
       let vadSegments: Awaited<ReturnType<typeof detectSpeechSegments>> | null = null;
-      let chunkPlans: ChunkPlan[];
+      let chunkPlans: Array<ChunkPlan | PackedChunkPlan>;
       if (strategy === 'vad') {
         try {
           const segments = await detectSpeechSegments(wavPath, { signal: active.abort.signal });
@@ -283,6 +298,23 @@ export class TranscribeQueue {
       } else {
         chunkPlans = planChunksByDuration(durationS, { maxChunkSec: chunkCapSec });
       }
+
+      // Fetched before planning: a resumed task must keep the planner its
+      // persisted chunk rows were laid out by — the plan_kind marker
+      // (migration 15) says which one — so startIdx and the marker have
+      // to be known before any replan happens.
+      const persistedChunks = db
+        .prepare(
+          `SELECT chunk_idx FROM chunks WHERE task_id = ? ORDER BY chunk_idx ASC`,
+        )
+        .all(taskId) as Pick<ChunkRow, 'chunk_idx'>[];
+      const startIdx = persistedChunks.length === 0
+        ? 0
+        : Math.max(...persistedChunks.map((c) => c.chunk_idx)) + 1;
+      const resumePlanKind = (db
+        .prepare(`SELECT plan_kind FROM transcribe_tasks WHERE id = ?`)
+        .get(taskId) as { plan_kind: 'packed' | 'segment' } | undefined)
+        ?.plan_kind ?? 'segment';
 
       // `auto` engine resolution — needs the planned chunks to sample the
       // opening segments. CJK → SenseVoice; English → Whisper when its
@@ -325,12 +357,49 @@ export class TranscribeQueue {
         // truthful about what produced the transcript.
         db.prepare(`UPDATE transcribe_tasks SET model = ? WHERE id = ?`).run(engine, taskId);
         if (engine === 'whisper') {
-          // Whisper wants the wide 30 s chunks — replan from the retained
-          // VAD segments when we have them (fixed duration otherwise).
+          // Whisper wants dense ~30 s-of-speech requests. Fresh tasks
+          // pack VAD segments gaplessly (whisper pads every request to
+          // its 30 s mel window, so per-segment requests put a floor of
+          // one full window per fragment — 301 × 1.8 s chunks ≈ 2 s
+          // each). Resumed tasks replan with the planner that produced
+          // their persisted rows (plan_kind) so chunk_idx → range
+          // mapping stays identical.
+          const usePacked = startIdx === 0 || resumePlanKind === 'packed';
           chunkPlans = vadSegments !== null
-            ? planChunksFromVad(vadSegments, { maxChunkSec: CHUNK_SEC })
+            ? (usePacked
+                ? packVadSegmentsForWhisper(vadSegments, { maxSpeechSec: CHUNK_SEC })
+                : planChunksFromVad(vadSegments, { maxChunkSec: CHUNK_SEC }))
             : planChunksByDuration(durationS, { maxChunkSec: CHUNK_SEC });
+          // Record the geometry BEFORE any chunk row lands, so a crash
+          // mid-task resumes with the right planner.
+          db.prepare(`UPDATE transcribe_tasks SET plan_kind = ? WHERE id = ?`).run(
+            vadSegments !== null && usePacked ? 'packed' : 'segment',
+            taskId,
+          );
         }
+      }
+
+      // Whisper language pin: whisper.cpp's per-request `auto` re-runs
+      // language-id decode passes on EVERY chunk — measured ~1-1.7 s per
+      // request on the turbo tier, independent of chunk length, which
+      // dominated VAD-heavy tasks (a 301-chunk task spent ~5 of its 10
+      // minutes just re-detecting the same language). Probe once with
+      // whisper's own `-dl` langid and pin every chunk request. The
+      // probe is best-effort: null keeps the historical per-request
+      // 'auto'.
+      let whisperLang: string | null = null;
+      if (engine === 'whisper' && chunkPlans.length > 0) {
+        whisperLang = await detectWavLanguageViaCli(wavPath, {
+          model: settings.whisperModel,
+          startSec: chunkPlans[0]!.startMs / 1000,
+          signal: active.abort.signal,
+        });
+        logEvent({
+          level: 'info',
+          event: 'whisper_lang_probed',
+          taskId,
+          language: whisperLang,
+        });
       }
 
       const totalChunks = Math.max(1, chunkPlans.length);
@@ -338,15 +407,6 @@ export class TranscribeQueue {
         totalChunks,
         taskId,
       );
-
-      const persistedChunks = db
-        .prepare(
-          `SELECT chunk_idx FROM chunks WHERE task_id = ? ORDER BY chunk_idx ASC`,
-        )
-        .all(taskId) as Pick<ChunkRow, 'chunk_idx'>[];
-      const startIdx = persistedChunks.length === 0
-        ? 0
-        : Math.max(...persistedChunks.map((c) => c.chunk_idx)) + 1;
 
       emit({
         event: 'status',
@@ -396,7 +456,10 @@ export class TranscribeQueue {
         const plan = chunkPlans[chunkIdx]!;
         const startMs = plan.startMs;
         const endMs = plan.endMs;
-        const chunkDurationMs = endMs - startMs;
+        // Packed plans exclude inter-segment silence; hallucination
+        // thresholds key off actual speech, not the absolute span.
+        const chunkDurationMs = 'speechMs' in plan ? plan.speechMs : endMs - startMs;
+        const packedPieces = 'pieces' in plan ? plan.pieces : undefined;
 
         // F2 retry ladder: try up to 3 param combinations; accept the first
         // that passes hallucination detection. If all fail, keep attempt-1's
@@ -412,7 +475,9 @@ export class TranscribeQueue {
           // each plan yields at most one segment-level cue.
           acceptedCues = await transcribeSegmentsSenseVoice(
             wavPath,
-            [plan],
+            // SenseVoice plans are never packed (packing is whisper-only),
+            // but the union type can't know that — narrow explicitly.
+            [plan as ChunkPlan],
             {
               signal: active.abort.signal,
               // Auto-dispatch already voted on the language — pin instead
@@ -438,10 +503,12 @@ export class TranscribeQueue {
                 // The task-row `model` may be 'auto'/'sensevoice' labels —
                 // whisper always runs the tier from settings.
                 model: settings.whisperModel,
+                language: whisperLang ?? undefined,
                 temperature: params.temperature,
                 noContext: params.noContext,
                 signal: active.abort.signal,
               },
+              packedPieces,
             );
             if (firstCues === null) firstCues = cues;
             const reason = detectHallucination(cues, chunkDurationMs);

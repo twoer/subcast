@@ -43,16 +43,51 @@ export interface TranscriptSourceSnapshot {
 
 /** Snapshot of everything a pipelined LLM worker needs from its source. */
 export function readTranscriptSource(taskId: string): TranscriptSourceSnapshot {
+  return pollTranscriptSource(taskId, { lastChunkIdx: -1, doneChunks: 0, cues: [] });
+}
+
+/**
+ * Cursor state for the pipelined workers' 1 s poll loop. Owned by the
+ * worker instance; cues accumulate across ticks.
+ */
+export interface TranscriptSourcePollState {
+  lastChunkIdx: number;
+  doneChunks: number;
+  cues: Cue[];
+}
+
+/**
+ * Incremental variant of `readTranscriptSource`: selects only chunk rows
+ * past the cursor and appends their cues to `state`, so a poll tick costs
+ * O(new chunks) instead of re-selecting and re-parsing every row of a
+ * long video each second (O(n²) over the task otherwise).
+ *
+ * Chunk rows are write-once per index in practice — inserted once after
+ * the hallucination retry ladder, and resume skips persisted indices —
+ * so a row that already advanced the cursor is never rewritten under us.
+ */
+export function pollTranscriptSource(
+  taskId: string,
+  state: TranscriptSourcePollState,
+): TranscriptSourceSnapshot {
   const db = getDb();
   const row = db
     .prepare(`SELECT status, total_chunks FROM transcribe_tasks WHERE id = ?`)
     .get(taskId) as { status: string; total_chunks: number | null } | undefined;
-  const chunkRows = db
-    .prepare(`SELECT cues_json FROM chunks WHERE task_id = ? ORDER BY chunk_idx ASC`)
-    .all(taskId) as { cues_json: string }[];
+  const rows = db
+    .prepare(
+      `SELECT chunk_idx, cues_json FROM chunks
+       WHERE task_id = ? AND chunk_idx > ? ORDER BY chunk_idx ASC`,
+    )
+    .all(taskId, state.lastChunkIdx) as Array<{ chunk_idx: number; cues_json: string }>;
+  for (const r of rows) {
+    for (const cue of JSON.parse(r.cues_json) as Cue[]) state.cues.push(cue);
+    state.lastChunkIdx = r.chunk_idx;
+    state.doneChunks += 1;
+  }
   return {
-    cues: chunkRows.flatMap((r) => JSON.parse(r.cues_json) as Cue[]),
-    doneChunks: chunkRows.length,
+    cues: state.cues,
+    doneChunks: state.doneChunks,
     totalChunks: row?.total_chunks ?? 0,
     live: row?.status === 'queued' || row?.status === 'running',
   };

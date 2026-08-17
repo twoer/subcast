@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { LLMBackend, LLMChatOptions } from '../llmClient';
+import type { LLMBackend, LLMChatOptions, LLMChatResult } from '../llmClient';
 import { LlamaServerBackend } from '../llmBackendLlamaServer';
 import { getLlmServer } from '../llmServer';
 
@@ -8,7 +8,7 @@ describe('LLMBackend', () => {
   it('matches the documented interface', () => {
     const stub: LLMBackend = {
       async chat(opts: LLMChatOptions) {
-        return opts.messages.map((m) => m.content).join('|');
+        return chatResult(opts.messages.map((m) => m.content).join('|'));
       },
       // eslint-disable-next-line require-yield
       async *chatStream(_opts) {
@@ -19,6 +19,18 @@ describe('LLMBackend', () => {
     expect(typeof stub.chatStream).toBe('function');
   });
 });
+
+function chatResult(content: string, overrides: Partial<LLMChatResult> = {}): LLMChatResult {
+  return {
+    content,
+    finishReason: 'stop',
+    usage: {},
+    timing: { totalMs: 1 },
+    retries: 0,
+    coldStart: false,
+    ...overrides,
+  };
+}
 
 /**
  * Helper: build a Response-like object for non-streaming fetch mocks.
@@ -60,7 +72,15 @@ describe('LlamaServerBackend', () => {
 
   beforeEach(() => {
     originalFetch = globalThis.fetch;
-    // ensure() is a no-op in tests; getPort returns a fixed port.
+    // Lease acquisition is a no-op in tests; the lease carries a fixed endpoint.
+    vi.spyOn(getLlmServer(), 'ensureLease').mockResolvedValue({
+      endpoint: 'http://127.0.0.1:51302',
+      modelId: '8b',
+      modelPath: '/models/qwen3-8b.gguf',
+      backend: 'llama-server',
+      runtimeProfileId: 'default',
+      coldStart: false,
+    });
     vi.spyOn(getLlmServer(), 'ensure').mockResolvedValue(undefined);
     vi.spyOn(getLlmServer(), 'getPort').mockReturnValue(51302);
   });
@@ -70,22 +90,47 @@ describe('LlamaServerBackend', () => {
     vi.restoreAllMocks();
   });
 
-  it('chat() POSTs to /v1/chat/completions on the live port and returns assembled content', async () => {
+  it('chat() POSTs to /v1/chat/completions on the live port and returns typed content and metrics', async () => {
     const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
       expect(String(url)).toBe('http://127.0.0.1:51302/v1/chat/completions');
       const body = JSON.parse(String(init?.body));
       expect(body.stream).toBe(false);
       expect(body.messages).toEqual([{ role: 'user', content: 'hi' }]);
       return jsonResponse({
-        choices: [{ message: { content: 'hello' } }],
+        choices: [{ message: { content: 'hello' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 12, completion_tokens: 3 },
+        timings: { prompt_ms: 25, predicted_ms: 75 },
       });
     });
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const backend = new LlamaServerBackend();
     const result = await backend.chat({ messages: [{ role: 'user', content: 'hi' }] });
-    expect(result).toBe('hello');
-    expect(getLlmServer().ensure).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      content: 'hello',
+      finishReason: 'stop',
+      usage: { promptTokens: 12, completionTokens: 3 },
+      timing: { prefillMs: 25, decodeMs: 75, totalMs: expect.any(Number) },
+      retries: 0,
+      coldStart: false,
+    });
+    expect(getLlmServer().ensureLease).toHaveBeenCalledTimes(1);
+  });
+
+  it('chat() reacquires the lease before retrying a connection failure', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: 'ok' } }] }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const backend = new LlamaServerBackend();
+    await expect(backend.chat({ messages: [{ role: 'user', content: 'hi' }] })).resolves.toMatchObject({
+      content: 'ok',
+      retries: 1,
+    });
+
+    expect(getLlmServer().ensureLease).toHaveBeenCalledTimes(2);
   });
 
   it('chat() throws on 5xx including the response body', async () => {
@@ -202,6 +247,6 @@ describe('LlamaServerBackend', () => {
 
     const backend = new LlamaServerBackend();
     const res = await backend.chat({ messages: [{ role: 'user', content: longPrompt }] });
-    expect(res).toBe('ok');
+    expect(res.content).toBe('ok');
   });
 });

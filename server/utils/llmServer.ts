@@ -3,7 +3,10 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { llmModelPath } from '../../desktop/modelManager/llmInstall';
 import { loadSettings } from './settings';
+import { logEvent } from './log';
 import { waitForSidecarListening } from './sidecarAnnounce';
+import { activeRuntimeProfile, type RuntimeProfile } from './runtimeProfile';
+import type { LlmModelId } from '#shared/llmModels';
 
 export type LlmServerState = 'idle' | 'starting' | 'running' | 'stopping';
 
@@ -12,50 +15,52 @@ export interface SpawnResult {
   port: number;
 }
 
+export interface LlmServerSpawnRequest {
+  modelId: string;
+  modelPath: string;
+  runtimeProfile: RuntimeProfile;
+}
+
+export interface ModelLease {
+  endpoint: string;
+  modelId: string;
+  modelPath: string;
+  backend: 'llama-server';
+  runtimeProfileId: string;
+  coldStart: boolean;
+}
+
 export interface LlmServerOptions {
   binaryPath?: string;
   modelPath?: string;
   preferredPort?: number;
   idleShutdownMs?: number;
   /** Test seam — defaults to real spawn-and-wait-for-port. */
-  spawnFn?: () => Promise<SpawnResult>;
+  spawnFn?: (request: LlmServerSpawnRequest) => Promise<SpawnResult>;
 }
-
-/**
- * Concurrent decode slots llama-server runs. Must stay in sync with
- * `LLMQueue`'s slot count (server/utils/llmQueue.ts) — more queue slots
- * than this just queues server-side; fewer wastes a slot.
- */
-export const LLM_PARALLEL_SLOTS = 2;
-
-/** Context per slot. The insights path needs the full 8192 (see below). */
-const PER_SLOT_CTX = 8192;
 
 /**
  * argv for llama-server. Exported pure function so tests can pin the
  * concurrency-critical flags (`--parallel`, `--ctx-size`) without
  * spawning a real process.
  */
-export function llamaServerSpawnArgs(modelPath: string, port: number): string[] {
-  return [
+export function llamaServerSpawnArgs(
+  modelPath: string,
+  port: number,
+  profile: RuntimeProfile = activeRuntimeProfile(),
+): string[] {
+  const args = [
     '--model', modelPath,
     '--host', '127.0.0.1',
     '--port', String(port),
     '--keep', '-1',
-    '--n-gpu-layers', '999',
+    '--n-gpu-layers', String(profile.gpuLayers),
     // llama-server divides ctx evenly across `--parallel` slots, so the
-    // total is scaled to keep 8192 per slot — that's what the insights
-    // path (maxTokens=4096, prompts ~3-6k tokens for an hour of
-    // subtitles) needs; prompts that still overflow slide via
-    // llama-server's context-shift. Two slots let a pair of
-    // translate/polish tasks batch into one forward pass — Metal decode
-    // is bandwidth-bound, so 2-way batching lifts aggregate throughput
-    // ~1.5-1.8x on M-series. The flip side: KV cache memory doubles
-    // (Qwen3's KV cache is fat — 36 layers × 8 kv-heads ≈ 144KB/token on
-    // 4B — so 16k total ctx ≈ 2.3 GB on 4B, still inside the 8 GB
-    // entry-tier budget next to the 2.6 GB weights).
-    '--ctx-size', String(PER_SLOT_CTX * LLM_PARALLEL_SLOTS),
-    '--parallel', String(LLM_PARALLEL_SLOTS),
+    // total is scaled from the runtime profile's per-slot context. The
+    // standard profile keeps 8192/slot for Insight; entry profiles can
+    // lower both context and concurrency to avoid OOM.
+    '--ctx-size', String(profile.perSlotContext * profile.parallelSlots),
+    '--parallel', String(profile.parallelSlots),
     // NOTE: do NOT pass `-fa`/`--flash-attn` — current llama.cpp builds
     // take a required value (`-fa on|off|auto`) and a bare `-fa` makes
     // the next flag its value, killing the process at argv parse
@@ -68,8 +73,12 @@ export function llamaServerSpawnArgs(modelPath: string, port: number): string[] 
     '--cache-reuse', '256',
     // Pin weights in RAM so a backgrounded app doesn't page them out
     // mid-task (`--mlock`'s modern spelling).
-    '--load-mode', 'mmap+mlock',
+    '--load-mode', profile.loadMode,
   ];
+  if (profile.flashAttention !== 'auto') {
+    args.push('--flash-attn', profile.flashAttention);
+  }
+  return args;
 }
 
 /**
@@ -95,6 +104,9 @@ export class LlmServer {
   private _state: LlmServerState = 'idle';
   private proc: ChildProcess | null = null;
   private port: number | null = null;
+  private currentModelId: string | null = null;
+  private currentModelPath: string | null = null;
+  private currentRuntimeProfile: RuntimeProfile | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private opts: LlmServerOptions;
   private readyPromise: Promise<void> | null = null;
@@ -106,6 +118,16 @@ export class LlmServer {
    * during graceful idle shutdown.
    */
   private failureCount = 0;
+  /**
+   * Consecutive 5xx count, reset by `noteSuccess()`. The process-exit
+   * latch can't see a server that is alive but failing every request
+   * (wedged GPU context, corrupted KV cache), so the backend reports
+   * given-up 5xx here and we recycle the process ONCE: stop() now, the
+   * next ensure() respawns from scratch. Never latches unusable — a
+   * fresh spawn fixes most wedges, and a permanently broken spawn still
+   * trips the exit latch on its own.
+   */
+  private httpFailureCount = 0;
   /** Latched once `failureCount` hits 3; surfaced via `MODEL_UNUSABLE`. */
   private unusable = false;
 
@@ -122,6 +144,17 @@ export class LlmServer {
   }
 
   /**
+   * Reset the idle-unload timer if the server is running; no-op
+   * otherwise (never spawns). Called by long-lived waiters — e.g. a
+   * pipelined polish worker polling for cues on a sparse-audio video —
+   * so pending work keeps the model resident instead of paying a cold
+   * reload at every >idle-window gap between super-batches.
+   */
+  touch(): void {
+    if (this._state === 'running') this.armIdleTimer();
+  }
+
+  /**
    * Ensure a server is running and reset the idle timer. Safe to call
    * concurrently — overlapping calls share a single spawn.
    *
@@ -132,23 +165,40 @@ export class LlmServer {
    * burning more time on spawn churn.
    */
   async ensure(): Promise<void> {
+    await this.ensureLease();
+  }
+
+  async ensureLease(request?: { modelId?: LlmModelId }): Promise<ModelLease> {
     if (this.unusable) {
       throw new Error('MODEL_UNUSABLE');
     }
+    const spawnRequest = this.resolveSpawnRequest(request?.modelId);
+    if (this._state === 'running') {
+      if (
+        this.currentModelId === spawnRequest.modelId
+        && this.currentModelPath === spawnRequest.modelPath
+        && this.currentRuntimeProfile?.id === spawnRequest.runtimeProfile.id
+      ) {
+        this.armIdleTimer();
+        return this.currentLease(false);
+      }
+      await this.stop();
+    }
     if (this._state === 'running') {
       this.armIdleTimer();
-      return;
+      return this.currentLease(false);
     }
     if (this._state === 'starting' && this.readyPromise) {
       this.armIdleTimer();
-      return this.readyPromise;
+      await this.readyPromise;
+      return this.currentLease(false);
     }
     const wasStopping = this._state === 'stopping';
     if (wasStopping && this.stopPromise) {
       await this.stopPromise;
     }
     this._state = 'starting';
-    this.readyPromise = this.doStart();
+    this.readyPromise = this.doStart(spawnRequest);
     try {
       await this.readyPromise;
       this._state = 'running';
@@ -159,12 +209,50 @@ export class LlmServer {
     } finally {
       this.readyPromise = null;
     }
+    return this.currentLease(true);
   }
 
-  private async doStart(): Promise<void> {
-    const result = await (this.opts.spawnFn ?? this.realSpawn.bind(this))();
+  private currentLease(coldStart: boolean): ModelLease {
+    if (
+      this.port == null
+      || this.currentModelId == null
+      || this.currentModelPath == null
+      || this.currentRuntimeProfile == null
+    ) {
+      throw new Error('llama-server has no complete lease after ensure');
+    }
+    return {
+      endpoint: `http://127.0.0.1:${this.port}`,
+      modelId: this.currentModelId,
+      modelPath: this.currentModelPath,
+      backend: 'llama-server',
+      runtimeProfileId: this.currentRuntimeProfile.id,
+      coldStart,
+    };
+  }
+
+  private resolveSpawnRequest(modelId?: LlmModelId): LlmServerSpawnRequest {
+    const testModelId = this.opts.modelPath || this.opts.spawnFn ? 'test' : undefined;
+    const id = modelId ?? testModelId ?? loadSettings().llmModel;
+    if (!id) {
+      throw new Error('LLM_MODEL_NOT_CONFIGURED');
+    }
+    return {
+      modelId: id,
+      modelPath: this.opts.modelPath ?? (this.opts.spawnFn
+        ? '/models/test.gguf'
+        : llmModelPath(id as LlmModelId)),
+      runtimeProfile: activeRuntimeProfile(),
+    };
+  }
+
+  private async doStart(request: LlmServerSpawnRequest): Promise<void> {
+    const result = await (this.opts.spawnFn ?? this.realSpawn.bind(this))(request);
     this.proc = result.proc;
     this.port = result.port;
+    this.currentModelId = request.modelId;
+    this.currentModelPath = request.modelPath;
+    this.currentRuntimeProfile = request.runtimeProfile;
     // `.once` (not `.on`) — the proc is never reused across spawns, and a
     // long-running test harness that recycles a fake EventEmitter would
     // otherwise accumulate listeners on each ensure() / exit cycle.
@@ -172,6 +260,9 @@ export class LlmServer {
       this._state = 'idle';
       this.proc = null;
       this.port = null;
+      this.currentModelId = null;
+      this.currentModelPath = null;
+      this.currentRuntimeProfile = null;
       // Signal-killed exits arrive with `code === null` (signal name is in
       // the second handler arg). Those are us — graceful idle shutdown via
       // SIGTERM/SIGKILL — and must not bump the failure counter. Anything
@@ -187,14 +278,30 @@ export class LlmServer {
 
   /**
    * Called by the backend after every successful chat completion. Resets
-   * the consecutive-failure counter so a model that crashes once but then
-   * recovers doesn't get latched as `MODEL_UNUSABLE` later in the session.
+   * the consecutive-failure counters so a model that crashes once but
+   * then recovers doesn't get latched as `MODEL_UNUSABLE` later in the
+   * session.
    */
   noteSuccess(): void {
     this.failureCount = 0;
+    this.httpFailureCount = 0;
   }
 
-  private realSpawn = async (): Promise<SpawnResult> => {
+  /** Report a given-up HTTP 5xx; three consecutive recycle the process. */
+  noteHttpFailure(): void {
+    this.httpFailureCount += 1;
+    if (this.httpFailureCount >= 3) {
+      this.httpFailureCount = 0;
+      logEvent({
+        level: 'warn',
+        event: 'llm_server_http_5xx_recycle',
+        state: this._state,
+      });
+      if (this._state === 'running') void this.stop();
+    }
+  }
+
+  private realSpawn = async (request: LlmServerSpawnRequest): Promise<SpawnResult> => {
     // Re-read env at spawn time, not just at construction. dev:desktop:hot
     // may set SUBCAST_LLM_BINARY_PATH after the singleton was first
     // touched (e.g. by an early /api/desktop/llm/status probe), and we
@@ -209,21 +316,9 @@ export class LlmServer {
         'this should never happen — reinstall Subcast.',
       );
     }
-    // Resolve `modelPath` at spawn time (not at construction) so the user
-    // can switch tiers in Settings and have the next spawn pick up the new
-    // model without restarting the app. `opts.modelPath` is a test seam —
-    // real production reads from settings.
-    let modelPath = this.opts.modelPath;
-    if (!modelPath) {
-      const llmModel = loadSettings().llmModel;
-      if (!llmModel) {
-        throw new Error('LLM_MODEL_NOT_CONFIGURED');
-      }
-      modelPath = llmModelPath(llmModel);
-    }
     const proc = spawn(
       binaryPath,
-      llamaServerSpawnArgs(modelPath, this.opts.preferredPort ?? 0),
+      llamaServerSpawnArgs(request.modelPath, this.opts.preferredPort ?? 0, request.runtimeProfile),
     );
     const port = await this.waitForListeningPort(proc, 30_000);
     // The "listening" log line fires the moment the HTTP socket binds —

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { LLMBackend } from '../llmClient';
+import type { LLMBackend, LLMChatResult } from '../llmClient';
 import type { Cue } from '../vtt';
 
 const chatMock = vi.hoisted(() => vi.fn<LLMBackend['chat']>());
@@ -36,6 +36,17 @@ function jsonItems(prefix: string, n: number): string {
   return JSON.stringify(Array.from({ length: n }, (_, i) => `${prefix} ${i}`));
 }
 
+function chatResult(content: string): LLMChatResult {
+  return {
+    content,
+    finishReason: 'stop',
+    usage: { promptTokens: 11, completionTokens: 7 },
+    timing: { prefillMs: 2, decodeMs: 3, totalMs: 5 },
+    retries: 0,
+    coldStart: false,
+  };
+}
+
 beforeEach(() => {
   chatMock.mockReset();
   vi.mocked(logEvent).mockClear();
@@ -46,7 +57,7 @@ describe('translateAll', () => {
     chatMock.mockImplementation(async (opts) => {
       const match = opts.messages.at(-1)?.content.match(/INPUT \((\d+) subtitle/);
       const n = Number(match?.[1] ?? 0);
-      return jsonItems('translated', n);
+      return chatResult(jsonItems('translated', n));
     });
 
     await translateAll(Array.from({ length: 26 }, (_, i) => cue(i)), 'zh-CN');
@@ -61,7 +72,7 @@ describe('translateAll', () => {
     chatMock.mockImplementation(async (opts) => {
       const match = opts.messages.at(-1)?.content.match(/INPUT \((\d+) subtitle/);
       const n = Number(match?.[1] ?? 0);
-      return jsonItems('translated', n);
+      return chatResult(jsonItems('translated', n));
     });
 
     const out = await translateAll(Array.from({ length: 26 }, (_, i) => cue(i)), 'zh-CN');
@@ -76,9 +87,9 @@ describe('translateAll', () => {
 
   it('falls back from a mismatched super batch to smaller sub-batches with diagnostic logs', async () => {
     chatMock
-      .mockResolvedValueOnce(jsonItems('too-few', 24))
-      .mockResolvedValueOnce(jsonItems('sub-a', 15))
-      .mockResolvedValueOnce(jsonItems('sub-b', 10));
+      .mockResolvedValueOnce(chatResult(jsonItems('too-few', 24)))
+      .mockResolvedValueOnce(chatResult(jsonItems('sub-a', 15)))
+      .mockResolvedValueOnce(chatResult(jsonItems('sub-b', 10)));
 
     const retries: unknown[] = [];
     const out = await translateAll(Array.from({ length: 25 }, (_, i) => cue(i)), 'en-US', {
@@ -96,16 +107,27 @@ describe('translateAll', () => {
       expectedCount: 25,
       actualCount: 24,
       parseOk: true,
-      rawPreview: expect.any(String),
+      finishReason: 'stop',
+      retries: 0,
+      coldStart: false,
+      promptTokens: 11,
+      completionTokens: 7,
+      prefillMs: 2,
+      decodeMs: 3,
+      totalMs: 5,
     }));
+    for (const [entry] of vi.mocked(logEvent).mock.calls) {
+      expect(entry).not.toHaveProperty('rawPreview');
+      expect(entry).not.toHaveProperty('cueText');
+    }
   });
 
   it('falls back to per-cue translation and then source text when needed', async () => {
     chatMock
-      .mockResolvedValueOnce('not json')
-      .mockResolvedValueOnce(jsonItems('still-wrong', 14))
-      .mockResolvedValueOnce(jsonItems('single', 1))
-      .mockResolvedValueOnce('not json');
+      .mockResolvedValueOnce(chatResult('not json'))
+      .mockResolvedValueOnce(chatResult(jsonItems('still-wrong', 14)))
+      .mockResolvedValueOnce(chatResult(jsonItems('single', 1)))
+      .mockResolvedValueOnce(chatResult('not json'));
 
     const out = await translateAll([cue(0), cue(1)], 'ja-JP');
 
@@ -136,6 +158,11 @@ describe('translateAll', () => {
       fallbackCount: 1,
       totalCues: 2,
     }));
+    for (const [entry] of vi.mocked(logEvent).mock.calls) {
+      expect(entry).not.toHaveProperty('rawPreview');
+      expect(entry).not.toHaveProperty('cueText');
+      expect(JSON.stringify(entry)).not.toContain('source 1');
+    }
   });
 });
 
@@ -144,7 +171,7 @@ describe('translateSuperBatch (P6 extraction contract)', () => {
     chatMock.mockImplementation(async (opts) => {
       const match = opts.messages.at(-1)?.content.match(/INPUT \((\d+) subtitle/);
       const n = Number(match?.[1] ?? 0);
-      return jsonItems('translated', n);
+      return chatResult(jsonItems('translated', n));
     });
 
     const batch1 = await translateSuperBatch([cue(0), cue(1)], 'zh-CN', []);

@@ -22,8 +22,8 @@ const route = useRoute();
 
 const TABS: Array<{ id: TabId; labelKey: string; icon: typeof HelpCircle }> = [
   { id: 'help', labelKey: 'help.tabs.help', icon: HelpCircle },
-  { id: 'about', labelKey: 'help.tabs.about', icon: Info },
   { id: 'changelog', labelKey: 'help.tabs.changelog', icon: CalendarClock },
+  { id: 'about', labelKey: 'help.tabs.about', icon: Info },
 ];
 
 const currentTab = ref<TabId>('help');
@@ -71,7 +71,7 @@ onBeforeUnmount(() => {
     </template>
 
     <div class="mx-auto w-full max-w-screen-2xl px-4">
-      <header class="mb-8">
+      <header class="mb-7">
         <h1 class="text-2xl font-semibold tracking-tight">{{ t('help.title') }}</h1>
         <p class="mt-1 text-sm text-muted-foreground">{{ t('help.subtitle') }}</p>
       </header>
@@ -89,10 +89,10 @@ onBeforeUnmount(() => {
             v-for="tab in TABS"
             :key="tab.id"
             :value="tab.id"
-            class="h-9 justify-start gap-2 px-3 text-muted-foreground data-[state=active]:bg-accent data-[state=active]:text-foreground data-[state=active]:shadow-none md:w-full"
+            class="h-10 justify-start gap-2 px-3 text-muted-foreground data-[state=active]:bg-accent data-[state=active]:text-foreground data-[state=active]:shadow-none md:w-full"
           >
-            <component :is="tab.icon" class="h-3.5 w-3.5" />
-            {{ t(tab.labelKey) }}
+            <component :is="tab.icon" class="size-4 shrink-0" aria-hidden="true" />
+            <span class="min-w-0 truncate">{{ t(tab.labelKey) }}</span>
           </TabsTrigger>
         </TabsList>
 

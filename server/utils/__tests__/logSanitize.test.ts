@@ -26,6 +26,27 @@ describe('sanitizeLine', () => {
     expect(JSON.parse(out).filename).toMatch(/^hash:[0-9a-f]{12}$/);
   });
 
+  it('redacts content-bearing model fields when debug=false', () => {
+    const out = sanitizeLine(
+      JSON.stringify({
+        event: 'translate_count_mismatch',
+        rawPreview: '模型输出片段',
+        cueText: '用户字幕原文',
+        promptText: '完整提示词',
+        transcriptText: '完整转写文本',
+        modelOutput: '完整模型输出',
+      }),
+      false,
+    );
+    const parsed = JSON.parse(out) as Record<string, string>;
+    expect(parsed.rawPreview).toMatch(/^hash:[0-9a-f]{12}$/);
+    expect(parsed.cueText).toMatch(/^hash:[0-9a-f]{12}$/);
+    expect(parsed.promptText).toMatch(/^hash:[0-9a-f]{12}$/);
+    expect(parsed.transcriptText).toMatch(/^hash:[0-9a-f]{12}$/);
+    expect(parsed.modelOutput).toMatch(/^hash:[0-9a-f]{12}$/);
+    expect(out).not.toContain('用户字幕原文');
+  });
+
   it('keeps safe passthrough fields verbatim', () => {
     const line = JSON.stringify({
       ts: 123,

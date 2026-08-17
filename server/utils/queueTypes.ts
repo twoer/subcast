@@ -25,16 +25,39 @@ export type QueueTranscribeTaskSummary = Pick<
  */
 export type QueueTranslateTaskSummary = Pick<
   TranslateTaskRow,
-  'id' | 'video_sha' | 'target_lang' | 'status' | 'model' | 'progress_pct' | 'priority' | 'error_msg'
+  | 'id'
+  | 'video_sha'
+  | 'target_lang'
+  | 'status'
+  | 'model'
+  | 'progress_pct'
+  | 'priority'
+  | 'error_msg'
+  | 'invocation_spec_json'
+  | 'invocation_fingerprint'
 >;
 
 export type QueueInsightTaskSummary = Pick<
   InsightTaskRow,
-  'id' | 'video_sha' | 'status' | 'model' | 'ui_language' | 'error_msg'
+  | 'id'
+  | 'video_sha'
+  | 'status'
+  | 'model'
+  | 'ui_language'
+  | 'error_msg'
+  | 'invocation_spec_json'
+  | 'invocation_fingerprint'
 >;
 export type QueuePolishTaskSummary = Pick<
   PolishTaskRow,
-  'id' | 'video_sha' | 'status' | 'model' | 'progress_pct' | 'error_msg'
+  | 'id'
+  | 'video_sha'
+  | 'status'
+  | 'model'
+  | 'progress_pct'
+  | 'error_msg'
+  | 'invocation_spec_json'
+  | 'invocation_fingerprint'
 >;
 
 export interface QueueActiveTask {

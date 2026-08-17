@@ -14,6 +14,8 @@ interface CacheItem {
   ext: string;
   videoBytes: number;
   cacheBytes: number;
+  /** Media duration in seconds; null while a background probe is pending or unavailable. */
+  durationS: number | null;
   langs: string[];
   hasInsights?: boolean;
   hasRunningInsight?: boolean;
@@ -219,11 +221,12 @@ onMounted(async () => {
                   </TooltipTrigger>
                   <TooltipContent>{{ t('library.rename') }}</TooltipContent>
                 </Tooltip>
-                <span class="font-mono text-2xs text-muted-foreground">
-                  {{ fmtBytes(item.videoBytes + item.cacheBytes) }}
-                </span>
               </div>
-              <div class="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+              <div class="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <MediaMetaPills
+                  :duration-s="item.durationS"
+                  :bytes="item.videoBytes + item.cacheBytes"
+                />
                 <FileStatusBadges :status="getFileStatus(item, queueItems)" />
                 <span v-if="item.langs.length > 0" class="font-mono">
                   {{ item.langs.join(' · ') }}

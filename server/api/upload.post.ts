@@ -10,6 +10,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { parseSubtitleByExt } from '../utils/srt';
 import { serializeVtt } from '../utils/vtt';
 import { generateWaveform } from '../utils/waveform';
+import { backfillVideoDurationS } from '../utils/videoDuration';
 import { logEvent } from '../utils/log';
 
 const VIDEO_EXT = ['.mp4', '.mkv', '.mov', '.webm', '.mp3', '.wav', '.m4a'];
@@ -81,6 +82,10 @@ export default defineEventHandler(async (event) => {
      VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(sha256) DO UPDATE SET last_opened_at = excluded.last_opened_at, deleted_at = NULL`,
   ).run(sha, file.name, ext, file.size, now, now);
+
+  // Duration probe rides the same fire-and-forget pattern as the waveform
+  // prewarm below so the library list can show a duration from the start.
+  backfillVideoDurationS(sha, finalPath);
 
   // Fire-and-forget waveform prewarm. The upload response returns
   // immediately; ffmpeg runs in the background and writes

@@ -178,18 +178,20 @@ export function markItemStatus(
   batchItemId: string,
   status: BatchItemStatus,
   errorMsg?: string,
-): void {
+): boolean {
   const now = Date.now();
-  getDb()
+  const result = getDb()
     .prepare(
       `UPDATE batch_items
        SET status = ?,
            started_at = CASE WHEN started_at IS NULL AND ? IN ('running','completed','failed','canceled') THEN ? ELSE started_at END,
            completed_at = CASE WHEN ? IN ('completed','failed','canceled') THEN ? ELSE completed_at END,
            error_msg = CASE WHEN ? IS NOT NULL THEN ? ELSE error_msg END
-       WHERE id = ?`,
+       WHERE id = ?
+         AND status <> 'canceled'`,
     )
     .run(status, status, now, status, now, errorMsg ?? null, errorMsg ?? null, batchItemId);
+  return result.changes > 0;
 }
 
 export function markBatchStatus(
@@ -212,6 +214,14 @@ export function markBatchStatus(
 
 export function recomputeBatchStatus(batchId: string): void {
   const db = getDb();
+  const job = db
+    .prepare(`SELECT status FROM batch_jobs WHERE id = ?`)
+    .get(batchId) as { status: BatchJobStatus } | undefined;
+  // Cancellation is terminal. An in-flight worker may settle after the
+  // cancel transaction and call this function from its finally block; it
+  // must not resurrect the batch as running/failed/completed.
+  if (!job || job.status === 'canceled') return;
+
   const rows = db
     .prepare(`SELECT status FROM batch_items WHERE batch_id = ?`)
     .all(batchId) as Array<{ status: BatchItemStatus }>;

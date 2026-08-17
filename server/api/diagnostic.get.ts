@@ -10,6 +10,7 @@ import { detectHardware } from '../utils/hardware';
 import { detectHealth } from '../utils/health';
 import { LOG_FILE_PATTERN, LOG_RETENTION_DAYS } from '../utils/log';
 import { sanitizeLine } from '../utils/logSanitize';
+import { resolveRuntimeProfile, runtimeProfileDiagnostics } from '../utils/runtimeProfile';
 import { loadSettings } from '../utils/settings';
 
 /**
@@ -67,11 +68,11 @@ function recentLogs(debug: boolean): Record<string, string> {
 export default defineEventHandler(async (event) => {
   const settings = loadSettings();
   const hardware = detectHardware();
-  // 0.2: Ollama is gone; the health probe only covers whisper-cli +
-  // whisper model presence. LLM readiness is reported separately by
-  // `/api/desktop/llm/status` and isn't bundled into the diagnostic
-  // zip yet — keep this file scope-focused (logs + settings + hardware
-  // + whisper inventory).
+  const runtimeProfile = runtimeProfileDiagnostics(resolveRuntimeProfile(hardware));
+  // Ollama is gone; the health probe still covers whisper-cli + whisper
+  // model presence. LLM runtime reporting is content-free and bundled
+  // below as profile metadata; live readiness remains on
+  // `/api/desktop/llm/status`.
   const health = await detectHealth({ whisperModel: settings.whisperModel });
 
   const zip = new JSZip();
@@ -116,6 +117,16 @@ export default defineEventHandler(async (event) => {
         whisper: {
           binaryPresent: health.whisper.binaryPresent,
           installed: health.whisper.models,
+        },
+        llmRuntime: {
+          id: runtimeProfile.id,
+          requestedBackend: runtimeProfile.requestedBackend,
+          verifiedBackend: runtimeProfile.verifiedBackend,
+          verified: runtimeProfile.verified,
+          gpuBackend: runtimeProfile.gpuBackend,
+          parallelSlots: runtimeProfile.parallelSlots,
+          perSlotContext: runtimeProfile.perSlotContext,
+          warnings: runtimeProfile.warnings,
         },
       },
       null,

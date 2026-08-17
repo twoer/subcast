@@ -1,7 +1,11 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+
+vi.mock('../log', () => ({ logEvent: vi.fn() }));
+
+/* eslint-disable import/first -- log mock must precede imports that capture logEvent */
 import {
   getVadSession,
   runVadFrame,
@@ -9,6 +13,8 @@ import {
   VAD_STATE_SIZE,
   _resetVadSessionForTest,
 } from '../vadSession';
+import { logEvent } from '../log';
+/* eslint-enable import/first */
 
 const MODEL_PATH = join(process.cwd(), 'binaries/models/silero_vad.onnx');
 
@@ -27,12 +33,27 @@ describe('vadSession', () => {
 
   afterEach(() => {
     _resetVadSessionForTest();
+    vi.mocked(logEvent).mockClear();
   });
 
   itIfModel('loads the session lazily and caches it', async () => {
     const s1 = await getVadSession();
     const s2 = await getVadSession();
     expect(s2).toBe(s1);
+  });
+
+  itIfModel('does not log the resolved model path when initializing', async () => {
+    await getVadSession();
+
+    expect(logEvent).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'vad_session_init',
+      modelSource: expect.stringMatching(/^(desktop|dev)$/),
+    }));
+    const initLog = vi.mocked(logEvent).mock.calls.find(([entry]) =>
+      entry.event === 'vad_session_init'
+    )?.[0];
+    expect(initLog).toBeDefined();
+    expect(initLog).not.toHaveProperty('path');
   });
 
   itIfModel('runVadFrame returns a probability in [0, 1] for silence', async () => {

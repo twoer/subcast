@@ -90,7 +90,13 @@ export function generateWaveform(
       '-',
     ];
     const proc = spawn(FFMPEG_PATH, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    logEvent({ level: 'debug', event: 'waveform_spawn', pid: proc.pid ?? -1, audioPath });
+    logEvent({
+      level: 'debug',
+      event: 'waveform_spawn',
+      pid: proc.pid ?? -1,
+      sampleRate,
+      buckets,
+    });
 
     const chunks: Buffer[] = [];
     let totalBytes = 0;

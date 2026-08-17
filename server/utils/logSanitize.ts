@@ -34,6 +34,17 @@ const PASSTHROUGH_KEYS = new Set([
 const ABSOLUTE_PATH_RE =
   /(?:[A-Za-z]:\\|\/(?:Users|home|var|private|tmp|Volumes|System\/Volumes)\/)[^\s'",)]+/g;
 
+function isSensitiveContentKey(key: string): boolean {
+  const k = key.toLowerCase();
+  return (
+    k.includes('raw') ||
+    k.includes('prompt') ||
+    k.includes('transcript') ||
+    k === 'cuetext' ||
+    k.includes('modeloutput')
+  );
+}
+
 function redactPathsInText(s: string): string {
   return s.replace(ABSOLUTE_PATH_RE, (match) => `path:${shaShort(match)}`);
 }
@@ -48,7 +59,9 @@ export function sanitizeLine(line: string, debug: boolean): string {
       if (
         typeof v === 'string' &&
         v.length > 0 &&
-        (k.toLowerCase().includes('path') || k.toLowerCase().includes('name'))
+        (k.toLowerCase().includes('path') ||
+          k.toLowerCase().includes('name') ||
+          isSensitiveContentKey(k))
       ) {
         obj[k] = `hash:${shaShort(v)}`;
       } else if (typeof v === 'string' && v.length > 0) {

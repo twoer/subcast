@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { existsSync, unlinkSync } from 'node:fs';
+import { existsSync, rmSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { defineEventHandler, getQuery, createError } from 'h3';
 import { getDb, SUBCAST_PATHS } from '../utils/db';
@@ -17,6 +17,7 @@ export default defineEventHandler((event) => {
     const p = join(dir, name);
     if (existsSync(p)) unlinkSync(p);
   }
+  rmSync(join(dir, 'artifacts', 'insight'), { recursive: true, force: true });
 
   const db = getDb();
   db.prepare('DELETE FROM insight_tasks WHERE video_sha = ?').run(hash);

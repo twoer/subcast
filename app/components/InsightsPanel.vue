@@ -18,7 +18,13 @@ interface Insights {
   summary: string;
   summaryBullets: string[];
   chapters: Chapter[];
-  _meta?: { ollamaModel: string; uiLanguage: string; originalCueCount: number; generatedAt: number };
+  _meta?: {
+    ollamaModel?: string;
+    modelId?: string;
+    uiLanguage: string;
+    originalCueCount: number;
+    generatedAt: number;
+  };
 }
 
 const props = defineProps<{
@@ -39,6 +45,8 @@ const state = ref<State>('empty');
 const errorCode = ref<string | null>(null);
 const streamedText = ref<string>('');
 const insights = ref<Insights | null>(null);
+const insightPhase = ref<'map' | 'reduce' | null>(null);
+const insightProgressPct = ref<number | null>(null);
 let es: EventSource | null = null;
 let currentTaskId: string | null = null;
 
@@ -54,7 +62,8 @@ function toTier(s: string): string {
 const isOutdated = computed(() => {
   const m = insights.value?._meta;
   if (!m) return false;
-  return toTier(m.ollamaModel) !== toTier(props.currentLlmModel)
+  const metaModel = m.modelId ?? m.ollamaModel;
+  return (metaModel ? toTier(metaModel) !== toTier(props.currentLlmModel) : false)
     || m.originalCueCount !== props.cueCount;
 });
 
@@ -110,6 +119,8 @@ function startStream(silent = false) {
   if (!silent) {
     state.value = 'generating';
     streamedText.value = '';
+    insightPhase.value = null;
+    insightProgressPct.value = null;
     errorCode.value = null;
   }
   es = new EventSource(`/api/insights?hash=${encodeURIComponent(props.hash)}`);
@@ -122,10 +133,28 @@ function startStream(silent = false) {
     const data = JSON.parse((e as MessageEvent).data);
     streamedText.value += data.text;
   });
+  es.addEventListener('phase', (e) => {
+    const data = JSON.parse((e as MessageEvent).data) as {
+      phase?: 'map' | 'reduce';
+      progressPct?: number;
+    };
+    insightPhase.value = data.phase ?? null;
+    insightProgressPct.value = typeof data.progressPct === 'number' ? data.progressPct : insightProgressPct.value;
+  });
+  es.addEventListener('progress', (e) => {
+    const data = JSON.parse((e as MessageEvent).data) as {
+      phase?: 'map' | 'reduce';
+      progressPct?: number;
+    };
+    insightPhase.value = data.phase ?? insightPhase.value;
+    if (typeof data.progressPct === 'number') insightProgressPct.value = data.progressPct;
+  });
   es.addEventListener('done', (e) => {
     const data = JSON.parse((e as MessageEvent).data);
     insights.value = data.insights;
     state.value = isOutdated.value ? 'outdated' : 'ready';
+    insightPhase.value = null;
+    insightProgressPct.value = null;
     closeStream();
   });
   es.addEventListener('error', (e) => {
@@ -159,6 +188,8 @@ async function cancel() {
   closeStream();
   state.value = 'empty';
   streamedText.value = '';
+  insightPhase.value = null;
+  insightProgressPct.value = null;
   currentTaskId = null;
 }
 
@@ -210,6 +241,8 @@ async function confirmClear() {
   }
   insights.value = null;
   streamedText.value = '';
+  insightPhase.value = null;
+  insightProgressPct.value = null;
   state.value = 'empty';
 }
 
@@ -298,10 +331,16 @@ const streamingInsights = computed(() => {
 });
 
 const generatingLabel = computed(() => {
+  if (insightPhase.value === 'reduce') return t('player.insights.generatingSummary');
+  if (insightPhase.value === 'map') return t('player.insights.generatingReading');
   if (streamingInsights.value.hasChaptersHeading) return t('player.insights.generatingChapters');
   if (streamingInsights.value.hasSummaryHeading) return t('player.insights.generatingSummary');
   return t('player.insights.generatingReading');
 });
+
+const generatingProgressLabel = computed(() =>
+  insightProgressPct.value === null ? '' : `${Math.round(insightProgressPct.value)}%`,
+);
 </script>
 
 <template>
@@ -331,8 +370,10 @@ const generatingLabel = computed(() => {
           </li>
         </ul>
         <Button :disabled="!transcriptReady" @click="startStream()">
-          <Sparkles class="mr-1.5 h-4 w-4" />
-          {{ t('player.insights.generate') }}
+          <span class="inline-flex items-center gap-1.5">
+            <Sparkles class="h-4 w-4 shrink-0" />
+            <span>{{ t('player.insights.generate') }}</span>
+          </span>
         </Button>
         <p class="text-xs text-muted-foreground/70">
           {{ transcriptReady ? t('player.insights.estimate', { model: currentLlmModel }) : t('player.insights.waitForTranscript') }}
@@ -349,6 +390,7 @@ const generatingLabel = computed(() => {
           <span class="relative inline-flex h-2 w-2 rounded-full bg-primary" />
         </span>
         <span class="font-medium text-foreground">{{ generatingLabel }}</span>
+        <span v-if="generatingProgressLabel" class="shrink-0 tabular-nums text-xs text-muted-foreground">{{ generatingProgressLabel }}</span>
         <span class="shrink-0 tabular-nums text-xs text-muted-foreground">{{ elapsedSeconds }}s</span>
       </div>
       <!-- scrollable body -->
@@ -407,8 +449,10 @@ const generatingLabel = computed(() => {
       <div class="shrink-0 flex items-center justify-between gap-2 border-t border-border/40 px-1 pt-3 text-xs text-muted-foreground">
         <span class="min-w-0 truncate">{{ currentLlmModel }}</span>
         <Button size="sm" variant="outline" @click="cancel">
-          <XIcon class="mr-1 h-3.5 w-3.5" />
-          {{ t('player.insights.cancel') }}
+          <span class="inline-flex items-center gap-1">
+            <XIcon class="h-3.5 w-3.5 shrink-0" />
+            <span>{{ t('player.insights.cancel') }}</span>
+          </span>
         </Button>
       </div>
     </div>
@@ -421,8 +465,10 @@ const generatingLabel = computed(() => {
           <AlertCircle class="h-4 w-4 shrink-0 text-warning" />
           <div class="flex-1">{{ t('player.insights.outdatedHint') }}</div>
           <Button size="sm" variant="ghost" @click="regenerate">
-            <RotateCcw class="mr-1 h-3.5 w-3.5" />
-            {{ t('player.insights.regenerate') }}
+            <span class="inline-flex items-center gap-1">
+              <RotateCcw class="h-3.5 w-3.5 shrink-0" />
+              <span>{{ t('player.insights.regenerate') }}</span>
+            </span>
           </Button>
         </div>
 
@@ -435,8 +481,10 @@ const generatingLabel = computed(() => {
             {{ t('player.insights.langMismatch', { lang: langLabel(insightLang) }) }}
           </div>
           <Button size="xs" variant="outline" @click="regenerate">
-            <RotateCcw />
-            {{ t('player.insights.regenerateInLang', { lang: langLabel(currentLang) }) }}
+            <span class="inline-flex items-center gap-1">
+              <RotateCcw class="h-3.5 w-3.5 shrink-0" />
+              <span>{{ t('player.insights.regenerateInLang', { lang: langLabel(currentLang) }) }}</span>
+            </span>
           </Button>
         </div>
 
@@ -479,17 +527,23 @@ const generatingLabel = computed(() => {
         </span>
         <div class="flex shrink-0 items-center gap-1">
           <Button size="xs" variant="ghost" @click="copySummary">
-            <Check v-if="justCopied" />
-            <Copy v-else />
-            {{ justCopied ? t('player.insights.copied') : t('player.insights.copy') }}
+            <span class="inline-flex items-center gap-1">
+              <Check v-if="justCopied" class="h-3.5 w-3.5 shrink-0" />
+              <Copy v-else class="h-3.5 w-3.5 shrink-0" />
+              <span>{{ justCopied ? t('player.insights.copied') : t('player.insights.copy') }}</span>
+            </span>
           </Button>
           <Button size="xs" variant="ghost" @click="regenerate">
-            <RotateCcw />
-            {{ t('player.insights.regenerate') }}
+            <span class="inline-flex items-center gap-1">
+              <RotateCcw class="h-3.5 w-3.5 shrink-0" />
+              <span>{{ t('player.insights.regenerate') }}</span>
+            </span>
           </Button>
           <Button size="xs" variant="ghost" class="text-destructive hover:bg-destructive/10 hover:text-destructive" @click="showClearDialog = true">
-            <Trash2 />
-            {{ t('player.insights.clear') }}
+            <span class="inline-flex items-center gap-1">
+              <Trash2 class="h-3.5 w-3.5 shrink-0" />
+              <span>{{ t('player.insights.clear') }}</span>
+            </span>
           </Button>
         </div>
       </div>
@@ -502,8 +556,10 @@ const generatingLabel = computed(() => {
       </div>
       <p class="text-sm text-muted-foreground">{{ t(`player.insights.errors.${errorCode}`, t('player.insights.errors.fallback')) }}</p>
       <Button :disabled="!transcriptReady" @click="startStream()">
-        <Play class="mr-1.5 h-4 w-4" />
-        {{ t('player.insights.retry') }}
+        <span class="inline-flex items-center gap-1.5">
+          <Play class="h-4 w-4 shrink-0" />
+          <span>{{ t('player.insights.retry') }}</span>
+        </span>
       </Button>
     </div>
 

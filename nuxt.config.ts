@@ -1,6 +1,11 @@
+import { readFileSync } from 'node:fs';
+
 // SUBCAST_BUILD_TARGET=desktop switches to SPA + relative baseURL for
 // Electron packaging. Web/dev defaults stay SSR.
 const IS_DESKTOP_BUILD = process.env.SUBCAST_BUILD_TARGET === 'desktop';
+const PACKAGE_VERSION = (JSON.parse(
+  readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
+) as { version: string }).version;
 
 export default defineNuxtConfig({
   compatibilityDate: '2026-05-01',
@@ -22,6 +27,10 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     public: {
+      // Web builds do not have Electron's `app.getVersion()` bridge. Inject the
+      // package version at build time so About and Help still share the same
+      // source of truth as packaged builds.
+      appVersion: PACKAGE_VERSION,
       // Surface SUBCAST_DESKTOP to the SSR pass and client hydration so
       // `useDesktop()` can return the correct value before window.subcast
       // is available. Read at server start (dev:desktop:hot orchestrator

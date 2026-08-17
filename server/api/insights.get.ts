@@ -11,24 +11,21 @@ import {
 import type { H3Event } from 'h3';
 import { getDb, SUBCAST_PATHS } from '../utils/db';
 import { llmQueue } from '../utils/queue';
-import { buildInsightMessages } from '../utils/insights';
+import { loadSettings } from '../utils/settings';
 import { HASH_RE } from '../utils/validate';
-import type { SettingsRow, VideoRow } from '../types/db';
+import {
+  buildInsightArtifactFingerprint,
+  insightSourceRevision,
+} from '../utils/artifactFingerprint';
+import { readLatestInsightArtifact } from '../utils/artifactStore';
+import type { VideoRow } from '../types/db';
 
-const MAX_PROMPT_CHARS = 80_000;
+const EMERGENCY_TRANSCRIPT_CHARS = 2_000_000;
 
 function pickUiLang(event: H3Event): 'zh-CN' | 'en' {
   const al = (getHeader(event, 'accept-language') ?? '').toLowerCase();
   if (al.startsWith('zh')) return 'zh-CN';
   return 'en';
-}
-
-function getModel(): string {
-  const db = getDb();
-  const row = db
-    .prepare('SELECT value FROM settings WHERE key = ?')
-    .get('ollama_model') as Pick<SettingsRow, 'value'> | undefined;
-  return row?.value ?? 'qwen2.5:7b';
 }
 
 export default defineEventHandler(async (event) => {
@@ -49,9 +46,6 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 409, statusMessage: 'NO_ORIGINAL_VTT' });
   }
 
-  const uiLanguage = pickUiLang(event);
-  const model = getModel();
-
   setResponseHeaders(event, {
     'Content-Type': 'text/event-stream; charset=utf-8',
     'Cache-Control': 'no-cache, no-transform',
@@ -59,15 +53,39 @@ export default defineEventHandler(async (event) => {
     'X-Accel-Buffering': 'no',
   });
   const res = event.node.res;
+  const uiLanguage = pickUiLang(event);
+  const model = loadSettings().llmModel;
+  if (!model) {
+    res.write(`event: error\ndata: ${JSON.stringify({ code: 'MODEL_NOT_CONFIGURED', message: 'No local LLM model is configured' })}\n\n`);
+    res.end();
+    return;
+  }
 
-  // Cache-first short-circuit: if a previous successful run wrote insights.json,
-  // serve it immediately without re-reading the transcript or doing prompt work.
-  const cachePath = join(SUBCAST_PATHS.cache, hash, 'insights.json');
-  if (existsSync(cachePath)) {
+  const transcript = readFileSync(origPath, 'utf-8');
+  const artifactFingerprint = buildInsightArtifactFingerprint({
+    videoSha: hash,
+    transcript,
+    uiLanguage,
+    modelId: model,
+  });
+
+  const artifact = readLatestInsightArtifact(hash, uiLanguage, artifactFingerprint);
+  if (artifact) {
+    res.write(`event: start\ndata: ${JSON.stringify({ taskId: 'cached', model, uiLanguage })}\n\n`);
+    res.write(`event: done\ndata: ${JSON.stringify({ insights: artifact.payload, fromCache: true })}\n\n`);
+    res.end();
+    return;
+  }
+
+  // Legacy compatibility: old builds wrote cache/<sha>/insights.json. Keep
+  // reading it so existing caches don't disappear, but new writes go to the
+  // fingerprinted artifact store only.
+  const legacyCachePath = join(SUBCAST_PATHS.cache, hash, 'insights.json');
+  if (existsSync(legacyCachePath)) {
     try {
-      const obj = JSON.parse(readFileSync(cachePath, 'utf-8'));
+      const obj = JSON.parse(readFileSync(legacyCachePath, 'utf-8'));
       res.write(`event: start\ndata: ${JSON.stringify({ taskId: 'cached', model, uiLanguage })}\n\n`);
-      res.write(`event: done\ndata: ${JSON.stringify({ insights: obj, fromCache: true })}\n\n`);
+      res.write(`event: done\ndata: ${JSON.stringify({ insights: obj, fromCache: true, legacy: true })}\n\n`);
       res.end();
       return;
     } catch {
@@ -75,18 +93,15 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  // Check prompt length and emit SSE error frame instead of HTTP 413
-  // so EventSource clients can read the error code.
-  const transcript = readFileSync(origPath, 'utf-8');
-  const messages = buildInsightMessages(transcript, uiLanguage);
-  const promptChars = messages.reduce((n, m) => n + m.content.length, 0);
-  if (promptChars > MAX_PROMPT_CHARS) {
+  // Token-aware map/reduce handles normal long transcripts. Keep only a
+  // much larger emergency cap to prevent pathological memory use.
+  if (transcript.length > EMERGENCY_TRANSCRIPT_CHARS) {
     res.write(`event: error\ndata: ${JSON.stringify({ code: 'VIDEO_TOO_LONG', message: 'Video too long for AI insights' })}\n\n`);
     res.end();
     return;
   }
 
-  const task = llmQueue.ensureInsightTask(hash, uiLanguage, model);
+  const task = llmQueue.ensureInsightTask(hash, uiLanguage, model, insightSourceRevision(transcript));
   await llmQueue.tryStartNext();
 
   let closed = false;

@@ -35,8 +35,10 @@ function platformName(): HardwareInfo['platform'] {
 
 function detectGpu(): HardwareInfo['gpu'] {
   if (platform() === 'darwin' && arch() === 'arm64') return 'apple-silicon';
-  // Without spawning lspci/nvidia-smi we can't reliably tell. Slice 8 keeps
-  // this simple; Slice 9 may upgrade with a real probe.
+  // This is physical capability only. Actual LLM inference backend
+  // selection/reporting lives in runtimeProfile.ts so Windows can keep
+  // shipping a CPU llama.cpp asset even on NVIDIA hosts until CUDA DLL
+  // staging and driver-failure UX are designed.
   return 'unknown';
 }
 

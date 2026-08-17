@@ -156,3 +156,60 @@ export function sliceWavInMemory(
   writeFileSync(dstPath, wav);
   return { durationSec };
 }
+
+/**
+ * Concatenate several absolute time ranges of the parent WAV into one
+ * standalone in-memory WAV buffer (the packed-whisper-chunk slice).
+ * Gaps between ranges are physically excluded, so request-local
+ * timestamps must be remapped via the piece list (see
+ * `remapCuesToPieces`). Same refusal contract as `sliceWavToBuffer`.
+ */
+export function concatWavPiecesToBuffer(
+  srcPath: string,
+  pieces: ReadonlyArray<{ absStartMs: number; durMs: number }>,
+): { wav: Buffer; durationSec: number } {
+  const mtimeMs = statSync(srcPath).mtimeMs;
+  let entry = parentCache;
+  if (!entry || entry.path !== srcPath || entry.mtimeMs !== mtimeMs) {
+    const buf = readFileSync(srcPath);
+    const info = parseWavHeader(buf);
+    if (!info) throw new Error('WAV_SLICE_UNPARSEABLE');
+    if (info.audioFormat !== 1) {
+      throw new Error(`WAV_SLICE_NOT_PCM:${info.audioFormat}`);
+    }
+    entry = { path: srcPath, mtimeMs, buf, info };
+    parentCache = entry;
+  }
+
+  const { buf, info } = entry;
+  const blockAlign = info.channels * (info.bitsPerSample / 8);
+  if (blockAlign <= 0) throw new Error('WAV_SLICE_BAD_BLOCK_ALIGN');
+  const byteRate = info.sampleRate * blockAlign;
+  // Byte-accurate ranges, block-aligned at both ends like the single
+  // slice path. Zero/negative pieces (sub-ms rounding) drop out here.
+  const ranges: Array<[start: number, end: number]> = [];
+  for (const p of pieces) {
+    const startAligned =
+      info.dataOffset +
+      Math.floor(
+        Math.min(Math.max(p.absStartMs / 1000, 0) * byteRate, info.dataLength) / blockAlign,
+      ) * blockAlign;
+    const endAligned =
+      info.dataOffset +
+      Math.floor(
+        Math.min(Math.max((p.absStartMs + p.durMs) / 1000, 0) * byteRate, info.dataLength) /
+          blockAlign,
+      ) * blockAlign;
+    if (endAligned > startAligned) ranges.push([startAligned, endAligned]);
+  }
+  if (ranges.length === 0) throw new Error('WAV_SLICE_EMPTY:packed');
+  const dataLength = ranges.reduce((s, [a, b]) => s + (b - a), 0);
+  const out = Buffer.alloc(44 + dataLength);
+  canonicalHeader(info, dataLength).copy(out, 0);
+  let cursor = 44;
+  for (const [a, b] of ranges) {
+    buf.copy(out, cursor, a, b);
+    cursor += b - a;
+  }
+  return { wav: out, durationSec: dataLength / byteRate };
+}

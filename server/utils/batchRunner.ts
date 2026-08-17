@@ -1,11 +1,17 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { BatchItemSummary, BatchStepStatus } from '../types/batch';
 import { getDb, SUBCAST_PATHS } from './db';
 import { logEvent } from './log';
 import { llmQueue, transcribeQueue, translateQueue } from './queue';
+import { loadSettings } from './settings';
+import {
+  buildInsightArtifactFingerprint,
+  insightSourceRevision,
+} from './artifactFingerprint';
+import { readLatestInsightArtifact } from './artifactStore';
 import { ensureDiarizeTask } from './diarize/tasks';
 import { runDiarize } from './diarize/diarize';
 import {
@@ -21,7 +27,7 @@ const activeBatches = new Set<string>();
 export interface BatchRunnerAdapter {
   hasTranscript(videoSha: string): boolean;
   hasTranslation(videoSha: string, lang: string): boolean;
-  hasInsights(videoSha: string): boolean;
+  hasInsights(videoSha: string, uiLanguage: 'zh-CN' | 'en'): boolean;
   hasDiarization(videoSha: string): boolean;
   runTranscribe(videoSha: string, model: string): Promise<void>;
   runTranslate(videoSha: string, lang: string): Promise<void>;
@@ -54,8 +60,21 @@ export const defaultBatchRunnerAdapter: BatchRunnerAdapter = {
   hasTranslation(videoSha, lang) {
     return existsSync(join(SUBCAST_PATHS.cache, videoSha, `${lang}.vtt`));
   },
-  hasInsights(videoSha) {
-    return existsSync(join(SUBCAST_PATHS.cache, videoSha, 'insights.json'));
+  hasInsights(videoSha, uiLanguage) {
+    const transcriptPath = join(SUBCAST_PATHS.cache, videoSha, 'original.vtt');
+    const legacyPath = join(SUBCAST_PATHS.cache, videoSha, 'insights.json');
+    if (!existsSync(transcriptPath)) return existsSync(legacyPath);
+    const model = loadSettings().llmModel;
+    if (!model) return existsSync(legacyPath);
+    const transcript = readFileSync(transcriptPath, 'utf8');
+    const fingerprint = buildInsightArtifactFingerprint({
+      videoSha,
+      transcript,
+      uiLanguage,
+      modelId: model,
+    });
+    return readLatestInsightArtifact(videoSha, uiLanguage, fingerprint) !== null ||
+      existsSync(legacyPath);
   },
   hasDiarization(videoSha) {
     const row = getDb()
@@ -74,7 +93,18 @@ export const defaultBatchRunnerAdapter: BatchRunnerAdapter = {
     await waitForFrames(translateQueue.attach(task.id));
   },
   async runInsights(videoSha, uiLanguage) {
-    const task = llmQueue.ensureInsightTask(videoSha, uiLanguage, 'llm');
+    const model = loadSettings().llmModel;
+    if (!model) throw new Error('MODEL_NOT_CONFIGURED');
+    const transcriptPath = join(SUBCAST_PATHS.cache, videoSha, 'original.vtt');
+    const transcript = existsSync(transcriptPath)
+      ? readFileSync(transcriptPath, 'utf8')
+      : '';
+    const task = llmQueue.ensureInsightTask(
+      videoSha,
+      uiLanguage,
+      model,
+      transcript ? insightSourceRevision(transcript) : undefined,
+    );
     await llmQueue.tryStartNext();
     await waitForFrames(llmQueue.attach(task.id));
   },
@@ -118,7 +148,19 @@ function isCanceled(batchId: string): boolean {
   return row?.status === 'canceled';
 }
 
+class BatchCanceledError extends Error {
+  constructor() {
+    super('BATCH_CANCELED');
+    this.name = 'BatchCanceledError';
+  }
+}
+
+function assertBatchActive(batchId: string): void {
+  if (isCanceled(batchId)) throw new BatchCanceledError();
+}
+
 async function runItem(
+  batchId: string,
   item: BatchItemSummary,
   stepStatus: BatchStepStatus,
   adapter: BatchRunnerAdapter,
@@ -126,40 +168,61 @@ async function runItem(
     ? T extends { options: infer O } ? O : never
     : never,
 ): Promise<void> {
+  assertBatchActive(batchId);
   if (!adapter.hasTranscript(item.videoSha)) {
     markItemStep(item.id, 'transcribe', 'running');
     await adapter.runTranscribe(item.videoSha, options.whisperModel);
+    assertBatchActive(batchId);
     markItemStep(item.id, 'transcribe', 'done');
   } else if (stepStatus.transcribe !== 'done') {
     markItemStep(item.id, 'transcribe', 'skipped');
   }
 
+  assertBatchActive(batchId);
+  const translationJobs: Array<{ lang: string; run: () => Promise<void> }> = [];
   for (const lang of options.targetLangs) {
     if (adapter.hasTranslation(item.videoSha, lang)) {
       markItemStep(item.id, 'translate', 'skipped', lang);
       continue;
     }
     markItemStep(item.id, 'translate', 'running', lang);
-    await adapter.runTranslate(item.videoSha, lang);
-    markItemStep(item.id, 'translate', 'done', lang);
+    translationJobs.push({
+      lang,
+      run: async () => {
+        assertBatchActive(batchId);
+        await adapter.runTranslate(item.videoSha, lang);
+        assertBatchActive(batchId);
+        markItemStep(item.id, 'translate', 'done', lang);
+      },
+    });
   }
+  const translationResults = await Promise.allSettled(translationJobs.map((job) => job.run()));
+  assertBatchActive(batchId);
+  const failedTranslation = translationResults.find(
+    (result): result is PromiseRejectedResult => result.status === 'rejected',
+  );
+  if (failedTranslation) throw failedTranslation.reason;
 
   if (options.insights) {
-    if (adapter.hasInsights(item.videoSha)) {
+    assertBatchActive(batchId);
+    if (adapter.hasInsights(item.videoSha, options.insightLanguage ?? 'zh-CN')) {
       markItemStep(item.id, 'insights', 'skipped');
     } else {
       markItemStep(item.id, 'insights', 'running');
       await adapter.runInsights(item.videoSha, options.insightLanguage ?? 'zh-CN');
+      assertBatchActive(batchId);
       markItemStep(item.id, 'insights', 'done');
     }
   }
 
   if (options.diarize) {
+    assertBatchActive(batchId);
     if (adapter.hasDiarization(item.videoSha)) {
       markItemStep(item.id, 'diarize', 'skipped');
     } else {
       markItemStep(item.id, 'diarize', 'running');
       await adapter.runDiarize(item.videoSha, options.diarizeTopK);
+      assertBatchActive(batchId);
       markItemStep(item.id, 'diarize', 'done');
     }
   }
@@ -175,14 +238,19 @@ export async function runBatchOnce(
   if (job.status === 'canceled') return;
 
   markBatchStatus(batchId, 'running');
-  for (const item of job.items) {
-    if (isCanceled(batchId)) return;
+  for (const originalItem of job.items) {
+    const currentJob = getBatchJob(batchId);
+    if (!currentJob || currentJob.status === 'canceled') return;
+    const item = currentJob.items.find((candidate) => candidate.id === originalItem.id);
+    if (!item) continue;
     if (item.status === 'completed' || item.status === 'canceled') continue;
-    markItemStatus(item.id, 'running');
+    if (!markItemStatus(item.id, 'running')) continue;
     try {
-      await runItem(item, item.stepStatus, adapter, job.options);
+      await runItem(batchId, item, item.stepStatus, adapter, job.options);
+      assertBatchActive(batchId);
       markItemStatus(item.id, 'completed');
     } catch (err) {
+      if (err instanceof BatchCanceledError || isCanceled(batchId)) return;
       markItemStatus(item.id, 'failed', err instanceof Error ? err.message : String(err));
       logEvent({
         level: 'warn',

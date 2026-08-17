@@ -21,16 +21,30 @@ import {
   SUPER_BATCH_SIZE,
 } from './translate';
 import {
+  buildInsightInvocationSpec,
+  buildPolishInvocationSpec,
+  buildTranslateInvocationSpec,
+  invocationFingerprint,
+  type InvocationSpec,
+} from './invocationSpec';
+import {
+  buildInsightArtifactFingerprint,
+} from './artifactFingerprint';
+import { readLatestInsightArtifact } from './artifactStore';
+import {
   pipelineReadyShas,
-  readTranscriptSource,
+  pollTranscriptSource,
   runningTranscribeTask,
+  type TranscriptSourcePollState,
   type TranscriptSourceSnapshot,
 } from './transcriptSource';
 import { parseVtt, serializeVtt, type Cue } from './vtt';
-import { getLlmServer, LLM_PARALLEL_SLOTS } from './llmServer';
+import { getLlmServer } from './llmServer';
+import { activeRuntimeProfile } from './runtimeProfile';
 import { isLlmConfigError, type TaskErrorCode } from '#shared/errorCodes';
 import { POLISH_LAYER_LANG } from '#shared/polishLayer';
 import type { SseFrame } from './sse';
+import { isLlmModelId, type LlmModelId } from '#shared/llmModels';
 import type {
   QueueActiveLLMTask as ActiveLLMTask,
   QueueInsightTaskSummary as InsightTaskSummary,
@@ -49,12 +63,14 @@ const PIPELINE_POLL_MS = Number(process.env.SUBCAST_PIPELINE_POLL_MS ?? 1_000);
 
 // ─────────────────────────────────────────────────────────────────────
 // LLMQueue — slot-based concurrent worker for translate + polish +
-// insight tasks. Up to `LLM_PARALLEL_SLOTS` (2) tasks run at once —
-// exactly what llama-server is spawned with (`--parallel 2`), so two
-// translate/polish batches decode in one forward pass. Insight tasks
-// are exclusive: they hold ALL slots (their ~3-6k-token prompts plus a
-// 4096-token output budget would contend with a neighbor decode, and
-// their single long stream gains nothing from batching).
+// insight tasks. Up to the active runtime profile's `parallelSlots`
+// tasks run at once — exactly what llama-server is spawned with, so two
+// translate/polish batches decode in one forward pass. At most ONE
+// insight runs at a time: two of their ~3-6k-token prompts plus
+// 4096-token output budgets would contend with each other's decode for
+// minutes at a stretch. While one insight runs, the other slot keeps
+// serving translate/polish batches — a user-requested summary no
+// longer stalls the whole queue for its (up to ~235 s) duration.
 //
 // Translate/polish run either batched (original.vtt exists — unchanged
 // pre-P6 behavior) or pipelined (P6): while their video is still being
@@ -115,6 +131,29 @@ export function pickNextLlmTask(
     .get(...params) as { id: string; kind: LLMTaskKind; video_sha: string } | undefined;
 }
 
+export function llmMaxActiveSlots(): number {
+  return activeRuntimeProfile().parallelSlots;
+}
+
+function sourceRevisionForVideo(videoSha: string): string {
+  return `video:${videoSha}`;
+}
+
+function serializeSpec(spec: InvocationSpec | null): string | null {
+  return spec ? JSON.stringify(spec) : null;
+}
+
+function specFingerprint(spec: InvocationSpec | null): string | null {
+  return spec ? invocationFingerprint(spec) : null;
+}
+
+function resolveInvocationModel(
+  model: string | undefined,
+  settingsModel: LlmModelId | undefined,
+): LlmModelId | undefined {
+  return isLlmModelId(model) ? model : settingsModel;
+}
+
 export class LLMQueue {
   private activeSlots: ActiveLLMTask[] = [];
   private pauseDepth = 0;
@@ -134,6 +173,10 @@ export class LLMQueue {
     return this.activeSlots.some((t) => t.kind === 'insight');
   }
 
+  private maxActiveSlots(): number {
+    return llmMaxActiveSlots();
+  }
+
   private releaseSlot(taskId: string): void {
     const before = this.activeSlots.length;
     this.activeSlots = this.activeSlots.filter((t) => t.taskId !== taskId);
@@ -151,11 +194,23 @@ export class LLMQueue {
    * legacy queries still see a non-null value.
    */
   ensureTask(videoSha: string, lang: string, model?: string): TranslateTaskSummary {
-    const effectiveModel = model ?? 'llm';
     const db = getDb();
+    const { llmModel } = loadSettings();
+    const invocationModel = resolveInvocationModel(model, llmModel);
+    const effectiveModel = model ?? llmModel ?? 'llm';
+    const spec = invocationModel
+      ? buildTranslateInvocationSpec({
+          modelId: invocationModel,
+          sourceRevision: sourceRevisionForVideo(videoSha),
+          language: lang,
+        })
+      : null;
+    const specJson = serializeSpec(spec);
+    const fingerprint = specFingerprint(spec);
     const existing = db
       .prepare(
-        `SELECT id, video_sha, target_lang, status, model, progress_pct, priority, error_msg
+        `SELECT id, video_sha, target_lang, status, model, progress_pct, priority, error_msg,
+                invocation_spec_json, invocation_fingerprint
          FROM translate_tasks WHERE video_sha = ? AND target_lang = ?`,
       )
       .get(videoSha, lang) as TranslateTaskSummary | undefined;
@@ -179,9 +234,12 @@ export class LLMQueue {
     }
     const id = randomUUID();
     db.prepare(
-      `INSERT INTO translate_tasks (id, video_sha, target_lang, status, model, created_at)
-       VALUES (?, ?, ?, 'queued', ?, ?)`,
-    ).run(id, videoSha, lang, effectiveModel, Date.now());
+      `INSERT INTO translate_tasks (
+         id, video_sha, target_lang, status, model,
+         invocation_spec_json, invocation_fingerprint, created_at
+       )
+       VALUES (?, ?, ?, 'queued', ?, ?, ?, ?)`,
+    ).run(id, videoSha, lang, effectiveModel, specJson, fingerprint, Date.now());
     return {
       id,
       video_sha: videoSha,
@@ -191,6 +249,8 @@ export class LLMQueue {
       progress_pct: 0,
       priority: 0,
       error_msg: null,
+      invocation_spec_json: specJson,
+      invocation_fingerprint: fingerprint,
     };
   }
 
@@ -203,15 +263,25 @@ export class LLMQueue {
   ensureInsightTask(
     videoSha: string,
     uiLanguage: 'zh-CN' | 'en',
-    model: string,
+    model: LlmModelId,
+    sourceRevision = sourceRevisionForVideo(videoSha),
   ): InsightTaskSummary {
     const db = getDb();
+    const spec = buildInsightInvocationSpec({
+      modelId: model,
+      sourceRevision,
+      uiLanguage,
+    });
+    const specJson = serializeSpec(spec);
+    const fingerprint = specFingerprint(spec);
     const existing = db
       .prepare(
-        `SELECT id, video_sha, status, model, ui_language, error_msg
-         FROM insight_tasks WHERE video_sha = ? AND ui_language = ?`,
+        `SELECT id, video_sha, status, model, ui_language, error_msg,
+                invocation_spec_json, invocation_fingerprint
+         FROM insight_tasks
+         WHERE video_sha = ? AND ui_language = ? AND invocation_fingerprint = ?`,
       )
-      .get(videoSha, uiLanguage) as InsightTaskSummary | undefined;
+      .get(videoSha, uiLanguage, fingerprint) as InsightTaskSummary | undefined;
     if (existing) {
       if (existing.status === 'error' || existing.status === 'canceled') {
         db.prepare(
@@ -230,9 +300,12 @@ export class LLMQueue {
     }
     const id = randomUUID();
     db.prepare(
-      `INSERT INTO insight_tasks (id, video_sha, status, model, ui_language, created_at)
-       VALUES (?, ?, 'queued', ?, ?, ?)`,
-    ).run(id, videoSha, model, uiLanguage, Date.now());
+      `INSERT INTO insight_tasks (
+         id, video_sha, status, model, ui_language,
+         invocation_spec_json, invocation_fingerprint, created_at
+       )
+       VALUES (?, ?, 'queued', ?, ?, ?, ?, ?)`,
+    ).run(id, videoSha, model, uiLanguage, specJson, fingerprint, Date.now());
     return {
       id,
       video_sha: videoSha,
@@ -240,6 +313,8 @@ export class LLMQueue {
       model,
       ui_language: uiLanguage,
       error_msg: null,
+      invocation_spec_json: specJson,
+      invocation_fingerprint: fingerprint,
     };
   }
 
@@ -265,11 +340,23 @@ export class LLMQueue {
    * the retry path.
    */
   ensurePolishTask(videoSha: string, model?: string): PolishTaskSummary {
-    const effectiveModel = model ?? 'llm';
     const db = getDb();
+    const settings = loadSettings();
+    const invocationModel = resolveInvocationModel(model, settings.llmModel);
+    const effectiveModel = model ?? settings.llmModel ?? 'llm';
+    const spec = invocationModel
+      ? buildPolishInvocationSpec({
+          modelId: invocationModel,
+          sourceRevision: sourceRevisionForVideo(videoSha),
+          hints: settings.polishHints,
+        })
+      : null;
+    const specJson = serializeSpec(spec);
+    const fingerprint = specFingerprint(spec);
     const existing = db
       .prepare(
-        `SELECT id, video_sha, status, model, progress_pct, error_msg
+        `SELECT id, video_sha, status, model, progress_pct, error_msg,
+                invocation_spec_json, invocation_fingerprint
          FROM polish_tasks WHERE video_sha = ?`,
       )
       .get(videoSha) as PolishTaskSummary | undefined;
@@ -292,9 +379,12 @@ export class LLMQueue {
     }
     const id = randomUUID();
     db.prepare(
-      `INSERT INTO polish_tasks (id, video_sha, status, model, created_at)
-       VALUES (?, ?, 'queued', ?, ?)`,
-    ).run(id, videoSha, effectiveModel, Date.now());
+      `INSERT INTO polish_tasks (
+         id, video_sha, status, model,
+         invocation_spec_json, invocation_fingerprint, created_at
+       )
+       VALUES (?, ?, 'queued', ?, ?, ?, ?)`,
+    ).run(id, videoSha, effectiveModel, specJson, fingerprint, Date.now());
     return {
       id,
       video_sha: videoSha,
@@ -302,6 +392,8 @@ export class LLMQueue {
       model: effectiveModel,
       progress_pct: 0,
       error_msg: null,
+      invocation_spec_json: specJson,
+      invocation_fingerprint: fingerprint,
     };
   }
 
@@ -379,37 +471,36 @@ export class LLMQueue {
 
   async tryStartNext(): Promise<void> {
     if (this.pauseDepth > 0) return;
-    // Insight holds every slot while it runs (see class comment).
-    if (this.hasInsightSlot()) return;
-    if (this.activeSlots.length >= LLM_PARALLEL_SLOTS) return;
-    // With one non-insight task running, only translate/polish may fill
-    // the second slot — a queued insight is bypassed until the queue
-    // drains enough for both slots to free. Bounded starvation: FIFO
-    // still applies, so the insight runs no later than it would have
-    // under the previous single-slot serial queue.
-    const next = pickNextLlmTask(this.activeSlots.length > 0, pipelineReadyShas());
-    if (!next) return;
-    // P5 prewarm, relocated for the pipelined era: dispatching a task
-    // whose source is still transcribing is the last chance to hide the
-    // llama-server cold start behind real work — its first chat lands
-    // within one batch. Fire-and-forget: warmup failure must not block
-    // dispatch (the chat itself retries the spawn).
-    if (next.kind !== 'insight' && !this.prewarmed.has(next.id)) {
-      this.prewarmed.add(next.id);
-      if (!existsSync(join(SUBCAST_PATHS.cache, next.video_sha, 'original.vtt'))) {
-        void getLlmServer().ensure().then(
-          () => {},
-          () => {},
-        );
+    while (this.pauseDepth === 0 && this.activeSlots.length < this.maxActiveSlots()) {
+      // Insights start whenever a slot is free (FIFO against same-priority
+      // translate/polish — a queued insight is never leap-frogged by tasks
+      // created after it), but never two at once: `excludeInsight` is only
+      // true while an insight already holds a slot, so the remaining slot
+      // keeps serving translate/polish batches during a long summary.
+      const next = pickNextLlmTask(this.hasInsightSlot(), pipelineReadyShas());
+      if (!next) return;
+      // P5 prewarm, relocated for the pipelined era: dispatching a task
+      // whose source is still transcribing is the last chance to hide the
+      // llama-server cold start behind real work — its first chat lands
+      // within one batch. Fire-and-forget: warmup failure must not block
+      // dispatch (the chat itself retries the spawn).
+      if (next.kind !== 'insight' && !this.prewarmed.has(next.id)) {
+        this.prewarmed.add(next.id);
+        if (!existsSync(join(SUBCAST_PATHS.cache, next.video_sha, 'original.vtt'))) {
+          void getLlmServer().ensure().then(
+            () => {},
+            () => {},
+          );
+        }
       }
-    }
 
-    if (next.kind === 'translate') {
-      return this.startTranslate(next.id);
-    } else if (next.kind === 'polish') {
-      return this.startPolish(next.id);
-    } else {
-      return this.startInsight(next.id);
+      if (next.kind === 'translate') {
+        await this.startTranslate(next.id);
+      } else if (next.kind === 'polish') {
+        await this.startPolish(next.id);
+      } else {
+        await this.startInsight(next.id);
+      }
     }
   }
 
@@ -459,7 +550,7 @@ export class LLMQueue {
       .get(taskId) as {
         id: string;
         video_sha: string;
-        model: string;
+        model: LlmModelId;
         ui_language: 'zh-CN' | 'en';
       };
     const origPath = join(SUBCAST_PATHS.cache, row.video_sha, 'original.vtt');
@@ -472,6 +563,12 @@ export class LLMQueue {
     const transcript = readFileSync(origPath, 'utf-8');
     const cues = parseVtt(transcript);
     const messages = buildInsightMessages(transcript, row.ui_language);
+    const artifactFingerprint = buildInsightArtifactFingerprint({
+      videoSha: row.video_sha,
+      transcript,
+      uiLanguage: row.ui_language,
+      modelId: row.model,
+    });
 
     db.prepare(`UPDATE insight_tasks SET status='running' WHERE id=?`).run(taskId);
     const activeSlot: ActiveLLMTask = {
@@ -489,8 +586,10 @@ export class LLMQueue {
       videoSha: row.video_sha,
       model: row.model,
       uiLanguage: row.ui_language,
+      transcriptVtt: transcript,
       messages,
       cues,
+      artifactFingerprint,
     };
     // IIFE owns the queue lifecycle (emit 'end', release the slot, nudge
     // next) so runInsightWorker stays decoupled from LLMQueue internals.
@@ -754,6 +853,9 @@ export class LLMQueue {
     const out: Cue[] = [];
     let emittedPct = 0;
     let batchIdx = 0;
+    // Incremental poll cursor — see pollTranscriptSource. Fresh state per
+    // worker run; a restarted worker replays the full list on tick one.
+    const pollState: TranscriptSourcePollState = { lastChunkIdx: -1, doneChunks: 0, cues: [] };
 
     const emitProgress = (snap: TranscriptSourceSnapshot) => {
       // Estimated final cue count from the transcription's chunk ratio;
@@ -782,7 +884,7 @@ export class LLMQueue {
 
     while (true) {
       if (active.abort.signal.aborted) throw new Error('CANCELED');
-      const snap = readTranscriptSource(sourceTaskId);
+      const snap = pollTranscriptSource(sourceTaskId, pollState);
       const vttReady = existsSync(origPath);
       if (!snap.live && !vttReady) {
         // Source died without producing original.vtt —
@@ -791,6 +893,10 @@ export class LLMQueue {
         active.abort.abort();
         throw new Error('CANCELED');
       }
+      // Waiting on a live source = pending work: keep llama-server warm
+      // across gaps between super-batches (idle unload would otherwise
+      // cost a cold reload on sparse-audio videos).
+      if (snap.live) getLlmServer().touch();
       // Fire only complete super-batches while the source is live; the
       // trailing partial batch waits for the frozen final cue list.
       const readyEnd = vttReady
@@ -1011,6 +1117,8 @@ export class LLMQueue {
     const out: Cue[] = [];
     let emittedPct = 0;
     let batchIdx = 0;
+    // Incremental poll cursor — see pollTranscriptSource.
+    const pollState: TranscriptSourcePollState = { lastChunkIdx: -1, doneChunks: 0, cues: [] };
 
     const emitProgress = (snap: TranscriptSourceSnapshot) => {
       const estTotal =
@@ -1036,12 +1144,15 @@ export class LLMQueue {
 
     while (true) {
       if (active.abort.signal.aborted) throw new Error('CANCELED');
-      const snap = readTranscriptSource(sourceTaskId);
+      const snap = pollTranscriptSource(sourceTaskId, pollState);
       const vttReady = existsSync(origPath);
       if (!snap.live && !vttReady) {
         active.abort.abort();
         throw new Error('CANCELED');
       }
+      // Waiting on a live source = pending work: keep llama-server warm
+      // (see the translate worker's identical call).
+      if (snap.live) getLlmServer().touch();
       const readyEnd = vttReady
         ? snap.cues.length
         : Math.floor(snap.cues.length / POLISH_BATCH_SIZE) * POLISH_BATCH_SIZE;
@@ -1474,10 +1585,37 @@ export class LLMQueue {
     };
 
     if (task.status === 'done') {
-      const path = join(SUBCAST_PATHS.cache, task.video_sha, 'insights.json');
-      if (existsSync(path)) {
-        const obj = JSON.parse(readFileSync(path, 'utf-8'));
-        yield { event: 'done', data: { insights: obj, fromCache: true } };
+      const origPath = join(SUBCAST_PATHS.cache, task.video_sha, 'original.vtt');
+      let path = join(SUBCAST_PATHS.cache, task.video_sha, 'insights.json');
+      if (existsSync(origPath)) {
+        const transcript = readFileSync(origPath, 'utf-8');
+        const artifactFingerprint = buildInsightArtifactFingerprint({
+          videoSha: task.video_sha,
+          transcript,
+          uiLanguage: task.ui_language,
+          modelId: task.model,
+        });
+        const artifact = readLatestInsightArtifact(
+          task.video_sha,
+          task.ui_language,
+          artifactFingerprint,
+        );
+        if (artifact) {
+          yield { event: 'done', data: { insights: artifact.payload, fromCache: true } };
+          return;
+        }
+        path = join(
+          SUBCAST_PATHS.cache,
+          task.video_sha,
+          'artifacts',
+          'insight',
+          `${artifactFingerprint}.json`,
+        );
+      }
+      const legacyPath = join(SUBCAST_PATHS.cache, task.video_sha, 'insights.json');
+      if (existsSync(legacyPath)) {
+        const obj = JSON.parse(readFileSync(legacyPath, 'utf-8'));
+        yield { event: 'done', data: { insights: obj, fromCache: true, legacy: true } };
         return;
       }
       // File missing — self-heal: demote back to queued and re-run.

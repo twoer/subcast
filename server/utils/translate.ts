@@ -17,7 +17,7 @@
  * so tone/terms stay consistent across batches.
  */
 
-import { llmBackend, type LLMMessage } from './llmClient';
+import { llmBackend, type LLMChatResult, type LLMMessage } from './llmClient';
 import { logEvent } from './log';
 import type { Cue } from './vtt';
 
@@ -54,8 +54,6 @@ export function parseJsonArray(raw: string): string[] | null {
   if (!arr.every((x): x is string => typeof x === 'string')) return null;
   return arr;
 }
-
-const RAW_PREVIEW_CHARS = 160;
 
 function buildMessages(
   targetLang: string,
@@ -104,11 +102,31 @@ interface BatchAttemptResult {
   parseOk: boolean;
   expectedCount: number;
   actualCount: number | null;
-  rawPreview: string;
+  metrics: LlmResultMetrics;
 }
 
-function previewRaw(raw: string): string {
-  return raw.replace(/\s+/g, ' ').trim().slice(0, RAW_PREVIEW_CHARS);
+interface LlmResultMetrics {
+  finishReason: string | null;
+  retries: number;
+  coldStart: boolean | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  prefillMs: number | null;
+  decodeMs: number | null;
+  totalMs: number;
+}
+
+function llmMetrics(result: LLMChatResult): LlmResultMetrics {
+  return {
+    finishReason: result.finishReason ?? null,
+    retries: result.retries,
+    coldStart: result.coldStart ?? null,
+    promptTokens: result.usage.promptTokens ?? null,
+    completionTokens: result.usage.completionTokens ?? null,
+    prefillMs: result.timing.prefillMs ?? null,
+    decodeMs: result.timing.decodeMs ?? null,
+    totalMs: result.timing.totalMs,
+  };
 }
 
 async function tryBatch(
@@ -118,13 +136,13 @@ async function tryBatch(
   signal?: AbortSignal,
 ): Promise<BatchAttemptResult> {
   const messages = buildMessages(targetLang, cues, context);
-  const raw = await llmBackend().chat({
+  const result = await llmBackend().chat({
     messages,
     temperature: 0,
     responseSchema: jsonStringArraySchema(cues.length),
     signal,
   });
-  const parsed = parseJsonArray(raw);
+  const parsed = parseJsonArray(result.content);
   const expectedCount = cues.length;
   const actualCount = parsed?.length ?? null;
   return {
@@ -133,7 +151,7 @@ async function tryBatch(
     parseOk: parsed !== null,
     expectedCount,
     actualCount,
-    rawPreview: previewRaw(raw),
+    metrics: llmMetrics(result),
   };
 }
 
@@ -232,7 +250,7 @@ export async function translateSuperBatch(
     expectedCount: out1.expectedCount,
     actualCount: out1.actualCount,
     parseOk: out1.parseOk,
-    rawPreview: out1.rawPreview,
+    ...out1.metrics,
   });
 
   let degraded = false;
@@ -267,7 +285,7 @@ export async function translateSuperBatch(
       expectedCount: out2.expectedCount,
       actualCount: out2.actualCount,
       parseOk: out2.parseOk,
-      rawPreview: out2.rawPreview,
+      ...out2.metrics,
     });
     for (const cue of sub) {
       if (opts.signal?.aborted) throw new Error('CANCELED');
@@ -282,8 +300,7 @@ export async function translateSuperBatch(
           cueStartMs: cue.startMs,
           parseOk: single.parseOk,
           actualCount: single.actualCount,
-          rawPreview: single.rawPreview,
-          cueText: cue.text.slice(0, 60),
+          ...single.metrics,
         });
         segCues.push({ startMs: cue.startMs, endMs: cue.endMs, text: cue.text });
         contextPairs.push({ src: cue.text.trim(), tr: cue.text.trim() });

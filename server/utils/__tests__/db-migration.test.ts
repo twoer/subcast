@@ -46,6 +46,11 @@ function seedRawDb(dir: string, fn: (db: Database.Database) => void): void {
   db.close();
 }
 
+function columns(db: Database.Database, table: string): string[] {
+  return (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[])
+    .map((c) => c.name);
+}
+
 beforeEach(() => {
   closeDb();
   process.env.SUBCAST_HOME = mkdtempSync(join(tmpdir(), 'subcast-db-mig-'));
@@ -56,12 +61,53 @@ afterEach(() => {
 });
 
 describe('migrate() self-healing', () => {
-  it('fresh database reaches user_version 14 with polish_tasks', () => {
+  it('fresh database reaches user_version 16 with polish_tasks and invocation columns', () => {
     const db = getDb();
-    expect(db.pragma('user_version', { simple: true })).toBe(14);
+    expect(db.pragma('user_version', { simple: true })).toBe(16);
     expect(
       db.prepare(`SELECT name FROM sqlite_master WHERE name = 'polish_tasks'`).all(),
     ).toHaveLength(1);
+    // plan_kind defaults to 'segment' so pre-15 rows resume with their
+    // original chunk geometry (see transcribeQueue replan).
+    const hash15 = 'c'.repeat(64);
+    db.prepare(
+      `INSERT INTO videos (sha256, original_name, ext, size_bytes, created_at, last_opened_at)
+       VALUES (?, 'v.mp4', '.mp4', 1, 0, 0)`,
+    ).run(hash15);
+    db.prepare(
+      `INSERT INTO transcribe_tasks (id, video_sha, status, model, created_at)
+       VALUES ('t15', ?, 'queued', 'auto', 0)`,
+    ).run(hash15);
+    expect(
+      db.prepare(`SELECT plan_kind FROM transcribe_tasks WHERE id = 't15'`).get(),
+    ).toEqual({ plan_kind: 'segment' });
+
+    for (const table of ['translate_tasks', 'polish_tasks', 'insight_tasks']) {
+      expect(columns(db, table)).toContain('invocation_spec_json');
+      expect(columns(db, table)).toContain('invocation_fingerprint');
+    }
+  });
+
+  it('allows multiple insight rows for one video/language when invocation fingerprints differ', () => {
+    const db = getDb();
+    const hash = 'd'.repeat(64);
+    db.prepare(
+      `INSERT INTO videos (sha256, original_name, ext, size_bytes, created_at, last_opened_at)
+       VALUES (?, 'v.mp4', '.mp4', 1, 0, 0)`,
+    ).run(hash);
+
+    db.prepare(
+      `INSERT INTO insight_tasks
+       (id, video_sha, status, model, ui_language, invocation_spec_json, invocation_fingerprint, created_at)
+       VALUES
+       ('i1', ?, 'done', '8b', 'en', '{}', 'fp-1', 0),
+       ('i2', ?, 'done', '4b', 'en', '{}', 'fp-2', 1)`,
+    ).run(hash, hash);
+
+    expect(
+      db.prepare(`SELECT COUNT(*) AS n FROM insight_tasks WHERE video_sha = ? AND ui_language = 'en'`)
+        .get(hash),
+    ).toEqual({ n: 2 });
   });
 
   it('re-creates polish_tasks when user_version 14 was stamped by a foreign build', () => {
@@ -106,6 +152,44 @@ describe('migrate() self-healing', () => {
     expect(
       db.prepare(`SELECT status FROM polish_tasks WHERE id = 'p1'`).get(),
     ).toEqual({ status: 'queued' });
+  });
+
+  it('self-heals plan_kind when a foreign build already stamped user_version 16', () => {
+    seedRawDb(process.env.SUBCAST_HOME!, (db) => {
+      db.exec(VIDEOS_V13);
+      db.exec(`
+        CREATE TABLE transcribe_tasks (
+          id              TEXT PRIMARY KEY,
+          video_sha       TEXT NOT NULL REFERENCES videos(sha256),
+          status          TEXT NOT NULL,
+          model           TEXT NOT NULL,
+          language        TEXT,
+          total_chunks    INTEGER,
+          done_chunks     INTEGER NOT NULL DEFAULT 0,
+          error_msg       TEXT,
+          error_code      TEXT,
+          created_at      INTEGER NOT NULL,
+          completed_at    INTEGER
+        );
+      `);
+      db.pragma('user_version = 16');
+    });
+
+    const db = getDb();
+    expect(columns(db, 'transcribe_tasks')).toContain('plan_kind');
+
+    const hash = 'e'.repeat(64);
+    db.prepare(
+      `INSERT INTO videos (sha256, original_name, ext, size_bytes, created_at, last_opened_at)
+       VALUES (?, 'clip.mp4', '.mp4', 1, 0, 0)`,
+    ).run(hash);
+    db.prepare(
+      `INSERT INTO transcribe_tasks (id, video_sha, status, model, created_at)
+       VALUES ('t16', ?, 'queued', 'auto', 0)`,
+    ).run(hash);
+    expect(
+      db.prepare(`SELECT plan_kind FROM transcribe_tasks WHERE id = 't16'`).get(),
+    ).toEqual({ plan_kind: 'segment' });
   });
 });
 

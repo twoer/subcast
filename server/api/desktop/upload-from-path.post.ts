@@ -25,6 +25,8 @@ import { extname, join, basename } from 'node:path';
 import { createHash } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 
+import { backfillVideoDurationS } from '../../utils/videoDuration';
+
 const VIDEO_EXT = ['.mp4', '.mkv', '.mov', '.webm', '.mp3', '.wav', '.m4a'];
 const MAX_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
 
@@ -93,6 +95,10 @@ export default defineEventHandler(async (event) => {
      VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(sha256) DO UPDATE SET last_opened_at = excluded.last_opened_at, deleted_at = NULL`,
   ).run(sha, originalName, ext, stats.size, now, now);
+
+  // Fire-and-forget duration probe so the library shows a duration for
+  // files imported this way even if they're never transcribed.
+  backfillVideoDurationS(sha, finalPath);
 
   return { hash: sha };
 });

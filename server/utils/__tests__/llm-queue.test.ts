@@ -5,11 +5,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
 import { llmQueue, translateQueue } from '../queue';
-import { pickNextLlmTask } from '../llmQueue';
+import { llmMaxActiveSlots, pickNextLlmTask } from '../llmQueue';
 import type { QueueActiveLLMTask } from '../queueTypes';
 import { getDb, closeDb, SUBCAST_PATHS } from '../db';
+import { saveSettings } from '../settings';
+import { invocationFingerprint, type InvocationSpec } from '../invocationSpec';
+import { activeRuntimeProfile } from '../runtimeProfile';
+import cancelPolishHandler from '../../api/queue/polish/[id].delete';
 
 const HASH_A = 'a'.repeat(64);
+const HASH_B = 'b'.repeat(64);
 
 /** P6 readiness: dispatch is gated on a completed-transcription marker. */
 function markSourceComplete(sha: string = HASH_A) {
@@ -20,6 +25,20 @@ function markSourceComplete(sha: string = HASH_A) {
        ON CONFLICT(video_sha, lang) DO UPDATE SET completed_at = excluded.completed_at`,
     )
     .run(sha, Date.now());
+}
+
+function persistedInvocation(table: string, id: string): InvocationSpec {
+  const row = getDb()
+    .prepare(`SELECT invocation_spec_json, invocation_fingerprint FROM ${table} WHERE id=?`)
+    .get(id) as {
+      invocation_spec_json: string | null;
+      invocation_fingerprint: string | null;
+    };
+  expect(row.invocation_spec_json).not.toBeNull();
+  expect(row.invocation_fingerprint).not.toBeNull();
+  const spec = JSON.parse(row.invocation_spec_json ?? 'null') as InvocationSpec;
+  expect(row.invocation_fingerprint).toBe(invocationFingerprint(spec));
+  return spec;
 }
 
 let tmpHome: string;
@@ -34,6 +53,10 @@ beforeEach(() => {
     `INSERT INTO videos (sha256, original_name, ext, size_bytes, created_at, last_opened_at)
      VALUES (?, 'a.mp4', '.mp4', 1, ?, ?)`,
   ).run(HASH_A, Date.now(), Date.now());
+  db.prepare(
+    `INSERT INTO videos (sha256, original_name, ext, size_bytes, created_at, last_opened_at)
+     VALUES (?, 'b.mp4', '.mp4', 1, ?, ?)`,
+  ).run(HASH_B, Date.now(), Date.now());
 });
 
 afterEach(() => {
@@ -43,62 +66,111 @@ afterEach(() => {
 });
 
 describe('LLMQueue', () => {
+  it('reads max active slots from the active runtime profile', () => {
+    expect(llmMaxActiveSlots()).toBe(activeRuntimeProfile().parallelSlots);
+  });
+
+  describe('invocation identity persistence', () => {
+    it('stores a translate invocation spec and fingerprint from configured settings', () => {
+      saveSettings({ llmModel: '8b' });
+
+      const t = translateQueue.ensureTask(HASH_A, 'zh-CN');
+      const spec = persistedInvocation('translate_tasks', t.id);
+
+      expect(t.invocation_fingerprint).toBe(invocationFingerprint(spec));
+      expect(spec).toMatchObject({
+        kind: 'translate',
+        modelId: '8b',
+        sourceRevision: `video:${HASH_A}`,
+        language: 'zh-CN',
+      });
+    });
+
+    it('stores a polish invocation spec with hashed hints only', () => {
+      saveSettings({ llmModel: '8b', polishHints: '布尔运算 OpenAI' });
+
+      const t = llmQueue.ensurePolishTask(HASH_A);
+      const spec = persistedInvocation('polish_tasks', t.id);
+
+      expect(spec.kind).toBe('polish');
+      expect(spec.modelId).toBe('8b');
+      expect(spec.hintsHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(JSON.stringify(spec)).not.toContain('布尔运算');
+      expect(JSON.stringify(spec)).not.toContain('OpenAI');
+    });
+
+    it('stores an insight invocation spec and keys identity by fingerprint', () => {
+      const a = llmQueue.ensureInsightTask(HASH_A, 'en', '8b');
+      const same = llmQueue.ensureInsightTask(HASH_A, 'en', '8b');
+      const b = llmQueue.ensureInsightTask(HASH_A, 'en', '4b');
+
+      const specA = persistedInvocation('insight_tasks', a.id);
+      const specB = persistedInvocation('insight_tasks', b.id);
+
+      expect(same.id).toBe(a.id);
+      expect(b.id).not.toBe(a.id);
+      expect(specA).toMatchObject({ kind: 'insight', modelId: '8b', language: 'en' });
+      expect(specB).toMatchObject({ kind: 'insight', modelId: '4b', language: 'en' });
+      expect(invocationFingerprint(specB)).not.toBe(invocationFingerprint(specA));
+    });
+  });
+
   describe('ensureInsightTask', () => {
     it('creates a new queued row when none exists', () => {
-      const t = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen2.5:7b');
+      const t = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', '8b');
       expect(t.status).toBe('queued');
       expect(t.video_sha).toBe(HASH_A);
       expect(t.ui_language).toBe('zh-CN');
     });
 
     it('returns existing row instead of creating duplicate', () => {
-      const a = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen2.5:7b');
-      const b = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen2.5:7b');
+      const a = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', '8b');
+      const b = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', '8b');
       expect(b.id).toBe(a.id);
     });
 
     it('keeps separate rows for different ui_language', () => {
-      const a = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen2.5:7b');
-      const b = llmQueue.ensureInsightTask(HASH_A, 'en', 'qwen2.5:7b');
+      const a = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', '8b');
+      const b = llmQueue.ensureInsightTask(HASH_A, 'en', '8b');
       expect(b.id).not.toBe(a.id);
     });
 
     it('resurrects error row back to queued', () => {
-      const t = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen2.5:7b');
+      const t = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', '8b');
       getDb()
         .prepare(`UPDATE insight_tasks SET status='error', error_msg='boom' WHERE id=?`)
         .run(t.id);
-      const r = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen2.5:7b');
+      const r = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', '8b');
       expect(r.id).toBe(t.id);
       expect(r.status).toBe('queued');
       expect(r.error_msg).toBeNull();
     });
 
     it('resurrects canceled row back to queued', () => {
-      const t = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen2.5:7b');
+      const t = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', '8b');
       getDb()
         .prepare(`UPDATE insight_tasks SET status='canceled' WHERE id=?`)
         .run(t.id);
-      const r = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen2.5:7b');
+      const r = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', '8b');
       expect(r.status).toBe('queued');
     });
 
     it('returns running row as-is without resurrection', () => {
-      const t = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen2.5:7b');
+      const t = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', '8b');
       getDb()
         .prepare(`UPDATE insight_tasks SET status='running' WHERE id=?`)
         .run(t.id);
-      const r = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen2.5:7b');
+      const r = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', '8b');
       expect(r.id).toBe(t.id);
       expect(r.status).toBe('running');
     });
 
     it('returns done row as-is without resurrection', () => {
-      const t = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen2.5:7b');
+      const t = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', '8b');
       getDb()
         .prepare(`UPDATE insight_tasks SET status='done', completed_at=? WHERE id=?`)
         .run(Date.now(), t.id);
-      const r = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen2.5:7b');
+      const r = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', '8b');
       expect(r.id).toBe(t.id);
       expect(r.status).toBe('done');
     });
@@ -125,7 +197,7 @@ describe('LLMQueue', () => {
     });
 
     it('insight: done row + missing insights.json → demoted to queued', async () => {
-      const t = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen2.5:7b');
+      const t = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', '8b');
       getDb()
         .prepare(`UPDATE insight_tasks SET status='done', completed_at=? WHERE id=?`)
         .run(Date.now(), t.id);
@@ -166,7 +238,7 @@ describe('LLMQueue', () => {
     it('dequeues by created_at across translate and insight tables', async () => {
       const t1 = translateQueue.ensureTask(HASH_A, 'zh-CN');
       await new Promise((r) => setTimeout(r, 5));
-      llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen2.5:7b');
+      llmQueue.ensureInsightTask(HASH_A, 'zh-CN', '8b');
       const next = getDb()
         .prepare(
           `SELECT id, kind FROM (
@@ -185,10 +257,39 @@ describe('LLMQueue', () => {
     });
   });
 
+  describe('polish cancel endpoint', () => {
+    it('cancels a queued polish task', () => {
+      const task = llmQueue.ensurePolishTask(HASH_A, '8b');
+      const event = {
+        context: { params: { id: task.id } },
+      } as Parameters<typeof cancelPolishHandler>[0];
+
+      expect(cancelPolishHandler(event)).toEqual({ ok: true, taskId: task.id });
+      expect(
+        getDb()
+          .prepare(`SELECT status FROM polish_tasks WHERE id=?`)
+          .get(task.id),
+      ).toMatchObject({ status: 'canceled' });
+    });
+
+    it('returns 404 for an unknown polish task', () => {
+      const event = {
+        context: { params: { id: 'does-not-exist' } },
+      } as Parameters<typeof cancelPolishHandler>[0];
+
+      expect(() => cancelPolishHandler(event)).toThrow(
+        expect.objectContaining({
+          statusCode: 404,
+          statusMessage: 'TASK_NOT_FOUND_OR_TERMINAL',
+        }),
+      );
+    });
+  });
+
   describe('cancelAll', () => {
     it('flips queued/running translate and insight tasks to canceled', async () => {
       const translateTask = translateQueue.ensureTask(HASH_A, 'zh-CN');
-      const insightTask = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen2.5:7b');
+      const insightTask = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', '8b');
       getDb()
         .prepare(`UPDATE insight_tasks SET status='running' WHERE id=?`)
         .run(insightTask.id);
@@ -234,7 +335,7 @@ describe('LLMQueue', () => {
       // this mimics "another task is active" from the queue's perspective.
       // Instead, set translate back to queued but manually mark insight as "running" so
       // the queue's tryStartNext won't pick translate.
-      const insightTask = llmQueue.ensureInsightTask(HASH_A, 'en', 'qwen2.5:7b');
+      const insightTask = llmQueue.ensureInsightTask(HASH_A, 'en', '8b');
       getDb()
         .prepare(`UPDATE insight_tasks SET status='running' WHERE id=?`)
         .run(insightTask.id);
@@ -283,7 +384,7 @@ describe('LLMQueue', () => {
       await new Promise((r) => setTimeout(r, 5));
       llmQueue.ensurePolishTask(HASH_A);
       await new Promise((r) => setTimeout(r, 5));
-      llmQueue.ensureInsightTask(HASH_A, 'en', 'qwen3:8b');
+      llmQueue.ensureInsightTask(HASH_A, 'en', '8b');
       const next = pickNextLlmTask(false);
       expect(next?.kind).toBe('translate');
       expect(next?.id).toBe(t.id);
@@ -300,7 +401,7 @@ describe('LLMQueue', () => {
     });
 
     it('excludeInsight bypasses a queued insight for the second slot', async () => {
-      const insight = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen3:8b');
+      const insight = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', '8b');
       await new Promise((r) => setTimeout(r, 5));
       const polish = llmQueue.ensurePolishTask(HASH_A);
       expect(pickNextLlmTask(false)?.id).toBe(insight.id);
@@ -362,6 +463,33 @@ describe('LLMQueue', () => {
       expect(slotsOf(llmQueue).length).toBe(2);
     });
 
+    it('pumps queued work until all runtime-profile slots are filled', async () => {
+      const t1 = translateQueue.ensureTask(HASH_A, 'zh-CN');
+      const t2 = translateQueue.ensureTask(HASH_B, 'ja');
+      const cacheDirB = join(SUBCAST_PATHS.cache, HASH_B);
+      mkdirSync(cacheDirB, { recursive: true });
+      writeFileSync(
+        join(cacheDirB, 'original.vtt'),
+        'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello B\n',
+        'utf-8',
+      );
+      markSourceComplete(HASH_B);
+
+      try {
+        await llmQueue.tryStartNext();
+
+        expect(statusOf('translate_tasks', t1.id)).not.toBe('queued');
+        if (llmMaxActiveSlots() < 2) {
+          expect(statusOf('translate_tasks', t2.id)).toBe('queued');
+        } else {
+          expect(statusOf('translate_tasks', t2.id)).not.toBe('queued');
+          expect(slotsOf(llmQueue).length).toBe(2);
+        }
+      } finally {
+        rmSync(cacheDirB, { recursive: true, force: true });
+      }
+    });
+
     it('dispatches nothing while both slots are held', async () => {
       pushFakeSlot(llmQueue, 'translate');
       pushFakeSlot(llmQueue, 'polish');
@@ -371,27 +499,34 @@ describe('LLMQueue', () => {
       expect(slotsOf(llmQueue).length).toBe(2);
     });
 
-    it('keeps insight exclusive: no dispatch while an insight slot is held', async () => {
+    it('fills the second slot with translate/polish while an insight slot is held', async () => {
       pushFakeSlot(llmQueue, 'insight');
       const t = translateQueue.ensureTask(HASH_A, 'zh-CN');
       await llmQueue.tryStartNext();
-      expect(statusOf('translate_tasks', t.id)).toBe('queued');
+      expect(statusOf('translate_tasks', t.id)).toBe('running');
     });
 
-    it('second slot bypasses insight for a non-insight task', async () => {
-      pushFakeSlot(llmQueue, 'translate');
-      const insight = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen3:8b');
-      await new Promise((r) => setTimeout(r, 5));
-      const polish = llmQueue.ensurePolishTask(HASH_A);
+    it('never dispatches a second insight while an insight slot is held', async () => {
+      pushFakeSlot(llmQueue, 'insight');
+      const insight = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', '8b');
       await llmQueue.tryStartNext();
-      expect(statusOf('polish_tasks', polish.id)).toBe('running');
       expect(statusOf('insight_tasks', insight.id)).toBe('queued');
     });
 
-    it('starts an insight task when no slot is held', async () => {
-      const insight = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen3:8b');
+    it('a queued insight may take the free slot beside a non-insight task', async () => {
+      pushFakeSlot(llmQueue, 'translate');
+      const insight = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', '8b');
+      await new Promise((r) => setTimeout(r, 5));
+      const polish = llmQueue.ensurePolishTask(HASH_A);
       await llmQueue.tryStartNext();
-      expect(statusOf('insight_tasks', insight.id)).toBe('running');
+      expect(statusOf('insight_tasks', insight.id)).not.toBe('queued');
+      expect(statusOf('polish_tasks', polish.id)).toBe('queued');
+    });
+
+    it('starts an insight task when no slot is held', async () => {
+      const insight = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', '8b');
+      await llmQueue.tryStartNext();
+      expect(statusOf('insight_tasks', insight.id)).not.toBe('queued');
     });
   });
 });
