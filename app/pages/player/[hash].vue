@@ -230,6 +230,10 @@ const isDiarizeDone = computed(() =>
   diarize.status.value && diarize.status.value.status === 'done',
 );
 const isOriginalTranscribeDone = computed(() => langStatus.value.original === 'done');
+/** P6: a live or finished transcription — LLM layers may pipeline off it. */
+const isOriginalTranscribeUnderway = computed(() =>
+  langStatus.value.original === 'running' || langStatus.value.original === 'done',
+);
 const canRunDiarize = computed(() =>
   cues.value.length > 0 &&
   isOriginalTranscribeDone.value &&
@@ -451,7 +455,9 @@ const {
   fromCache,
   translateProgress,
   translateRetryNotice,
-  transcriptReady: isOriginalTranscribeDone,
+  // P6: switching to a translation mid-transcription starts a pipelined
+  // run off the live source — only block when there is no source at all.
+  transcriptReady: isOriginalTranscribeUnderway,
   transcriptNotReadyMessage: t('player.errors.ORIGINAL_NOT_READY'),
   isStreaming,
   openOriginalStream,
@@ -473,10 +479,10 @@ const showVariantToggle = computed(() =>
   currentLang.value === 'original'
   && (polishLayerReady.value || polishRunning.value),
 );
-/** Manual trigger for videos transcribed before the setting existed. */
+/** Manual trigger — allowed mid-transcription too (P6 pipelines it). */
 const canRunPolish = computed(() =>
   currentLang.value === 'original'
-  && isOriginalTranscribeDone.value
+  && isOriginalTranscribeUnderway.value
   && llmConfigured.value
   && !polishLayerReady.value
   && !polishRunning.value
@@ -517,10 +523,12 @@ function setVariant(v: 'original' | 'polished'): void {
 }
 
 // Fresh transcriptions: the server auto-enqueues polish (when enabled) at
-// completion — open the stream then so progress + the final layer stream
-// in without user action.
-watch(isOriginalTranscribeDone, (done) => {
-  if (done && llmConfigured.value && (autoPolishEnabled.value || langStatus.value.polished === 'done')) {
+// transcription START — open the stream as soon as the source is live so
+// pipelined batches (P6) stream in while transcription continues, and the
+// final layer lands without user action. openPolishStream is idempotent,
+// so the completion flip re-entering here is a no-op.
+watch(isOriginalTranscribeUnderway, (underway) => {
+  if (underway && llmConfigured.value && (autoPolishEnabled.value || langStatus.value.polished === 'done')) {
     openPolishStream();
   }
 });
@@ -565,10 +573,11 @@ onMounted(async () => {
   } catch { /* ignore */ }
   // Observe / load the polish layer once the transcript and settings are
   // known: replays cached results instantly, live-tails an auto-enqueued
-  // run. Never creates a task on its own unless the setting asked for one.
+  // run (pipelined mid-transcription since P6). Never creates a task on
+  // its own unless the setting asked for one.
   await loadCachedLangs().catch(() => {});
   if (
-    isOriginalTranscribeDone.value
+    isOriginalTranscribeUnderway.value
     && llmConfigured.value
     && (autoPolishEnabled.value || langStatus.value.polished === 'done')
   ) {

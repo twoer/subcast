@@ -3,10 +3,24 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { EventEmitter } from 'node:events';
 import { llmQueue, translateQueue } from '../queue';
+import { pickNextLlmTask } from '../llmQueue';
+import type { QueueActiveLLMTask } from '../queueTypes';
 import { getDb, closeDb, SUBCAST_PATHS } from '../db';
 
 const HASH_A = 'a'.repeat(64);
+
+/** P6 readiness: dispatch is gated on a completed-transcription marker. */
+function markSourceComplete(sha: string = HASH_A) {
+  getDb()
+    .prepare(
+      `INSERT INTO subtitles (video_sha, lang, kind, cues_count, completed_at)
+       VALUES (?, 'original', 'transcribed', 1, ?)
+       ON CONFLICT(video_sha, lang) DO UPDATE SET completed_at = excluded.completed_at`,
+    )
+    .run(sha, Date.now());
+}
 
 let tmpHome: string;
 
@@ -103,6 +117,7 @@ describe('LLMQueue', () => {
         'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello\n',
         'utf-8',
       );
+      markSourceComplete();
     });
 
     afterEach(() => {
@@ -259,6 +274,124 @@ describe('LLMQueue', () => {
       // The key invariant: generator did NOT return immediately on the first iteration.
       // It waited for the task to become active or terminal, then yielded proper frames.
       expect(frames.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('pickNextLlmTask ordering (P4 + queue-priority fix)', () => {
+    it('orders FIFO by created_at — auto-polish no longer jumps a queued translate', async () => {
+      const t = translateQueue.ensureTask(HASH_A, 'zh-CN');
+      await new Promise((r) => setTimeout(r, 5));
+      llmQueue.ensurePolishTask(HASH_A);
+      await new Promise((r) => setTimeout(r, 5));
+      llmQueue.ensureInsightTask(HASH_A, 'en', 'qwen3:8b');
+      const next = pickNextLlmTask(false);
+      expect(next?.kind).toBe('translate');
+      expect(next?.id).toBe(t.id);
+    });
+
+    it('bumped translate jumps ahead of older queued polish/insight', async () => {
+      llmQueue.ensurePolishTask(HASH_A);
+      await new Promise((r) => setTimeout(r, 5));
+      const t = translateQueue.ensureTask(HASH_A, 'ja');
+      translateQueue.bumpPriority(t.id);
+      const next = pickNextLlmTask(false);
+      expect(next?.kind).toBe('translate');
+      expect(next?.id).toBe(t.id);
+    });
+
+    it('excludeInsight bypasses a queued insight for the second slot', async () => {
+      const insight = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen3:8b');
+      await new Promise((r) => setTimeout(r, 5));
+      const polish = llmQueue.ensurePolishTask(HASH_A);
+      expect(pickNextLlmTask(false)?.id).toBe(insight.id);
+      expect(pickNextLlmTask(true)?.id).toBe(polish.id);
+    });
+  });
+
+  describe('concurrent slot gating', () => {
+    let cacheDir: string;
+    /** llmQueue is a singleton — reach into its slot array to stage fakes. */
+    const slotsOf = (q: typeof llmQueue) =>
+      (q as unknown as { activeSlots: QueueActiveLLMTask[] }).activeSlots;
+
+    const pushFakeSlot = (q: typeof llmQueue, kind: QueueActiveLLMTask['kind']) => {
+      slotsOf(q).push({
+        taskId: `fake-${kind}-${Math.random()}`,
+        kind,
+        videoSha: HASH_A,
+        emitter: new EventEmitter(),
+        abort: new AbortController(),
+        donePromise: Promise.resolve(),
+      });
+    };
+
+    const statusOf = (table: string, id: string) =>
+      (
+        getDb()
+          .prepare(`SELECT status FROM ${table} WHERE id=?`)
+          .get(id) as { status: string }
+      ).status;
+
+    beforeEach(() => {
+      // original.vtt present so a dispatched worker gets past its
+      // ORIGINAL_NOT_READY check and parks on its first real await —
+      // letting us observe the 'running' state deterministically. The
+      // worker then fails fast on LLM_BINARY_MISSING (no sidecar in CI).
+      cacheDir = join(SUBCAST_PATHS.cache, HASH_A);
+      mkdirSync(cacheDir, { recursive: true });
+      writeFileSync(
+        join(cacheDir, 'original.vtt'),
+        'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello\n',
+        'utf-8',
+      );
+      markSourceComplete();
+    });
+
+    afterEach(async () => {
+      // Let straggler workers fail out while this test's DB is still open.
+      await new Promise((r) => setTimeout(r, 10));
+      slotsOf(llmQueue).length = 0;
+      rmSync(cacheDir, { recursive: true, force: true });
+    });
+
+    it('fills the free slot while another translate runs', async () => {
+      pushFakeSlot(llmQueue, 'translate');
+      const t = translateQueue.ensureTask(HASH_A, 'zh-CN');
+      await llmQueue.tryStartNext();
+      expect(statusOf('translate_tasks', t.id)).toBe('running');
+      expect(slotsOf(llmQueue).length).toBe(2);
+    });
+
+    it('dispatches nothing while both slots are held', async () => {
+      pushFakeSlot(llmQueue, 'translate');
+      pushFakeSlot(llmQueue, 'polish');
+      const t = translateQueue.ensureTask(HASH_A, 'zh-CN');
+      await llmQueue.tryStartNext();
+      expect(statusOf('translate_tasks', t.id)).toBe('queued');
+      expect(slotsOf(llmQueue).length).toBe(2);
+    });
+
+    it('keeps insight exclusive: no dispatch while an insight slot is held', async () => {
+      pushFakeSlot(llmQueue, 'insight');
+      const t = translateQueue.ensureTask(HASH_A, 'zh-CN');
+      await llmQueue.tryStartNext();
+      expect(statusOf('translate_tasks', t.id)).toBe('queued');
+    });
+
+    it('second slot bypasses insight for a non-insight task', async () => {
+      pushFakeSlot(llmQueue, 'translate');
+      const insight = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen3:8b');
+      await new Promise((r) => setTimeout(r, 5));
+      const polish = llmQueue.ensurePolishTask(HASH_A);
+      await llmQueue.tryStartNext();
+      expect(statusOf('polish_tasks', polish.id)).toBe('running');
+      expect(statusOf('insight_tasks', insight.id)).toBe('queued');
+    });
+
+    it('starts an insight task when no slot is held', async () => {
+      const insight = llmQueue.ensureInsightTask(HASH_A, 'zh-CN', 'qwen3:8b');
+      await llmQueue.tryStartNext();
+      expect(statusOf('insight_tasks', insight.id)).toBe('running');
     });
   });
 });

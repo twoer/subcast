@@ -7,6 +7,7 @@ import { join } from 'node:path';
 
 import { getDb, SUBCAST_PATHS } from '../utils/db';
 import { llmQueue } from '../utils/queue';
+import { runningTranscribeTask } from '../utils/transcriptSource';
 import { formatSse } from '../utils/sse';
 import { setupSseStream } from '../utils/sseStream';
 import { isValidHash } from '../utils/validate';
@@ -24,9 +25,13 @@ export default defineEventHandler(async (event) => {
     .get(hash) as Pick<VideoRow, 'sha256'> | undefined;
   if (!video) throw createError({ statusCode: 404, statusMessage: 'VIDEO_NOT_FOUND' });
 
-  // Polish rewrites the original transcript — require it to exist first.
+  // Polish rewrites the original transcript — require a source: the
+  // finished original.vtt, or a live transcription to pipeline off (P6).
+  // ensurePolishTask is idempotent, so a player attaching mid-
+  // transcription simply picks up the row the start-of-transcription
+  // enqueue already created (or creates one for a manual trigger).
   const origPath = join(SUBCAST_PATHS.cache, hash, 'original.vtt');
-  if (!existsSync(origPath)) {
+  if (!existsSync(origPath) && !runningTranscribeTask(hash)) {
     throw createError({ statusCode: 409, statusMessage: 'ORIGINAL_NOT_READY' });
   }
 

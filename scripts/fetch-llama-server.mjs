@@ -12,8 +12,9 @@
  * single `llama-server` / `llama-server.exe` from inside, and discard
  * the rest. No intermediate Subcast-binaries mirror required.
  *
- * Versions are pinned via LLAMA_CPP_VERSION — keep it in sync with
- * .github/workflows/build-llama-server.yml's env block.
+ * Versions are pinned via LLAMA_CPP_VERSION — this script is the single
+ * source of the pin (the CI static-build workflow was retired after
+ * v0.5.0; see .github/workflows/release.yml's llama staging step).
  *
  * Idempotent: skips when an existing binary is the expected size.
  */

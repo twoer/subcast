@@ -174,6 +174,128 @@ export function jsonStringArraySchema(count: number): Record<string, unknown> {
   };
 }
 
+export interface TranslateBatchResult {
+  cues: Cue[];
+  /** src/tr pairs to append to the caller's rolling context window. */
+  contextPairs: { src: string; tr: string }[];
+  /** Number of cues that kept their source text after the full ladder. */
+  fallbackCount: number;
+}
+
+export interface TranslateBatchOptions {
+  /** Only feeds logEvent fields — no behavioral meaning. */
+  batchIdx?: number;
+  signal?: AbortSignal;
+  onRetry?: (attempt: 1 | 2) => void;
+}
+
+/**
+ * Translate exactly one super-batch (≤ SUPER_BATCH_SIZE cues) through the
+ * full retry ladder (25 → 15 sub-batches → per-cue → source-text
+ * fallback). Self-contained: pass the last-5 context pairs in, append the
+ * returned `contextPairs` to the rolling window — this is the unit the
+ * pipelined worker calls as transcription produces cues, so it must not
+ * assume anything about the surrounding loop.
+ */
+export async function translateSuperBatch(
+  superBatch: readonly Cue[],
+  targetLang: string,
+  ctx: ReadonlyArray<{ src: string; tr: string }>,
+  opts: TranslateBatchOptions = {},
+): Promise<TranslateBatchResult> {
+  const batchIdx = opts.batchIdx ?? 0;
+  const contextPairs: { src: string; tr: string }[] = [];
+  const segCues: Cue[] = [];
+  let fallbackCount = 0;
+
+  const out1 = await tryBatch(superBatch, targetLang, ctx, opts.signal);
+  if (out1.ok) {
+    for (let i = 0; i < superBatch.length; i++) {
+      segCues.push({
+        startMs: superBatch[i]!.startMs,
+        endMs: superBatch[i]!.endMs,
+        text: out1.items[i]!,
+      });
+      contextPairs.push({ src: superBatch[i]!.text.trim(), tr: out1.items[i]!.trim() });
+    }
+    return { cues: segCues, contextPairs, fallbackCount };
+  }
+
+  // Attempt 1 failed; degrade to sub-batches.
+  opts.onRetry?.(1);
+  logEvent({
+    level: 'warn',
+    event: 'translate_count_mismatch',
+    batchIdx,
+    attempt: 1,
+    targetLang,
+    expectedCount: out1.expectedCount,
+    actualCount: out1.actualCount,
+    parseOk: out1.parseOk,
+    rawPreview: out1.rawPreview,
+  });
+
+  let degraded = false;
+  for (let j = 0; j < superBatch.length; j += SUB_BATCH_SIZE) {
+    if (opts.signal?.aborted) throw new Error('CANCELED');
+    const sub = superBatch.slice(j, j + SUB_BATCH_SIZE);
+    const out2 = await tryBatch(sub, targetLang, ctx, opts.signal);
+    if (out2.ok) {
+      for (let i = 0; i < sub.length; i++) {
+        segCues.push({
+          startMs: sub[i]!.startMs,
+          endMs: sub[i]!.endMs,
+          text: out2.items[i]!,
+        });
+        contextPairs.push({ src: sub[i]!.text.trim(), tr: out2.items[i]!.trim() });
+      }
+      continue;
+    }
+
+    // Attempt 2 on this sub-batch failed; degrade to per-cue.
+    if (!degraded) {
+      opts.onRetry?.(2);
+      degraded = true;
+    }
+    logEvent({
+      level: 'warn',
+      event: 'translate_count_mismatch',
+      batchIdx,
+      attempt: 2,
+      targetLang,
+      subStart: j,
+      expectedCount: out2.expectedCount,
+      actualCount: out2.actualCount,
+      parseOk: out2.parseOk,
+      rawPreview: out2.rawPreview,
+    });
+    for (const cue of sub) {
+      if (opts.signal?.aborted) throw new Error('CANCELED');
+      const single = await tryBatch([cue], targetLang, ctx, opts.signal);
+      if (!single.ok) {
+        fallbackCount++;
+        logEvent({
+          level: 'warn',
+          event: 'translate_cue_fallback',
+          batchIdx,
+          targetLang,
+          cueStartMs: cue.startMs,
+          parseOk: single.parseOk,
+          actualCount: single.actualCount,
+          rawPreview: single.rawPreview,
+          cueText: cue.text.slice(0, 60),
+        });
+        segCues.push({ startMs: cue.startMs, endMs: cue.endMs, text: cue.text });
+        contextPairs.push({ src: cue.text.trim(), tr: cue.text.trim() });
+        continue;
+      }
+      segCues.push({ startMs: cue.startMs, endMs: cue.endMs, text: single.items[0]! });
+      contextPairs.push({ src: cue.text.trim(), tr: single.items[0]!.trim() });
+    }
+  }
+  return { cues: segCues, contextPairs, fallbackCount };
+}
+
 export async function translateAll(
   cues: readonly Cue[],
   targetLang: string,
@@ -189,99 +311,18 @@ export async function translateAll(
     const start = batchIdx * SUPER_BATCH_SIZE;
     const end = Math.min(start + SUPER_BATCH_SIZE, cues.length);
     const superBatch = cues.slice(start, end);
-    const ctx = context.slice(-5);
     opts.onSuperBatchStart?.({ batchIdx, totalBatches, cueCount: superBatch.length });
 
-    const out1 = await tryBatch(superBatch, targetLang, ctx, opts.signal);
-    if (out1.ok) {
-      const segCues = out1.items.map<Cue>((text, i) => ({
-        startMs: superBatch[i]!.startMs,
-        endMs: superBatch[i]!.endMs,
-        text,
-      }));
-      out.push(...segCues);
-      for (let i = 0; i < segCues.length; i++) {
-        context.push({ src: superBatch[i]!.text.trim(), tr: out1.items[i]!.trim() });
-      }
-      opts.onSuperBatchDone?.({ batchIdx, totalBatches, cues: segCues });
-      continue;
-    }
-
-    // Attempt 1 failed; degrade to sub-batches.
-    opts.onBatchRetry?.({ batchIdx, attempt: 1, reason: 'count-mismatch' });
-    logEvent({
-      level: 'warn',
-      event: 'translate_count_mismatch',
+    const res = await translateSuperBatch(superBatch, targetLang, context.slice(-5), {
       batchIdx,
-      attempt: 1,
-      targetLang,
-      expectedCount: out1.expectedCount,
-      actualCount: out1.actualCount,
-      parseOk: out1.parseOk,
-      rawPreview: out1.rawPreview,
+      signal: opts.signal,
+      onRetry: (attempt) => opts.onBatchRetry?.({ batchIdx, attempt, reason: 'count-mismatch' }),
     });
+    out.push(...res.cues);
+    context.push(...res.contextPairs);
+    fallbackCount += res.fallbackCount;
 
-    const segCues: Cue[] = [];
-    let degraded = false;
-    for (let j = 0; j < superBatch.length; j += SUB_BATCH_SIZE) {
-      if (opts.signal?.aborted) throw new Error('CANCELED');
-      const sub = superBatch.slice(j, j + SUB_BATCH_SIZE);
-      const out2 = await tryBatch(sub, targetLang, ctx, opts.signal);
-      if (out2.ok) {
-        for (let i = 0; i < sub.length; i++) {
-          segCues.push({
-            startMs: sub[i]!.startMs,
-            endMs: sub[i]!.endMs,
-            text: out2.items[i]!,
-          });
-          context.push({ src: sub[i]!.text.trim(), tr: out2.items[i]!.trim() });
-        }
-        continue;
-      }
-
-      // Attempt 2 on this sub-batch failed; degrade to per-cue.
-      if (!degraded) {
-        opts.onBatchRetry?.({ batchIdx, attempt: 2, reason: 'count-mismatch' });
-        degraded = true;
-      }
-      logEvent({
-        level: 'warn',
-        event: 'translate_count_mismatch',
-        batchIdx,
-        attempt: 2,
-        targetLang,
-        subStart: j,
-        expectedCount: out2.expectedCount,
-        actualCount: out2.actualCount,
-        parseOk: out2.parseOk,
-        rawPreview: out2.rawPreview,
-      });
-      for (const cue of sub) {
-        if (opts.signal?.aborted) throw new Error('CANCELED');
-        const single = await tryBatch([cue], targetLang, ctx, opts.signal);
-        if (!single.ok) {
-          fallbackCount++;
-          logEvent({
-            level: 'warn',
-            event: 'translate_cue_fallback',
-            batchIdx,
-            targetLang,
-            cueStartMs: cue.startMs,
-            parseOk: single.parseOk,
-            actualCount: single.actualCount,
-            rawPreview: single.rawPreview,
-            cueText: cue.text.slice(0, 60),
-          });
-          segCues.push({ startMs: cue.startMs, endMs: cue.endMs, text: cue.text });
-          context.push({ src: cue.text.trim(), tr: cue.text.trim() });
-          continue;
-        }
-        segCues.push({ startMs: cue.startMs, endMs: cue.endMs, text: single.items[0]! });
-        context.push({ src: cue.text.trim(), tr: single.items[0]!.trim() });
-      }
-    }
-    out.push(...segCues);
-    opts.onSuperBatchDone?.({ batchIdx, totalBatches, cues: segCues });
+    opts.onSuperBatchDone?.({ batchIdx, totalBatches, cues: res.cues });
   }
 
   logEvent({

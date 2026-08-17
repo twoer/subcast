@@ -47,17 +47,40 @@ reach. Note any deviations in the release notes.
 
 ---
 
-## 3. Tag
+## 3. Tag + dispatch
 
 - [ ] Update `package.json` `version` to `0.x.y` (no `v` prefix)
-- [ ] `pnpm install` to refresh `pnpm-lock.yaml`
+- [ ] `pnpm install` to refresh `pnpm-lock.yaml` (usually a no-op diff)
 - [ ] Commit `chore(release): v0.x.y`
 - [ ] `git tag v0.x.y -m "Subcast v0.x.y"`
-- [ ] `git push && git push --tags`
+- [ ] `git push origin main`
+- [ ] `git push origin v0.x.y` — **push tags individually, never
+      `git push --tags`** (it sweeps up stale local tags; the v0.5.0
+      release accidentally published a leftover local `v1.0.0` this way
+      and had to delete it before a bogus release fired)
+- [ ] Dispatch the build: `gh workflow run release.yml --ref main -f tag=v0.x.y`
 
-The tag push triggers `.github/workflows/release.yml` — watch it on
-the Actions tab. Expected duration: ~12 min macOS + ~10 min Windows
-running in parallel.
+**Why dispatch from `main`, not the tag** (learned on v0.5.0): the
+workflow file is taken from the **dispatch ref**, and the in-run
+checkout follows it too. Dispatching from the tag ref runs the workflow
+as of the tag — any post-tag workflow fixes (e.g. v0.5.0's
+whisper-server chmod fix) silently don't apply. `inputs.tag` is only
+the label for the draft release; the version comes from `package.json`
+on the dispatched ref. CI-layer-only commits after the tag are fine.
+
+Tag-push triggering of release.yml is NOT relied upon: historically it
+either didn't fire or fired before upstream artifacts existed (`no
+artifacts found` killed v0.4.7/v0.4.8's tag-triggered runs). Manual
+dispatch once the whisper artifact is green is the reliable path.
+
+Prerequisites before dispatching: the latest `Build whisper-cli`
+workflow run must be green (it stages whisper-cli + whisper-server +
+dylibs as the artifact release.yml downloads). llama-server needs no CI
+build anymore — release.yml stages the official upstream release binary
+(dynamic) + `llama-libs/` dylibs directly; the old 72-minute static
+compile was retired after v0.5.0 (its artifact was always overwritten
+by the fetch step's skip-condition anyway). Expected release duration:
+**~3-4 min** total.
 
 ---
 
@@ -150,3 +173,21 @@ If a release goes out broken:
 - [ ] Tag a `v0.x.(y+1)` fix asap; do **not** retag the broken version
       — electron-updater compares versions, and re-tagging is a sin
 - [ ] Mention the rollback in the next release notes
+
+---
+
+## Docs site (twoer.github.io/subcast)
+
+Independent of app releases — deploys on every push to `main` touching
+`website/**` via `.github/workflows/docs.yml`:
+
+- Requires Settings → Pages → Build and deployment → Source =
+  **GitHub Actions** (was switched from the legacy `gh-pages` branch
+  during v0.5.0; the deploy job hard-fails with a 404-style error
+  before that switch).
+- `website/tsconfig.json` is load-bearing: without it Vite's tsconfig
+  discovery walks up to the repo-root Nuxt `tsconfig.json` (extends
+  `./.nuxt/tsconfig.json`), which only exists after a local
+  `pnpm dev` — CI's clean checkout then fails the build.
+- The `pages/builds` API still lists legacy gh-pages builds only;
+  workflow-mode deployments don't appear there — verify the site itself.

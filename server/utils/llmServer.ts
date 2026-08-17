@@ -22,6 +22,57 @@ export interface LlmServerOptions {
 }
 
 /**
+ * Concurrent decode slots llama-server runs. Must stay in sync with
+ * `LLMQueue`'s slot count (server/utils/llmQueue.ts) — more queue slots
+ * than this just queues server-side; fewer wastes a slot.
+ */
+export const LLM_PARALLEL_SLOTS = 2;
+
+/** Context per slot. The insights path needs the full 8192 (see below). */
+const PER_SLOT_CTX = 8192;
+
+/**
+ * argv for llama-server. Exported pure function so tests can pin the
+ * concurrency-critical flags (`--parallel`, `--ctx-size`) without
+ * spawning a real process.
+ */
+export function llamaServerSpawnArgs(modelPath: string, port: number): string[] {
+  return [
+    '--model', modelPath,
+    '--host', '127.0.0.1',
+    '--port', String(port),
+    '--keep', '-1',
+    '--n-gpu-layers', '999',
+    // llama-server divides ctx evenly across `--parallel` slots, so the
+    // total is scaled to keep 8192 per slot — that's what the insights
+    // path (maxTokens=4096, prompts ~3-6k tokens for an hour of
+    // subtitles) needs; prompts that still overflow slide via
+    // llama-server's context-shift. Two slots let a pair of
+    // translate/polish tasks batch into one forward pass — Metal decode
+    // is bandwidth-bound, so 2-way batching lifts aggregate throughput
+    // ~1.5-1.8x on M-series. The flip side: KV cache memory doubles
+    // (Qwen3's KV cache is fat — 36 layers × 8 kv-heads ≈ 144KB/token on
+    // 4B — so 16k total ctx ≈ 2.3 GB on 4B, still inside the 8 GB
+    // entry-tier budget next to the 2.6 GB weights).
+    '--ctx-size', String(PER_SLOT_CTX * LLM_PARALLEL_SLOTS),
+    '--parallel', String(LLM_PARALLEL_SLOTS),
+    // NOTE: do NOT pass `-fa`/`--flash-attn` — current llama.cpp builds
+    // take a required value (`-fa on|off|auto`) and a bare `-fa` makes
+    // the next flag its value, killing the process at argv parse
+    // (b10435: `unknown value for --flash-attn: '--cache-reuse'`).
+    // The build's default is `auto` = enabled wherever the backend
+    // supports it, which is exactly what we want.
+    //
+    // Reuse the KV prefix across requests that share one (the
+    // translate/polish system prompt) instead of re-prefilling it.
+    '--cache-reuse', '256',
+    // Pin weights in RAM so a backgrounded app doesn't page them out
+    // mid-task (`--mlock`'s modern spelling).
+    '--load-mode', 'mmap+mlock',
+  ];
+}
+
+/**
  * Lifecycle owner for the llama-server sidecar. Single instance per
  * Nitro process. `ensure()` is the only method consumers call — it
  * resolves once a server is ready to receive requests, spawning if
@@ -170,34 +221,10 @@ export class LlmServer {
       }
       modelPath = llmModelPath(llmModel);
     }
-    const proc = spawn(binaryPath, [
-      '--model', modelPath,
-      '--host', '127.0.0.1',
-      '--port', String(this.opts.preferredPort ?? 0),
-      '--keep', '-1',
-      '--n-gpu-layers', '999',
-      // llama-server defaults to a 4096 ctx. Doubled to 8192 so the
-      // insights path (maxTokens=4096) isn't squeezed by typical prompt
-      // sizes (~3-6k tokens for an hour of subtitles). Not higher:
-      // Qwen3's KV cache is fat (36 layers × 8 kv-heads ≈ 144KB/token
-      // on 4B), and the entry tier must fit weights + cache inside 8 GB
-      // RAM. Prompts that still overflow slide via llama-server's
-      // context-shift — same behavior as the old 4096 default.
-      '--ctx-size', '8192',
-      // NOTE: do NOT pass `-fa`/`--flash-attn` — current llama.cpp builds
-      // take a required value (`-fa on|off|auto`) and a bare `-fa` makes
-      // the next flag its value, killing the process at argv parse
-      // (b10435: `unknown value for --flash-attn: '--cache-reuse'`).
-      // The build's default is `auto` = enabled wherever the backend
-      // supports it, which is exactly what we want.
-      //
-      // Reuse the KV prefix across requests that share one (the
-      // translate/polish system prompt) instead of re-prefilling it.
-      '--cache-reuse', '256',
-      // Pin weights in RAM so a backgrounded app doesn't page them out
-      // mid-task (`--mlock`'s modern spelling).
-      '--load-mode', 'mmap+mlock',
-    ]);
+    const proc = spawn(
+      binaryPath,
+      llamaServerSpawnArgs(modelPath, this.opts.preferredPort ?? 0),
+    );
     const port = await this.waitForListeningPort(proc, 30_000);
     // The "listening" log line fires the moment the HTTP socket binds —
     // but llama-server is still loading model weights at that point and

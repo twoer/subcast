@@ -6,6 +6,7 @@ import { join } from 'node:path';
 
 import { getDb, SUBCAST_PATHS } from '../utils/db';
 import { translateQueue } from '../utils/queue';
+import { runningTranscribeTask } from '../utils/transcriptSource';
 import { formatSse } from '../utils/sse';
 import { setupSseStream } from '../utils/sseStream';
 import { isValidHash } from '../utils/validate';
@@ -28,9 +29,11 @@ export default defineEventHandler(async (event) => {
     .get(hash) as Pick<VideoRow, 'sha256'> | undefined;
   if (!video) throw createError({ statusCode: 404, statusMessage: 'VIDEO_NOT_FOUND' });
 
-  // Require original transcription before allowing translate.
+  // Require a transcript source before allowing translate: either the
+  // finished original.vtt, or a live transcription the pipelined worker
+  // (P6) can consume cues from while chunks keep landing.
   const origPath = join(SUBCAST_PATHS.cache, hash, 'original.vtt');
-  if (!existsSync(origPath)) {
+  if (!existsSync(origPath) && !runningTranscribeTask(hash)) {
     throw createError({ statusCode: 409, statusMessage: 'ORIGINAL_NOT_READY' });
   }
 

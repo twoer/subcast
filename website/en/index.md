@@ -47,3 +47,5 @@ features:
     title: Full-text search
     details: A persistent search box in the player with match highlighting and Enter-to-cycle.
 ---
+
+<HomeCompare lang="en" />

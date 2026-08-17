@@ -19,7 +19,6 @@ import {
   releaseSenseVoiceWavCache,
   transcribeSegmentsSenseVoice,
 } from './sensevoice';
-import { getLlmServer } from './llmServer';
 import { llmQueueImpl } from './llmQueue';
 import { getWhisperServer } from './whisperServer';
 import { isWhisperModelReady } from './whisperInstalled';
@@ -362,15 +361,34 @@ export class TranscribeQueue {
         },
       });
 
-      // Prewarm latch: fire the llama-server spawn once, near the end of
-      // the run, so the auto-polish chain doesn't pay model-load latency
-      // after 'done' (1-3 s on the 4B tier, up to 60 s on 14B cold disk).
-      let prewarmed = false;
+      // Auto-polish chain (P6): enqueue at transcription START so the
+      // LLM queue can pipeline — consume cues from the chunks table as
+      // they land — instead of waiting for original.vtt. Dispatch is
+      // gated by pipeline readiness (a full super-batch of cues), so
+      // this row just sits queued until the source catches up; the
+      // LLM-side prewarm fires when that dispatch is imminent.
+      try {
+        const s = loadSettings();
+        if (s.transcriptPolish && s.llmModel) {
+          llmQueueImpl.ensurePolishTask(videoSha);
+          logEvent({ level: 'info', event: 'polish_auto_enqueued', taskId, videoSha });
+        }
+      } catch (err) {
+        logEvent({
+          level: 'warn',
+          event: 'polish_auto_enqueue_failed',
+          taskId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
 
       for (let chunkIdx = startIdx; chunkIdx < totalChunks; chunkIdx++) {
         if (aborted()) {
           db.prepare(`UPDATE transcribe_tasks SET status='canceled' WHERE id = ?`)
             .run(taskId);
+          // P6: cancel pipelined LLM tasks fed by this source (partial
+          // output was never persisted; they resurrect on retry).
+          llmQueueImpl.cancelTasksForSource(videoSha, 'source-canceled');
           emit({ event: 'status', data: { taskId, status: 'canceled' } });
           return;
         }
@@ -502,30 +520,11 @@ export class TranscribeQueue {
           data: { taskId, chunkIdx, doneChunks: chunkIdx + 1, totalChunks, quality },
         });
 
-        // Prewarm trigger: gate on the same conditions as the auto-polish
-        // chain below, fire-and-forget. If prewarming fails — or the idle
-        // timer (2 min) lapses before polish starts — the polish task's
-        // own ensure() just spawns again; never worse than today.
-        if (!prewarmed && chunkIdx + 1 >= Math.ceil(totalChunks * 0.8)) {
-          prewarmed = true;
-          try {
-            const s = loadSettings();
-            if (s.transcriptPolish && s.llmModel) {
-              void getLlmServer().ensure().then(
-                () => logEvent({ level: 'debug', event: 'llm_prewarmed', taskId }),
-                (err: unknown) =>
-                  logEvent({
-                    level: 'debug',
-                    event: 'llm_prewarm_failed',
-                    taskId,
-                    error: err instanceof Error ? err.message : String(err),
-                  }),
-              );
-            }
-          } catch {
-            // settings read failed — skip prewarm, transcription continues
-          }
-        }
+        // Pipelined dispatch nudge (P6): a queued translate/polish task
+        // becomes dispatchable the moment its source crosses a full
+        // super-batch of cues — kick the LLM queue every chunk; the
+        // readiness check inside makes the extra calls no-ops.
+        void llmQueueImpl.tryStartNext();
       }
 
       const allChunkRows = db
@@ -571,25 +570,11 @@ export class TranscribeQueue {
         `UPDATE transcribe_tasks SET status='completed', completed_at = ? WHERE id = ?`,
       ).run(Date.now(), taskId);
 
-      // Auto-polish chain: settings gates it, the installed LLM enables it.
-      // Enqueue-only (never awaited) — the polish worker runs on the LLM
-      // queue behind translations/insights, and the 'done' frame below is
-      // emitted without waiting on it.
-      try {
-        const settings = loadSettings();
-        if (settings.transcriptPolish && settings.llmModel) {
-          llmQueueImpl.ensurePolishTask(videoSha);
-          void llmQueueImpl.tryStartNext();
-          logEvent({ level: 'info', event: 'polish_auto_enqueued', taskId, videoSha });
-        }
-      } catch (err) {
-        logEvent({
-          level: 'warn',
-          event: 'polish_auto_enqueue_failed',
-          taskId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
+      // Pipelined tasks whose source never crossed a super-batch (short
+      // videos) dispatch here — original.vtt now exists, so LLM-side
+      // readiness is unconditional. The polish task itself was already
+      // enqueued at transcription start.
+      void llmQueueImpl.tryStartNext();
 
       await unlink(wavPath).catch((err) => {
         logEvent({
@@ -610,6 +595,9 @@ export class TranscribeQueue {
       // back onto the canceled path so the row doesn't end up 'failed'.
       if (err instanceof ProcessAbortedError || active.abort.signal.aborted) {
         db.prepare(`UPDATE transcribe_tasks SET status='canceled' WHERE id=?`).run(taskId);
+        // P6: cancel pipelined LLM tasks fed by this source (partial
+        // output was never persisted; they resurrect on retry).
+        llmQueueImpl.cancelTasksForSource(videoSha, 'source-canceled');
         emit({ event: 'status', data: { taskId, status: 'canceled' } });
       } else {
         const msg = err instanceof Error ? err.message : String(err);
@@ -626,6 +614,9 @@ export class TranscribeQueue {
         db.prepare(
           `UPDATE transcribe_tasks SET status='failed', error_msg=?, error_code=? WHERE id=?`,
         ).run(msg, code, taskId);
+        // P6: same as the cancel path — the source died, so anything
+        // pipelining off it must go too.
+        llmQueueImpl.cancelTasksForSource(videoSha, 'source-failed');
         emit({
           event: 'error',
           data: { taskId, code, msg },

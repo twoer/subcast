@@ -112,6 +112,91 @@ export interface PolishAllOptions {
   onBatchDone?: (info: { batchIdx: number; totalBatches: number; cues: Cue[] }) => void;
 }
 
+export interface PolishBatchResult {
+  cues: Cue[];
+  /** src/polished pairs to append to the caller's rolling context window. */
+  contextPairs: { src: string; polished: string }[];
+  /** True when the whole batch fell back to original text. */
+  fallback: boolean;
+}
+
+/**
+ * Polish exactly one batch (≤ BATCH_SIZE cues) through the 25→10 retry
+ * ladder with whole-batch fallback. Self-contained counterpart of
+ * translate.ts's `translateSuperBatch` — the pipelined worker calls this
+ * per batch as transcription produces cues, so it must not assume
+ * anything about the surrounding loop.
+ */
+export async function polishOneBatch(
+  batch: readonly Cue[],
+  hints: string,
+  ctx: ReadonlyArray<{ src: string; polished: string }>,
+  signal?: AbortSignal,
+  batchIdx = 0,
+): Promise<PolishBatchResult> {
+  let items: string[] | null = null;
+  const attempt1 = await tryPolishBatch(batch, hints, ctx, signal);
+  if (attempt1.ok) {
+    items = attempt1.items;
+  } else {
+    logEvent({
+      level: 'warn',
+      event: 'polish_batch_mismatch',
+      batchIdx,
+      attempt: 1,
+      expectedCount: batch.length,
+      rawPreview: attempt1.rawPreview,
+    });
+    // One retry on smaller batches — a long batch occasionally trips
+    // the count contract; a short one rarely does.
+    const segCues: string[] = [];
+    let allOk = true;
+    for (let j = 0; j < batch.length && allOk; j += RETRY_BATCH_SIZE) {
+      const sub = batch.slice(j, j + RETRY_BATCH_SIZE);
+      const attempt2 = await tryPolishBatch(sub, hints, ctx, signal);
+      if (!attempt2.ok) {
+        allOk = false;
+        logEvent({
+          level: 'warn',
+          event: 'polish_batch_mismatch',
+          batchIdx,
+          attempt: 2,
+          expectedCount: sub.length,
+          rawPreview: attempt2.rawPreview,
+        });
+        break;
+      }
+      segCues.push(...attempt2.items);
+    }
+    if (allOk) items = segCues;
+  }
+
+  const segOut: Cue[] = [];
+  let fallback = false;
+  if (items === null) {
+    // Fallback: keep original text for this batch. Polish is an
+    // enhancement layer — a batch we can't safely rewrite stays
+    // verbatim instead of blocking the whole layer.
+    fallback = true;
+    for (const cue of batch) {
+      segOut.push({ startMs: cue.startMs, endMs: cue.endMs, text: cue.text });
+    }
+  } else {
+    for (let i = 0; i < batch.length; i++) {
+      segOut.push({
+        startMs: batch[i]!.startMs,
+        endMs: batch[i]!.endMs,
+        text: items[i]!.trim() || batch[i]!.text,
+      });
+    }
+  }
+  const contextPairs = segOut.map((c, i) => ({
+    src: batch[i]!.text.trim(),
+    polished: c.text.trim(),
+  }));
+  return { cues: segOut, contextPairs, fallback };
+}
+
 export async function polishAll(
   cues: readonly Cue[],
   opts: PolishAllOptions = {},
@@ -126,68 +211,13 @@ export async function polishAll(
     if (opts.signal?.aborted) throw new Error('CANCELED');
     const start = batchIdx * BATCH_SIZE;
     const batch = cues.slice(start, start + BATCH_SIZE);
-    const ctx = context.slice(-5);
 
-    let items: string[] | null = null;
-    const attempt1 = await tryPolishBatch(batch, hints, ctx, opts.signal);
-    if (attempt1.ok) {
-      items = attempt1.items;
-    } else {
-      logEvent({
-        level: 'warn',
-        event: 'polish_batch_mismatch',
-        batchIdx,
-        attempt: 1,
-        expectedCount: batch.length,
-        rawPreview: attempt1.rawPreview,
-      });
-      // One retry on smaller batches — a long batch occasionally trips
-      // the count contract; a short one rarely does.
-      const segCues: string[] = [];
-      let allOk = true;
-      for (let j = 0; j < batch.length && allOk; j += RETRY_BATCH_SIZE) {
-        const sub = batch.slice(j, j + RETRY_BATCH_SIZE);
-        const attempt2 = await tryPolishBatch(sub, hints, ctx, opts.signal);
-        if (!attempt2.ok) {
-          allOk = false;
-          logEvent({
-            level: 'warn',
-            event: 'polish_batch_mismatch',
-            batchIdx,
-            attempt: 2,
-            expectedCount: sub.length,
-            rawPreview: attempt2.rawPreview,
-          });
-          break;
-        }
-        segCues.push(...attempt2.items);
-      }
-      if (allOk) items = segCues;
-    }
+    const res = await polishOneBatch(batch, hints, context.slice(-5), opts.signal, batchIdx);
+    out.push(...res.cues);
+    context.push(...res.contextPairs);
+    if (res.fallback) fallbackCount++;
 
-    const segOut: Cue[] = [];
-    if (items === null) {
-      // Fallback: keep original text for this batch. Polish is an
-      // enhancement layer — a batch we can't safely rewrite stays
-      // verbatim instead of blocking the whole layer.
-      fallbackCount++;
-      for (const cue of batch) {
-        segOut.push({ startMs: cue.startMs, endMs: cue.endMs, text: cue.text });
-      }
-    } else {
-      for (let i = 0; i < batch.length; i++) {
-        segOut.push({
-          startMs: batch[i]!.startMs,
-          endMs: batch[i]!.endMs,
-          text: items[i]!.trim() || batch[i]!.text,
-        });
-      }
-    }
-    for (let i = 0; i < segOut.length; i++) {
-      context.push({ src: batch[i]!.text.trim(), polished: segOut[i]!.text.trim() });
-    }
-    out.push(...segOut);
-    opts.onBatchDone?.({ batchIdx, totalBatches, cues: segOut });
+    opts.onBatchDone?.({ batchIdx, totalBatches, cues: res.cues });
   }
 
   logEvent({

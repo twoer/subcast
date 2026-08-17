@@ -21,7 +21,7 @@ vi.mock('../log', () => ({
 
 /* eslint-disable import/first -- mocks must be registered before imports */
 import { logEvent } from '../log';
-import { translateAll } from '../translate';
+import { translateAll, translateSuperBatch } from '../translate';
 /* eslint-enable import/first */
 
 function cue(i: number): Cue {
@@ -136,5 +136,30 @@ describe('translateAll', () => {
       fallbackCount: 1,
       totalCues: 2,
     }));
+  });
+});
+
+describe('translateSuperBatch (P6 extraction contract)', () => {
+  it('returns cue-aligned output plus contextPairs the next batch feeds back in', async () => {
+    chatMock.mockImplementation(async (opts) => {
+      const match = opts.messages.at(-1)?.content.match(/INPUT \((\d+) subtitle/);
+      const n = Number(match?.[1] ?? 0);
+      return jsonItems('translated', n);
+    });
+
+    const batch1 = await translateSuperBatch([cue(0), cue(1)], 'zh-CN', []);
+    expect(batch1.cues.map((c) => c.text)).toEqual(['translated 0', 'translated 1']);
+    expect(batch1.cues[0]).toMatchObject({ startMs: 0, endMs: 900 });
+    expect(batch1.contextPairs).toEqual([
+      { src: 'source 0', tr: 'translated 0' },
+      { src: 'source 1', tr: 'translated 1' },
+    ]);
+    expect(batch1.fallbackCount).toBe(0);
+
+    await translateSuperBatch([cue(2)], 'zh-CN', batch1.contextPairs.slice(-5));
+    const lastMsg = chatMock.mock.calls.at(-1)![0].messages.at(-1)!.content;
+    expect(lastMsg).toContain('CONTEXT');
+    expect(lastMsg).toContain('src: source 1');
+    expect(lastMsg).toContain('tgt: translated 1');
   });
 });

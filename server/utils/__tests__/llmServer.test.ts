@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { describe, it, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
-import { LlmServer } from '../llmServer';
+import { LlmServer, llamaServerSpawnArgs } from '../llmServer';
 import type { ChildProcess } from 'node:child_process';
 
 function makeFakeProc(): ChildProcess & EventEmitter {
@@ -172,5 +172,21 @@ describe('LlmServer state machine', () => {
     await expect(probe).rejects.toThrow(
       /exited \(code 1\) before announcing a port.*unknown value/,
     );
+  });
+});
+
+describe('llamaServerSpawnArgs (P4 concurrency contract)', () => {
+  it('runs two parallel slots with 8192 ctx per slot', () => {
+    const args = llamaServerSpawnArgs('/models/qwen3-8b.gguf', 0);
+    expect(args[args.indexOf('--parallel') + 1]).toBe('2');
+    // llama-server splits ctx across slots — total must be scaled so each
+    // slot keeps the 8192 the insights path needs.
+    expect(args[args.indexOf('--ctx-size') + 1]).toBe('16384');
+  });
+
+  it('never passes a bare -fa / --flash-attn (b10435 argv trap)', () => {
+    const args = llamaServerSpawnArgs('/models/qwen3-8b.gguf', 0);
+    expect(args).not.toContain('-fa');
+    expect(args).not.toContain('--flash-attn');
   });
 });

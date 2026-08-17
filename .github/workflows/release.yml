@@ -54,7 +54,6 @@ jobs:
             arch: arm64
             whisper_artifact_name: whisper-cli-macos-14-arm64
             whisper_dest: binaries/darwin-arm64/whisper-cli
-            llama_artifact_name: llama-server-macos-14-arm64
             llama_dest: binaries/darwin-arm64/llama-server
             build_script: build:desktop:mac
             artifact_glob: |
@@ -69,7 +68,6 @@ jobs:
           #   arch: x64
           #   whisper_artifact_name: whisper-cli-windows-2022-x64
           #   whisper_dest: binaries/win32-x64/whisper-cli.exe
-          #   llama_artifact_name: llama-server-windows-2022-x64
           #   llama_dest: binaries/win32-x64/llama-server.exe
           #   build_script: build:desktop:win
           #   artifact_glob: |
@@ -121,12 +119,19 @@ jobs:
           dest="${{ matrix.whisper_dest }}"
           mkdir -p "$(dirname "$dest")"
           if [ "$RUNNER_OS" == "macOS" ]; then
-            # mac artifact is a directory tree: whisper-cli + whisper-libs/*.dylib.
-            # Spread the whole tree into binaries/<target>/ so fetch-whisper-cli's
-            # "already staged" guard sees both the binary and the dylibs and skips
-            # its on-the-fly cmake rebuild.
+            # mac artifact is a directory tree: whisper-cli + whisper-server
+            # + whisper-libs/*.dylib. Spread the whole tree into
+            # binaries/<target>/ so fetch-whisper-cli's "already staged"
+            # guard sees both binaries and the dylibs and skips its
+            # on-the-fly cmake rebuild.
             cp -r whisper-cli-tmp/. "$(dirname "$dest")"/
             chmod +x "$dest" || true
+            # The tree copy does not preserve the exec bit for the server
+            # binary (upload/download-artifact strips modes) — without
+            # this, whisper-server lands in the DMG non-executable and
+            # transcription silently falls back to whisper-cli spawns
+            # (caught by the runbook DMG check on v0.5.0's first build).
+            chmod +x "$(dirname "$dest")/whisper-server" || true
             echo "Staged mac whisper tree:"
             ls -lh "$(dirname "$dest")"
             ls -lh "$(dirname "$dest")/whisper-libs" || true
@@ -136,54 +141,31 @@ jobs:
             ls -lh "$dest"
           fi
 
-      - name: Fetch latest llama-server artifact (static build)
-        id: llama_artifact
-        uses: dawidd6/action-download-artifact@v6
-        with:
-          workflow: build-llama-server.yml
-          name: ${{ matrix.llama_artifact_name }}
-          path: llama-server-tmp
-          # Same rationale as whisper: the run may be marked 'failure'
-          # because the other-platform job failed; search regardless.
-          workflow_conclusion: ''
-          if_no_artifact_found: warn
-        # macOS MUST get the static build (dynamic version crashes at runtime).
-        # Windows build-llama-server may fail (MSVC/chrono issue); tolerate
-        # that and fall back to the prebuilt zip via fetch:llama-server.
-        continue-on-error: ${{ matrix.os == 'windows-2022' }}
-
-      - name: Move llama-server into binaries/
-        # Only run if the Fetch step succeeded (artifact was downloaded).
-        # The script itself checks for the file, so no hashFiles glob needed
-        # (which can be unreliable for freshly-created dirs on CI).
-        if: steps.llama_artifact.outcome == 'success'
+      # llama-server: official upstream release binary (dynamic) + its
+      # libllama/libggml dylibs staged into llama-libs/. Retired the old
+      # flow (72-min CI static compile → artifact fetch → static-only
+      # guard) after v0.5.0: the in-chain `fetch:llama-server` step only
+      # skips when llama-libs/ exists — which static staging never
+      # provided — so the static binary was ALWAYS overwritten by this
+      # same official download, and every release paid the CI compile
+      # for nothing. The real invariant behind the old guard (v0.4.0's
+      # bug was a dynamic binary shipped WITHOUT dylibs) is asserted
+      # here: binary executable + llama-libs/ present.
+      - name: Stage llama-server (official release binary + dylibs)
         shell: bash
         run: |
+          set -euo pipefail
           dest="${{ matrix.llama_dest }}"
-          mkdir -p "$(dirname "$dest")"
-          if ls llama-server-tmp/llama-server* 1>/dev/null 2>&1; then
-            mv llama-server-tmp/llama-server* "$dest"
-            chmod +x "$dest" || true
-            echo "Moved CI-built llama-server -> $dest"
-            ls -lh "$dest"
-          else
-            echo "No llama-server artifact in llama-server-tmp/ — build script will download prebuilt as fallback"
-          fi
-
-      - name: Verify llama-server is static (macOS only)
-        if: runner.os == 'macOS' && steps.llama_artifact.outcome == 'success'
-        shell: bash
-        run: |
-          # Hard-fail the build if the staged llama-server is dynamically
-          # linked — that's the exact bug that shipped broken v0.4.0/v0.4.1.
-          dest="${{ matrix.llama_dest }}"
+          target="$(basename "$(dirname "$dest")")"
+          node scripts/fetch-llama-server.mjs "$target"
+          test -x "$dest"
           echo "=== otool -L $dest ==="
           otool -L "$dest" | head -15
-          if otool -L "$dest" | grep -q "libllama\|libggml"; then
-            echo "::error::llama-server is dynamically linked (needs libllama/libggml dylibs). The CI static build artifact was NOT used. Aborting to prevent shipping a broken app."
-            exit 1
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            libs_dir="$(dirname "$dest")/llama-libs"
+            test -d "$libs_dir"
+            echo "✓ llama-server (dynamic) + $(ls "$libs_dir" | wc -l | tr -d ' ') dylibs staged in llama-libs/"
           fi
-          echo "✓ llama-server is self-contained (no external dylib deps)"
 
       - name: Build desktop artifacts
         env:

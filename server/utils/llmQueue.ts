@@ -9,10 +9,25 @@ import { getDb, SUBCAST_PATHS } from './db';
 import { logEvent } from './log';
 import { buildInsightMessages } from './insights';
 import { runInsightWorker, type InsightWorkerParams } from './insightTasks';
-import { polishAll, BATCH_SIZE as POLISH_BATCH_SIZE } from './polish';
+import {
+  polishAll,
+  polishOneBatch,
+  BATCH_SIZE as POLISH_BATCH_SIZE,
+} from './polish';
 import { loadSettings } from './settings';
-import { translateAll, SUPER_BATCH_SIZE } from './translate';
-import { parseVtt, serializeVtt } from './vtt';
+import {
+  translateAll,
+  translateSuperBatch,
+  SUPER_BATCH_SIZE,
+} from './translate';
+import {
+  pipelineReadyShas,
+  readTranscriptSource,
+  runningTranscribeTask,
+  type TranscriptSourceSnapshot,
+} from './transcriptSource';
+import { parseVtt, serializeVtt, type Cue } from './vtt';
+import { getLlmServer, LLM_PARALLEL_SLOTS } from './llmServer';
 import { isLlmConfigError, type TaskErrorCode } from '#shared/errorCodes';
 import { POLISH_LAYER_LANG } from '#shared/polishLayer';
 import type { SseFrame } from './sse';
@@ -25,17 +40,106 @@ import type {
 } from './queueTypes';
 import type { InsightTaskRow, PolishTaskRow, TranslateTaskRow } from '../types/db';
 
+/**
+ * How often a pipelined worker re-reads the chunks table for new cues.
+ * Env-tunable so tests can shrink it (batch latency dominates in
+ * production; a 1 s poll adds negligible jitter there).
+ */
+const PIPELINE_POLL_MS = Number(process.env.SUBCAST_PIPELINE_POLL_MS ?? 1_000);
+
 // ─────────────────────────────────────────────────────────────────────
-// LLMQueue — single-concurrent worker for translate + insight tasks.
+// LLMQueue — slot-based concurrent worker for translate + polish +
+// insight tasks. Up to `LLM_PARALLEL_SLOTS` (2) tasks run at once —
+// exactly what llama-server is spawned with (`--parallel 2`), so two
+// translate/polish batches decode in one forward pass. Insight tasks
+// are exclusive: they hold ALL slots (their ~3-6k-token prompts plus a
+// 4096-token output budget would contend with a neighbor decode, and
+// their single long stream gains nothing from batching).
+//
+// Translate/polish run either batched (original.vtt exists — unchanged
+// pre-P6 behavior) or pipelined (P6): while their video is still being
+// transcribed they consume cues from the chunks table as chunks land,
+// so total wall time approaches max(T_asr, T_llm) instead of the sum.
+// Pipelined tasks only dequeue once their source has produced a full
+// super-batch of cues (see transcriptSource.pipelineReadyShas).
 // ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Head of the pending queue across all three LLM task tables. Ordering
+ * is FIFO by created_at; translate's dynamic `priority` column is the
+ * only way to jump the line (bumped when a user attaches to the task's
+ * SSE stream). Polish used to hard-code priority 1 here — auto-polish
+ * of freshly transcribed videos kept leap-frogging translations the
+ * user had already queued.
+ *
+ * `readyShas` (P6) gates translate/polish rows on their video's source
+ * readiness; insight rows are exempt (they need the finished transcript
+ * and fail fast on their own).
+ */
+export function pickNextLlmTask(
+  excludeInsight: boolean,
+  readyShas?: ReadonlySet<string>,
+): { id: string; kind: LLMTaskKind; video_sha: string } | undefined {
+  const db = getDb();
+  const params: string[] = [];
+  const conds: string[] = [];
+  if (excludeInsight) conds.push(`kind != 'insight'`);
+  if (readyShas !== undefined) {
+    if (readyShas.size === 0) {
+      conds.push(`kind = 'insight'`);
+    } else {
+      const placeholders = Array.from(readyShas, () => '?').join(',');
+      conds.push(`(kind = 'insight' OR video_sha IN (${placeholders}))`);
+      params.push(...readyShas);
+    }
+  }
+  const where = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : '';
+  return db
+    .prepare(
+      `SELECT id, kind, video_sha FROM (
+         SELECT id, 'translate' AS kind, video_sha, created_at,
+                priority AS sort_priority
+         FROM translate_tasks WHERE status='queued'
+         UNION ALL
+         SELECT id, 'polish' AS kind, video_sha, created_at,
+                0 AS sort_priority
+         FROM polish_tasks WHERE status='queued'
+         UNION ALL
+         SELECT id, 'insight' AS kind, video_sha, created_at,
+                0 AS sort_priority
+         FROM insight_tasks WHERE status='queued'
+       ) ${where}
+       ORDER BY sort_priority DESC, created_at ASC
+       LIMIT 1`,
+    )
+    .get(...params) as { id: string; kind: LLMTaskKind; video_sha: string } | undefined;
+}
+
 export class LLMQueue {
-  private active: ActiveLLMTask | null = null;
+  private activeSlots: ActiveLLMTask[] = [];
   private pauseDepth = 0;
   private queueEvents = new EventEmitter();
+  /** Task ids whose pipelined dispatch already fired an LLM prewarm. */
+  private prewarmed = new Set<string>();
 
   constructor() {
     this.queueEvents.setMaxListeners(100);
+  }
+
+  private findSlot(taskId: string): ActiveLLMTask | undefined {
+    return this.activeSlots.find((t) => t.taskId === taskId);
+  }
+
+  private hasInsightSlot(): boolean {
+    return this.activeSlots.some((t) => t.kind === 'insight');
+  }
+
+  private releaseSlot(taskId: string): void {
+    const before = this.activeSlots.length;
+    this.activeSlots = this.activeSlots.filter((t) => t.taskId !== taskId);
+    if (this.activeSlots.length !== before) {
+      this.queueEvents.emit('active-changed');
+    }
   }
 
   /**
@@ -211,7 +315,7 @@ export class LLMQueue {
         return false;
       }
       db.prepare(`UPDATE translate_tasks SET status='canceled' WHERE id=?`).run(taskId);
-      if (this.active?.taskId === taskId) this.active.abort.abort();
+      this.findSlot(taskId)?.abort.abort();
       logEvent({ level: 'info', event: 'translate_canceled', taskId });
       return true;
     }
@@ -225,7 +329,7 @@ export class LLMQueue {
       db.prepare(
         `UPDATE polish_tasks SET status='canceled', completed_at=? WHERE id=?`,
       ).run(Date.now(), taskId);
-      if (this.active?.taskId === taskId) this.active.abort.abort();
+      this.findSlot(taskId)?.abort.abort();
       logEvent({ level: 'info', event: 'polish_canceled', taskId });
       return true;
     }
@@ -239,37 +343,66 @@ export class LLMQueue {
       db.prepare(
         `UPDATE insight_tasks SET status='canceled', completed_at=? WHERE id=?`,
       ).run(Date.now(), taskId);
-      if (this.active?.taskId === taskId) this.active.abort.abort();
+      this.findSlot(taskId)?.abort.abort();
       logEvent({ level: 'info', event: 'insight_canceled', taskId });
       return true;
     }
     return false;
   }
 
+  /**
+   * Cancel every queued/running translate + polish task for a video
+   * whose transcription failed or was canceled (P6 partial-failure
+   * semantics). Nothing was persisted — partial LLM output only ever
+   * lived on the slot's doneCues — and ensureTask/ensurePolishTask
+   * resurrection re-runs from scratch once the source is retried;
+   * already-persisted chunks make that re-run catch up fast.
+   */
+  cancelTasksForSource(videoSha: string, reason = 'source-failed'): void {
+    const db = getDb();
+    const translateIds = db
+      .prepare(`SELECT id FROM translate_tasks WHERE video_sha = ? AND status IN ('queued','running')`)
+      .all(videoSha) as { id: string }[];
+    const polishIds = db
+      .prepare(`SELECT id FROM polish_tasks WHERE video_sha = ? AND status IN ('queued','running')`)
+      .all(videoSha) as { id: string }[];
+    if (translateIds.length + polishIds.length === 0) return;
+    for (const row of [...translateIds, ...polishIds]) this.cancel(row.id);
+    logEvent({
+      level: 'info',
+      event: 'llm_source_cancel',
+      videoSha,
+      reason,
+      tasks: translateIds.length + polishIds.length,
+    });
+  }
+
   async tryStartNext(): Promise<void> {
     if (this.pauseDepth > 0) return;
-    if (this.active) return;
-    const db = getDb();
-    const next = db
-      .prepare(
-        `SELECT id, kind, video_sha, created_at FROM (
-           SELECT id, 'translate' AS kind, video_sha, created_at,
-                  priority AS sort_priority
-           FROM translate_tasks WHERE status='queued'
-           UNION ALL
-           SELECT id, 'polish' AS kind, video_sha, created_at,
-                  1 AS sort_priority
-           FROM polish_tasks WHERE status='queued'
-           UNION ALL
-           SELECT id, 'insight' AS kind, video_sha, created_at,
-                  0 AS sort_priority
-           FROM insight_tasks WHERE status='queued'
-         )
-         ORDER BY sort_priority DESC, created_at ASC
-         LIMIT 1`,
-      )
-      .get() as { id: string; kind: LLMTaskKind; video_sha: string; created_at: number } | undefined;
+    // Insight holds every slot while it runs (see class comment).
+    if (this.hasInsightSlot()) return;
+    if (this.activeSlots.length >= LLM_PARALLEL_SLOTS) return;
+    // With one non-insight task running, only translate/polish may fill
+    // the second slot — a queued insight is bypassed until the queue
+    // drains enough for both slots to free. Bounded starvation: FIFO
+    // still applies, so the insight runs no later than it would have
+    // under the previous single-slot serial queue.
+    const next = pickNextLlmTask(this.activeSlots.length > 0, pipelineReadyShas());
     if (!next) return;
+    // P5 prewarm, relocated for the pipelined era: dispatching a task
+    // whose source is still transcribing is the last chance to hide the
+    // llama-server cold start behind real work — its first chat lands
+    // within one batch. Fire-and-forget: warmup failure must not block
+    // dispatch (the chat itself retries the spawn).
+    if (next.kind !== 'insight' && !this.prewarmed.has(next.id)) {
+      this.prewarmed.add(next.id);
+      if (!existsSync(join(SUBCAST_PATHS.cache, next.video_sha, 'original.vtt'))) {
+        void getLlmServer().ensure().then(
+          () => {},
+          () => {},
+        );
+      }
+    }
 
     if (next.kind === 'translate') {
       return this.startTranslate(next.id);
@@ -300,7 +433,7 @@ export class LLMQueue {
       doneCues: [],
       donePromise: Promise.resolve(),
     };
-    this.active = activeSlot;
+    this.activeSlots.push(activeSlot);
     this.queueEvents.emit('active-changed');
     const wp = this.runTranslateWorker(activeSlot);
     activeSlot.donePromise = wp.catch(() => {});
@@ -341,7 +474,7 @@ export class LLMQueue {
     const messages = buildInsightMessages(transcript, row.ui_language);
 
     db.prepare(`UPDATE insight_tasks SET status='running' WHERE id=?`).run(taskId);
-    this.active = {
+    const activeSlot: ActiveLLMTask = {
       taskId,
       kind: 'insight',
       videoSha: row.video_sha,
@@ -350,6 +483,7 @@ export class LLMQueue {
       abort: new AbortController(),
       donePromise: Promise.resolve(),
     };
+    this.activeSlots.push(activeSlot);
     this.queueEvents.emit('active-changed');
     const params: InsightWorkerParams = {
       videoSha: row.video_sha,
@@ -358,17 +492,20 @@ export class LLMQueue {
       messages,
       cues,
     };
-    // IIFE owns the queue lifecycle (emit 'end', clear active slot, nudge next)
-    // so runInsightWorker stays decoupled from LLMQueue internals. Translate's
-    // equivalent lives inside runTranslateWorker because that worker pre-dates
-    // the LLMQueue split and was moved wholesale.
+    // IIFE owns the queue lifecycle (emit 'end', release the slot, nudge
+    // next) so runInsightWorker stays decoupled from LLMQueue internals.
+    // The slot is captured in a local — reading it back off the queue
+    // would race against other tasks claiming/releasing slots (this IIFE
+    // runs after several awaits, so "the queue's slot" may be a different
+    // task's by then). Translate's equivalent lives inside
+    // runTranslateWorker because that worker pre-dates the LLMQueue split
+    // and was moved wholesale.
     const wp = (async () => {
       try {
-        await runInsightWorker(this.active!, params);
+        await runInsightWorker(activeSlot, params);
       } finally {
-        this.active!.emitter.emit('end');
-        this.active = null;
-        this.queueEvents.emit('active-changed');
+        activeSlot.emitter.emit('end');
+        this.releaseSlot(activeSlot.taskId);
         this.tryStartNext().catch((err) => {
           logEvent({
             level: 'error',
@@ -378,7 +515,7 @@ export class LLMQueue {
         });
       }
     })();
-    this.active.donePromise = wp.catch(() => {});
+    activeSlot.donePromise = wp.catch(() => {});
     wp.catch((err) => {
       logEvent({
         level: 'error',
@@ -392,7 +529,7 @@ export class LLMQueue {
   }
 
   /**
-   * Block until `this.active.taskId === taskId` becomes true, the task row's
+   * Block until the task occupies a queue slot, the task row's
    * status becomes terminal, or the `signal` aborts. Returns the new state so
    * the caller can decide what to do next.
    */
@@ -403,7 +540,7 @@ export class LLMQueue {
   ): Promise<'active' | 'terminal' | 'aborted'> {
     while (true) {
       if (signal.aborted) return 'aborted';
-      if (this.active?.taskId === taskId) return 'active';
+      if (this.findSlot(taskId)) return 'active';
       const status = getStatus();
       if (
         !status ||
@@ -438,80 +575,21 @@ export class LLMQueue {
     const taskId = active.taskId;
     const videoSha = active.videoSha;
     const lang = active.lang!;
-    const model = active.model!;
     const db = getDb();
     const emit = (frame: SseFrame) => active.emitter.emit('frame', frame);
 
     try {
       const origPath = join(SUBCAST_PATHS.cache, videoSha, 'original.vtt');
-      if (!existsSync(origPath)) {
-        throw new Error('ORIGINAL_NOT_READY');
+      let out: Cue[];
+      if (existsSync(origPath)) {
+        out = await this.translateBatched(active, origPath);
+      } else {
+        // Pipelined (P6): no original.vtt yet, but a live transcription
+        // can feed us cues from the chunks table as they land.
+        const live = runningTranscribeTask(videoSha);
+        if (!live) throw new Error('ORIGINAL_NOT_READY');
+        out = await this.translatePipelined(active, live.id);
       }
-      const origCues = parseVtt(readFileSync(origPath, 'utf8'));
-      // Must match translateAll's super-batch size — the initial 'status'
-      // frame's totalBatches has to agree with the batch-progress frames
-      // the worker emits later, or the player's progress bar jumps.
-      const totalBatches = Math.max(1, Math.ceil(origCues.length / SUPER_BATCH_SIZE));
-
-      emit({
-        event: 'status',
-        data: { taskId, status: 'running', model, lang, fromCache: false, totalBatches },
-      });
-
-      const out = await translateAll(origCues, lang, {
-        signal: active.abort.signal,
-        onSuperBatchStart: (info) => {
-          emit({
-            event: 'batch-progress',
-            data: {
-              taskId,
-              doneBatches: info.batchIdx,
-              totalBatches: info.totalBatches,
-              progressPct: Math.round((info.batchIdx / info.totalBatches) * 100),
-            },
-          });
-        },
-        onSuperBatchDone: (info) => {
-          active.doneCues!.push(...info.cues);
-          emit({
-            event: 'cue-translated',
-            data: {
-              taskId,
-              batchIdx: info.batchIdx,
-              cues: info.cues.map((c) => ({
-                startMs: c.startMs,
-                endMs: c.endMs,
-                text: c.text,
-              })),
-            },
-          });
-          const pct = Math.round(((info.batchIdx + 1) / info.totalBatches) * 100);
-          emit({
-            event: 'batch-progress',
-            data: {
-              taskId,
-              doneBatches: info.batchIdx + 1,
-              totalBatches: info.totalBatches,
-              progressPct: pct,
-            },
-          });
-          db.prepare(`UPDATE translate_tasks SET progress_pct = ? WHERE id = ?`).run(
-            pct,
-            taskId,
-          );
-        },
-        onBatchRetry: (info) => {
-          emit({
-            event: 'batch-retry',
-            data: {
-              taskId,
-              batchIdx: info.batchIdx,
-              attempt: info.attempt,
-              reason: info.reason,
-            },
-          });
-        },
-      });
 
       const cacheDir = join(SUBCAST_PATHS.cache, videoSha);
       await mkdir(cacheDir, { recursive: true });
@@ -558,8 +636,7 @@ export class LLMQueue {
       logEvent({ level: 'error', event: 'translate_failed', taskId, lang, code, msg });
     } finally {
       active.emitter.emit('end');
-      this.active = null;
-      this.queueEvents.emit('active-changed');
+      this.releaseSlot(active.taskId);
       // The llama-server backend auto-unloads on idle (see llmServer.ts),
       // so the queue no longer needs to send an explicit unload signal.
       this.tryStartNext().catch((err) => {
@@ -570,6 +647,187 @@ export class LLMQueue {
           stack: err instanceof Error ? err.stack : undefined,
         });
       });
+    }
+  }
+
+  /** Pre-P6 batch mode: whole original.vtt, one translateAll pass. */
+  private async translateBatched(active: ActiveLLMTask, origPath: string): Promise<Cue[]> {
+    const taskId = active.taskId;
+    const lang = active.lang!;
+    const model = active.model!;
+    const db = getDb();
+    const emit = (frame: SseFrame) => active.emitter.emit('frame', frame);
+    const origCues = parseVtt(readFileSync(origPath, 'utf8'));
+    // Must match translateAll's super-batch size — the initial 'status'
+    // frame's totalBatches has to agree with the batch-progress frames
+    // the worker emits later, or the player's progress bar jumps.
+    const totalBatches = Math.max(1, Math.ceil(origCues.length / SUPER_BATCH_SIZE));
+
+    emit({
+      event: 'status',
+      data: { taskId, status: 'running', model, lang, fromCache: false, totalBatches },
+    });
+
+    return translateAll(origCues, lang, {
+      signal: active.abort.signal,
+      onSuperBatchStart: (info) => {
+        emit({
+          event: 'batch-progress',
+          data: {
+            taskId,
+            doneBatches: info.batchIdx,
+            totalBatches: info.totalBatches,
+            progressPct: Math.round((info.batchIdx / info.totalBatches) * 100),
+          },
+        });
+      },
+      onSuperBatchDone: (info) => {
+        active.doneCues!.push(...info.cues);
+        emit({
+          event: 'cue-translated',
+          data: {
+            taskId,
+            batchIdx: info.batchIdx,
+            cues: info.cues.map((c) => ({
+              startMs: c.startMs,
+              endMs: c.endMs,
+              text: c.text,
+            })),
+          },
+        });
+        const pct = Math.round(((info.batchIdx + 1) / info.totalBatches) * 100);
+        emit({
+          event: 'batch-progress',
+          data: {
+            taskId,
+            doneBatches: info.batchIdx + 1,
+            totalBatches: info.totalBatches,
+            progressPct: pct,
+          },
+        });
+        db.prepare(`UPDATE translate_tasks SET progress_pct = ? WHERE id = ?`).run(
+          pct,
+          taskId,
+        );
+      },
+      onBatchRetry: (info) => {
+        emit({
+          event: 'batch-retry',
+          data: {
+            taskId,
+            batchIdx: info.batchIdx,
+            attempt: info.attempt,
+            reason: info.reason,
+          },
+        });
+      },
+    });
+  }
+
+  /**
+   * Pipelined translate (P6): consume cues from the live transcription's
+   * chunks as they land, firing one super-batch per SUPER_BATCH_SIZE
+   * cues; only when original.vtt appears (the source's final cue list is
+   * frozen) is the trailing partial batch allowed. Progress is estimated
+   * from the transcription's chunk ratio — the final cue count is
+   * unknown until the source completes — and clamped monotonic; the
+   * player only renders progressPct.
+   */
+  private async translatePipelined(
+    active: ActiveLLMTask,
+    sourceTaskId: string,
+  ): Promise<Cue[]> {
+    const taskId = active.taskId;
+    const videoSha = active.videoSha;
+    const lang = active.lang!;
+    const model = active.model!;
+    const db = getDb();
+    const emit = (frame: SseFrame) => active.emitter.emit('frame', frame);
+    const origPath = join(SUBCAST_PATHS.cache, videoSha, 'original.vtt');
+
+    emit({
+      event: 'status',
+      data: { taskId, status: 'running', model, lang, fromCache: false },
+    });
+
+    const context: { src: string; tr: string }[] = [];
+    const out: Cue[] = [];
+    let emittedPct = 0;
+    let batchIdx = 0;
+
+    const emitProgress = (snap: TranscriptSourceSnapshot) => {
+      // Estimated final cue count from the transcription's chunk ratio;
+      // monotonic (never re-lowers on re-estimate) and capped at 99
+      // until the real total is known at finalization.
+      const estTotal =
+        snap.doneChunks > 0 && snap.totalChunks > snap.doneChunks
+          ? (snap.cues.length / snap.doneChunks) * snap.totalChunks
+          : snap.cues.length + SUPER_BATCH_SIZE;
+      const pct = Math.min(
+        99,
+        Math.floor((out.length / Math.max(estTotal, out.length + 1)) * 100),
+      );
+      if (pct > emittedPct) {
+        emittedPct = pct;
+        emit({
+          event: 'batch-progress',
+          data: { taskId, doneBatches: batchIdx, progressPct: pct },
+        });
+        db.prepare(`UPDATE translate_tasks SET progress_pct = ? WHERE id = ?`).run(
+          pct,
+          taskId,
+        );
+      }
+    };
+
+    while (true) {
+      if (active.abort.signal.aborted) throw new Error('CANCELED');
+      const snap = readTranscriptSource(sourceTaskId);
+      const vttReady = existsSync(origPath);
+      if (!snap.live && !vttReady) {
+        // Source died without producing original.vtt —
+        // cancelTasksForSource normally aborts us first; if we win the
+        // race, self-cancel so the row lands in the canceled state.
+        active.abort.abort();
+        throw new Error('CANCELED');
+      }
+      // Fire only complete super-batches while the source is live; the
+      // trailing partial batch waits for the frozen final cue list.
+      const readyEnd = vttReady
+        ? snap.cues.length
+        : Math.floor(snap.cues.length / SUPER_BATCH_SIZE) * SUPER_BATCH_SIZE;
+      while (out.length < readyEnd) {
+        const batch = snap.cues.slice(out.length, out.length + SUPER_BATCH_SIZE);
+        const res = await translateSuperBatch(batch, lang, context.slice(-5), {
+          batchIdx,
+          signal: active.abort.signal,
+          onRetry: (attempt) => {
+            emit({
+              event: 'batch-retry',
+              data: { taskId, batchIdx, attempt, reason: 'count-mismatch' },
+            });
+          },
+        });
+        active.doneCues!.push(...res.cues);
+        out.push(...res.cues);
+        context.push(...res.contextPairs);
+        emit({
+          event: 'cue-translated',
+          data: {
+            taskId,
+            batchIdx,
+            cues: res.cues.map((c) => ({
+              startMs: c.startMs,
+              endMs: c.endMs,
+              text: c.text,
+            })),
+          },
+        });
+        batchIdx++;
+        emitProgress(snap);
+      }
+      if (vttReady && out.length >= snap.cues.length) return out;
+      await new Promise((r) => setTimeout(r, PIPELINE_POLL_MS));
     }
   }
 
@@ -591,7 +849,7 @@ export class LLMQueue {
       doneCues: [],
       donePromise: Promise.resolve(),
     };
-    this.active = activeSlot;
+    this.activeSlots.push(activeSlot);
     this.queueEvents.emit('active-changed');
     const wp = this.runPolishWorker(activeSlot);
     activeSlot.donePromise = wp.catch(() => {});
@@ -610,52 +868,21 @@ export class LLMQueue {
   private async runPolishWorker(active: ActiveLLMTask): Promise<void> {
     const taskId = active.taskId;
     const videoSha = active.videoSha;
-    const model = active.model!;
     const db = getDb();
     const emit = (frame: SseFrame) => active.emitter.emit('frame', frame);
 
     try {
       const origPath = join(SUBCAST_PATHS.cache, videoSha, 'original.vtt');
-      if (!existsSync(origPath)) {
-        throw new Error('ORIGINAL_NOT_READY');
+      let out: Cue[];
+      if (existsSync(origPath)) {
+        out = await this.polishBatched(active, origPath);
+      } else {
+        // Pipelined (P6): auto-polish enqueues at transcription START —
+        // this is the normal path for fresh videos now.
+        const live = runningTranscribeTask(videoSha);
+        if (!live) throw new Error('ORIGINAL_NOT_READY');
+        out = await this.polishPipelined(active, live.id);
       }
-      const origCues = parseVtt(readFileSync(origPath, 'utf8'));
-      const hints = loadSettings().polishHints;
-      const totalBatches = Math.max(1, Math.ceil(origCues.length / POLISH_BATCH_SIZE));
-
-      emit({
-        event: 'status',
-        data: { taskId, status: 'running', model, fromCache: false, totalBatches },
-      });
-
-      const out = await polishAll(origCues, {
-        hints,
-        signal: active.abort.signal,
-        onBatchDone: (info) => {
-          active.doneCues!.push(...info.cues);
-          emit({
-            event: 'cue-polished',
-            data: {
-              taskId,
-              batchIdx: info.batchIdx,
-              cues: info.cues.map((c) => ({
-                startMs: c.startMs,
-                endMs: c.endMs,
-                text: c.text,
-              })),
-            },
-          });
-          const pct = Math.round(((info.batchIdx + 1) / info.totalBatches) * 100);
-          emit({
-            event: 'batch-progress',
-            data: { taskId, doneBatches: info.batchIdx + 1, totalBatches: info.totalBatches, progressPct: pct },
-          });
-          db.prepare(`UPDATE polish_tasks SET progress_pct = ? WHERE id = ?`).run(
-            pct,
-            taskId,
-          );
-        },
-      });
 
       const cacheDir = join(SUBCAST_PATHS.cache, videoSha);
       await mkdir(cacheDir, { recursive: true });
@@ -699,8 +926,7 @@ export class LLMQueue {
       logEvent({ level: 'error', event: 'polish_failed', taskId, code, msg });
     } finally {
       active.emitter.emit('end');
-      this.active = null;
-      this.queueEvents.emit('active-changed');
+      this.releaseSlot(active.taskId);
       this.tryStartNext().catch((err) => {
         logEvent({
           level: 'error',
@@ -709,6 +935,139 @@ export class LLMQueue {
           stack: err instanceof Error ? err.stack : undefined,
         });
       });
+    }
+  }
+
+  /** Pre-P6 batch mode: whole original.vtt, one polishAll pass. */
+  private async polishBatched(active: ActiveLLMTask, origPath: string): Promise<Cue[]> {
+    const taskId = active.taskId;
+    const model = active.model!;
+    const db = getDb();
+    const emit = (frame: SseFrame) => active.emitter.emit('frame', frame);
+    const origCues = parseVtt(readFileSync(origPath, 'utf8'));
+    const hints = loadSettings().polishHints;
+    const totalBatches = Math.max(1, Math.ceil(origCues.length / POLISH_BATCH_SIZE));
+
+    emit({
+      event: 'status',
+      data: { taskId, status: 'running', model, fromCache: false, totalBatches },
+    });
+
+    return polishAll(origCues, {
+      hints,
+      signal: active.abort.signal,
+      onBatchDone: (info) => {
+        active.doneCues!.push(...info.cues);
+        emit({
+          event: 'cue-polished',
+          data: {
+            taskId,
+            batchIdx: info.batchIdx,
+            cues: info.cues.map((c) => ({
+              startMs: c.startMs,
+              endMs: c.endMs,
+              text: c.text,
+            })),
+          },
+        });
+        const pct = Math.round(((info.batchIdx + 1) / info.totalBatches) * 100);
+        emit({
+          event: 'batch-progress',
+          data: { taskId, doneBatches: info.batchIdx + 1, totalBatches: info.totalBatches, progressPct: pct },
+        });
+        db.prepare(`UPDATE polish_tasks SET progress_pct = ? WHERE id = ?`).run(
+          pct,
+          taskId,
+        );
+      },
+    });
+  }
+
+  /**
+   * Pipelined polish (P6) — mirror of translatePipelined. Auto-polish
+   * now enqueues at transcription start, so this is the default path for
+   * fresh videos: cues stream in from the chunks table, one batch fires
+   * per POLISH_BATCH_SIZE cues, and the trailing partial batch waits for
+   * original.vtt (the frozen final cue list).
+   */
+  private async polishPipelined(
+    active: ActiveLLMTask,
+    sourceTaskId: string,
+  ): Promise<Cue[]> {
+    const taskId = active.taskId;
+    const videoSha = active.videoSha;
+    const model = active.model!;
+    const db = getDb();
+    const emit = (frame: SseFrame) => active.emitter.emit('frame', frame);
+    const origPath = join(SUBCAST_PATHS.cache, videoSha, 'original.vtt');
+    const hints = loadSettings().polishHints;
+
+    emit({
+      event: 'status',
+      data: { taskId, status: 'running', model, fromCache: false },
+    });
+
+    const context: { src: string; polished: string }[] = [];
+    const out: Cue[] = [];
+    let emittedPct = 0;
+    let batchIdx = 0;
+
+    const emitProgress = (snap: TranscriptSourceSnapshot) => {
+      const estTotal =
+        snap.doneChunks > 0 && snap.totalChunks > snap.doneChunks
+          ? (snap.cues.length / snap.doneChunks) * snap.totalChunks
+          : snap.cues.length + POLISH_BATCH_SIZE;
+      const pct = Math.min(
+        99,
+        Math.floor((out.length / Math.max(estTotal, out.length + 1)) * 100),
+      );
+      if (pct > emittedPct) {
+        emittedPct = pct;
+        emit({
+          event: 'batch-progress',
+          data: { taskId, doneBatches: batchIdx, progressPct: pct },
+        });
+        db.prepare(`UPDATE polish_tasks SET progress_pct = ? WHERE id = ?`).run(
+          pct,
+          taskId,
+        );
+      }
+    };
+
+    while (true) {
+      if (active.abort.signal.aborted) throw new Error('CANCELED');
+      const snap = readTranscriptSource(sourceTaskId);
+      const vttReady = existsSync(origPath);
+      if (!snap.live && !vttReady) {
+        active.abort.abort();
+        throw new Error('CANCELED');
+      }
+      const readyEnd = vttReady
+        ? snap.cues.length
+        : Math.floor(snap.cues.length / POLISH_BATCH_SIZE) * POLISH_BATCH_SIZE;
+      while (out.length < readyEnd) {
+        const batch = snap.cues.slice(out.length, out.length + POLISH_BATCH_SIZE);
+        const res = await polishOneBatch(batch, hints, context.slice(-5), active.abort.signal, batchIdx);
+        active.doneCues!.push(...res.cues);
+        out.push(...res.cues);
+        context.push(...res.contextPairs);
+        emit({
+          event: 'cue-polished',
+          data: {
+            taskId,
+            batchIdx,
+            cues: res.cues.map((c) => ({
+              startMs: c.startMs,
+              endMs: c.endMs,
+              text: c.text,
+            })),
+          },
+        });
+        batchIdx++;
+        emitProgress(snap);
+      }
+      if (vttReady && out.length >= snap.cues.length) return out;
+      await new Promise((r) => setTimeout(r, PIPELINE_POLL_MS));
     }
   }
 
@@ -816,7 +1175,7 @@ export class LLMQueue {
     }
 
     // queued / running — surface initial state, then live-tail emitter
-    if (task.status === 'queued' && (!this.active || this.active.taskId !== taskId)) {
+    if (task.status === 'queued' && !this.findSlot(taskId)) {
       yield {
         event: 'status',
         data: {
@@ -829,10 +1188,10 @@ export class LLMQueue {
       };
     }
 
-    if (!this.active || this.active.taskId !== taskId) {
+    if (!this.findSlot(taskId)) {
       await this.tryStartNext();
     }
-    if (!this.active || this.active.taskId !== taskId) {
+    if (!this.findSlot(taskId)) {
       // Another task is currently running; wait until our slot opens.
       const waitAbort = new AbortController();
       const result = await this.waitForSlot(
@@ -870,7 +1229,7 @@ export class LLMQueue {
     }
 
     // Live tail
-    const live = this.active!;
+    const live = this.findSlot(taskId)!;
     if (task.progress_pct > 0) {
       yield {
         event: 'batch-progress',
@@ -992,17 +1351,17 @@ export class LLMQueue {
       return;
     }
 
-    if (task.status === 'queued' && (!this.active || this.active.taskId !== taskId)) {
+    if (task.status === 'queued' && !this.findSlot(taskId)) {
       yield {
         event: 'status',
         data: { taskId, status: 'queued', model: task.model, fromCache: false },
       };
     }
 
-    if (!this.active || this.active.taskId !== taskId) {
+    if (!this.findSlot(taskId)) {
       await this.tryStartNext();
     }
-    if (!this.active || this.active.taskId !== taskId) {
+    if (!this.findSlot(taskId)) {
       const waitAbort = new AbortController();
       const result = await this.waitForSlot(
         taskId,
@@ -1033,7 +1392,7 @@ export class LLMQueue {
       if (result === 'aborted') return;
     }
 
-    const live = this.active!;
+    const live = this.findSlot(taskId)!;
     if (task.progress_pct > 0) {
       yield {
         event: 'batch-progress',
@@ -1150,10 +1509,10 @@ export class LLMQueue {
     }
 
     // queued / running — status already included in the 'start' frame above.
-    if (!this.active || this.active.taskId !== taskId) {
+    if (!this.findSlot(taskId)) {
       await this.tryStartNext();
     }
-    if (!this.active || this.active.taskId !== taskId) {
+    if (!this.findSlot(taskId)) {
       // Another task is currently running; wait until our slot opens.
       const waitAbort = new AbortController();
       const result = await this.waitForSlot(
@@ -1190,7 +1549,7 @@ export class LLMQueue {
       // result === 'active': fall through to live tail
     }
 
-    const live = this.active!;
+    const live = this.findSlot(taskId)!;
     const buffer: SseFrame[] = [];
     let resolveNext: (() => void) | null = null;
     let finished = false;
@@ -1233,30 +1592,32 @@ export class LLMQueue {
   }
 
   /**
-   * Cancel the currently-running LLM task, if any, and wait for the worker
-   * to exit. Used by the Electron `before-quit` hook so the DB doesn't carry
-   * a 'running' row across launches.
+   * Cancel every currently-running LLM task and wait for the workers to
+   * exit. Used by the Electron `before-quit` hook so the DB doesn't carry
+   * 'running' rows across launches.
    */
   async cancelActive(): Promise<void> {
-    const active = this.active;
-    if (!active) return;
-    const id = active.taskId;
-    const kind = active.kind;
+    const slots = [...this.activeSlots];
+    if (slots.length === 0) return;
     const db = getDb();
-    if (kind === 'translate') {
-      db.prepare(`UPDATE translate_tasks SET status='canceled' WHERE id=?`).run(id);
-    } else if (kind === 'polish') {
-      db.prepare(
-        `UPDATE polish_tasks SET status='canceled', completed_at=? WHERE id=?`,
-      ).run(Date.now(), id);
-    } else {
-      db.prepare(
-        `UPDATE insight_tasks SET status='canceled', completed_at=? WHERE id=?`,
-      ).run(Date.now(), id);
+    for (const active of slots) {
+      const id = active.taskId;
+      const kind = active.kind;
+      if (kind === 'translate') {
+        db.prepare(`UPDATE translate_tasks SET status='canceled' WHERE id=?`).run(id);
+      } else if (kind === 'polish') {
+        db.prepare(
+          `UPDATE polish_tasks SET status='canceled', completed_at=? WHERE id=?`,
+        ).run(Date.now(), id);
+      } else {
+        db.prepare(
+          `UPDATE insight_tasks SET status='canceled', completed_at=? WHERE id=?`,
+        ).run(Date.now(), id);
+      }
+      active.abort.abort();
+      logEvent({ level: 'info', event: 'llm_canceled', kind, taskId: id, reason: 'shutdown' });
     }
-    active.abort.abort();
-    logEvent({ level: 'info', event: 'llm_canceled', kind, taskId: id, reason: 'shutdown' });
-    await active.donePromise;
+    await Promise.all(slots.map((s) => s.donePromise));
   }
 
   async runPaused<T>(fn: () => Promise<T> | T): Promise<T> {
@@ -1307,8 +1668,8 @@ export class LLMQueue {
     db.prepare(
       `UPDATE polish_tasks SET status='canceled', completed_at=? WHERE status IN ('queued','running')`,
     ).run(Date.now());
-    const active = this.active;
-    if (active) active.abort.abort();
+    const slots = [...this.activeSlots];
+    for (const active of slots) active.abort.abort();
     logEvent({
       level: 'info',
       event: 'llm_cancel_all',
@@ -1317,7 +1678,7 @@ export class LLMQueue {
       insightCount,
       polishCount,
     });
-    await active?.donePromise;
+    await Promise.all(slots.map((s) => s.donePromise));
   }
 }
 

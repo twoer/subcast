@@ -8,8 +8,6 @@ function resolveHome(): string {
   return process.env.SUBCAST_HOME ?? join(homedir(), '.subcast');
 }
 
-const SUBCAST_HOME = resolveHome();
-
 let _db: Database.Database | null = null;
 
 export function getDb(): Database.Database {
@@ -17,10 +15,26 @@ export function getDb(): Database.Database {
   const home = resolveHome();
   const dbPath = join(home, 'data.sqlite');
   mkdirSync(home, { recursive: true });
-  _db = new Database(dbPath);
-  _db.pragma('journal_mode = WAL');
-  _db.pragma('foreign_keys = ON');
-  migrate(_db);
+  const db = new Database(dbPath);
+  try {
+    db.pragma('journal_mode = WAL');
+    db.pragma('foreign_keys = ON');
+    migrate(db);
+  } catch (err) {
+    // Never cache a half-migrated handle. Caching one made every later
+    // caller silently query an unmigrated schema (`no such table` /
+    // `no such column`) while the actual migration error — the one that
+    // would explain the breakage — surfaced only once, to whichever
+    // endpoint touched the DB first. Closing here keeps the singleton
+    // unset so the next call re-attempts migration from scratch.
+    try {
+      db.close();
+    } catch {
+      // Best effort — the original migration error matters more.
+    }
+    throw err;
+  }
+  _db = db;
   return _db;
 }
 
@@ -46,6 +60,24 @@ function ensureColumn(db: Database.Database, table: string, column: string, defi
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
 }
+
+// Shared by migration step 14 and the post-migration integrity check below:
+// both must stay byte-identical, so keep one DDL string.
+const POLISH_TASKS_DDL = `
+  CREATE TABLE IF NOT EXISTS polish_tasks (
+    id           TEXT PRIMARY KEY,
+    video_sha    TEXT NOT NULL REFERENCES videos(sha256),
+    status       TEXT NOT NULL,
+    model        TEXT NOT NULL,
+    progress_pct INTEGER NOT NULL DEFAULT 0,
+    error_msg    TEXT,
+    error_code   TEXT,
+    created_at   INTEGER NOT NULL,
+    completed_at INTEGER,
+    UNIQUE (video_sha)
+  );
+  CREATE INDEX IF NOT EXISTS idx_polish_status ON polish_tasks(status, created_at);
+`;
 
 function migrate(db: Database.Database): void {
   const version = (db.pragma('user_version', { simple: true }) as number) ?? 0;
@@ -313,21 +345,7 @@ function migrate(db: Database.Database): void {
     // translate_tasks minus target_lang/priority: the polished layer is
     // a single fixed pseudo-language per video, enqueued automatically
     // after transcription (or manually from the player).
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS polish_tasks (
-        id           TEXT PRIMARY KEY,
-        video_sha    TEXT NOT NULL REFERENCES videos(sha256),
-        status       TEXT NOT NULL,
-        model        TEXT NOT NULL,
-        progress_pct INTEGER NOT NULL DEFAULT 0,
-        error_msg    TEXT,
-        error_code   TEXT,
-        created_at   INTEGER NOT NULL,
-        completed_at INTEGER,
-        UNIQUE (video_sha)
-      );
-      CREATE INDEX IF NOT EXISTS idx_polish_status ON polish_tasks(status, created_at);
-    `);
+    db.exec(POLISH_TASKS_DDL);
     db.pragma('user_version = 14');
   }
   // Post-migration integrity: the source_url column is now load-bearing
@@ -337,6 +355,15 @@ function migrate(db: Database.Database): void {
   // unconditionally so the schema self-heals across branch switches.
   if (version >= 13) {
     ensureColumn(db, 'videos', 'source_url', 'TEXT');
+  }
+  // Same hazard as source_url, one version later, and it actually shipped:
+  // prototype builds (AI dubbing / knowledge-QA branches) stamped
+  // user_version = 14 with a different schema, so release 0.5.0 skipped
+  // step 14 and every /api/queue/list poll 500'd with
+  // "no such table: polish_tasks". polish_tasks is now load-bearing
+  // (queue/list queries it unconditionally), so re-create it the same way.
+  if (version >= 14) {
+    db.exec(POLISH_TASKS_DDL);
   }
 }
 
@@ -352,10 +379,17 @@ export function closeDb(): void {
   }
 }
 
+/**
+ * Path roots under SUBCAST_HOME. Getters — not a frozen snapshot — so
+ * every read resolves the env like `getDb()` does. Production env is
+ * stable so behavior is identical there; tests that swap SUBCAST_HOME
+ * per case previously got whatever dir was ambient at first import
+ * (fixtures silently landing in the real `~/.subcast`).
+ */
 export const SUBCAST_PATHS = {
-  home: SUBCAST_HOME,
-  videos: join(SUBCAST_HOME, 'videos'),
-  cache: join(SUBCAST_HOME, 'cache'),
-  logs: join(SUBCAST_HOME, 'logs'),
-  tmp: join(SUBCAST_HOME, 'tmp'),
+  get home() { return resolveHome(); },
+  get videos() { return join(resolveHome(), 'videos'); },
+  get cache() { return join(resolveHome(), 'cache'); },
+  get logs() { return join(resolveHome(), 'logs'); },
+  get tmp() { return join(resolveHome(), 'tmp'); },
 } as const;

@@ -1,7 +1,20 @@
-/* 默认主题把 hero 图限制在 320×320，截图是 1600×913 高清图，放大展示更大气 */
+/* 品牌色统一锚定 logo 的蓝色（#2563EB → #3B82F6 渐变），否则 VitePress 默认靛蓝
+   与 logo/hero 光斑的亮蓝是两套色。brand-1 为主色（标题/按钮/徽章），2 为 hover，
+   3 最浅；暗色模式反向，1 最浅以保证深色背景上的可读性。 */
 :root {
+  --vp-c-brand-1: #2563eb;
+  --vp-c-brand-2: #3b82f6;
+  --vp-c-brand-3: #60a5fa;
+  --vp-c-brand-soft: rgba(59, 130, 246, 0.14);
   --vp-home-hero-image-background-image: linear-gradient(-45deg, #3b82f6 50%, #93c5fd 50%);
   --vp-home-hero-image-filter: blur(96px);
+}
+
+.dark {
+  --vp-c-brand-1: #93c5fd;
+  --vp-c-brand-2: #60a5fa;
+  --vp-c-brand-3: #3b82f6;
+  --vp-c-brand-soft: rgba(59, 130, 246, 0.16);
 }
 
 /* 光斑只作点缀，避免喧宾夺主 */

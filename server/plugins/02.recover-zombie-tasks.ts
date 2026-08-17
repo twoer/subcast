@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
 /**
- * Translate + Insight recovery on Nitro boot (§ 6.10, decision 21).
+ * Translate + Polish + Insight recovery on Nitro boot (§ 6.10, decision 21).
  *
  *   - Web mode (`SUBCAST_DESKTOP !== 'true'`): demote any 'running' rows
  *     back to 'queued' so the queue picks them up. Web is short-lived;
@@ -13,6 +13,11 @@
  *     a 60-minute translation that costs Ollama tokens, and matches the
  *     UX promise that closing-to-tray keeps work running and quitting
  *     deliberately stops it.
+ *
+ * polish_tasks mirrors translate's vocabulary ('failed'/'canceled') and
+ * was previously missing here — a quit mid-polish left a zombie
+ * 'running' row that blocked ensurePolishTask's UNIQUE(video_sha)
+ * forever.
  */
 
 import { getDb } from '../utils/db';
@@ -32,6 +37,12 @@ export default defineNitroPlugin(async () => {
     db.prepare(
       `UPDATE insight_tasks
          SET status='error',
+             error_msg='Interrupted by app exit'
+       WHERE status='running'`,
+    ).run();
+    db.prepare(
+      `UPDATE polish_tasks
+         SET status='failed',
              error_msg='Interrupted by app exit'
        WHERE status='running'`,
     ).run();
@@ -59,6 +70,15 @@ export default defineNitroPlugin(async () => {
   db.prepare(
     `UPDATE insight_tasks
        SET status='queued'
+     WHERE status='running'`,
+  ).run();
+  // Pipelined polish (P6) restarts the same way: back to queued — the
+  // readiness gate holds it until its source transcription (itself
+  // re-queued by 00.queue.ts) produces cues again.
+  db.prepare(
+    `UPDATE polish_tasks
+       SET status='queued',
+           progress_pct=0
      WHERE status='running'`,
   ).run();
   // Diarize has no queue worker yet; in web mode we also mark stale rows

@@ -93,20 +93,20 @@
 2. **SenseVoice `numThreads: 2` 写死**（`sensevoice.ts:264`）：repo 已有 `server/utils/hardware.ts`，可按机器核数给。
 3. **`wavCache` 单条目常驻**（`sensevoice.ts:327`）：1 小时音频 ≈ 230MB Float32 留在内存直到下一个 WAV 顶掉。任务结束（transcribeQueue finally）时主动置 null。
 4. **队列优先级**：polish 恒为 1、translate 默认 0（`llmQueue.ts:255-267`），自动润色会插到其他视频已排队翻译前面。若是刻意产品选择则忽略，否则复查。
-5. **SenseVoice 批量解码**（可选）：worker 协议单 recognize 串行；sherpa-onnx `OfflineRecognizer` 支持 `decodeStreams` 批量推理，ONNX 批处理利用率更高。需改 worker 协议（`recognizeBatch`），收益中等。
+5. ~~**SenseVoice 批量解码**（可选）：worker 协议单 recognize 串行；sherpa-onnx `OfflineRecognizer` 支持 `decodeStreams` 批量推理，ONNX 批处理利用率更高。需改 worker 协议（`recognizeBatch`），收益中等。~~ **已关闭（2026-08-17 查证：前提不成立）**——`decodeStreams` 是 Python/Go/C++ 的 API，Node 绑定从未实现：本地 1.13.2 与 npm 最新 1.13.5 的 `non-streaming-asr.js` 均只有单流 `decode`/`decodeAsync`，原生符号表亦无批量符号。且转写队列每 chunk 只传单个 plan（单次调用本就 1 个 recognize），跨 chunk 批量会破坏逐 cue 的 SSE/P6 流水线节奏；实测 0.24s/10s chunk（≈40× 实时）远非长杆。上游 Node addon 若补齐批量 API 可重开。
 
 ## 待办(2026-08-16 挂账)
 
 | 项 | 触发条件 | 预估 | 难度/风险 |
 |----|----------|------|-----------|
-| **P4** LLM 队列受控并发(llama-server `--parallel 2`,insight 独占槽位) | 常批量导入多视频(实测:4 个润色任务串行排空 8-10s/批,聚合吞吐预估 1.5-1.8×) | ~1 天 | 中:llmQueue 单槽模型(attach/waitForSlot)要槽位化;ctx 8192 对半后 insight 需独占 |
-| **P6** 转写→翻译/润色流水线化 | 收到"单个长视频首份译稿太慢"的真实反馈(批量场景已被队列重叠覆盖;SenseVoice 转写已秒级) | 2-3 天 | 中高:跨队列生产者-消费者、部分失败语义(partial 层状态/UI/重试)、取消与优先级插队 |
-| 小问题4 队列优先级(polish 恒为 1 > translate 默认 0,自动润色会插队其他视频的翻译) | 产品决策:是否改为"用户正在查看的任务优先" | 顺手 | 低;建议与 P4 同批定 |
-| 小问题5 SenseVoice `decodeStreams` 批量解码 | 中文转写成为瓶颈时 | — | 中:改 worker 协议 |
+| ~~**P4** LLM 队列受控并发(llama-server `--parallel 2`,insight 独占槽位)~~ **已实施(2026-08-16,见下方实施状态)** | 常批量导入多视频(实测:4 个润色任务串行排空 8-10s/批,聚合吞吐预估 1.5-1.8×) | ~1 天 | 中:llmQueue 单槽模型(attach/waitForSlot)要槽位化;ctx 8192 对半后 insight 需独占 |
+| ~~**P6** 转写→翻译/润色流水线化~~ **已实施(2026-08-17,见下方实施状态)** | 收到"单个长视频首份译稿太慢"的真实反馈(批量场景已被队列重叠覆盖;SenseVoice 转写已秒级) | 2-3 天 | 中高:跨队列生产者-消费者、部分失败语义(partial 层状态/UI/重试)、取消与优先级插队 |
+| ~~小问题4 队列优先级(polish 恒为 1 > translate 默认 0,自动润色会插队其他视频的翻译)~~ **已实施(与 P4 同批:全 kind FIFO,仅保留 translate 用户 attach bump 插队)** | 产品决策:是否改为"用户正在查看的任务优先" | 顺手 | 低;建议与 P4 同批定 |
+| ~~小问题5 SenseVoice `decodeStreams` 批量解码~~ **已关闭(2026-08-17 查证:Node 绑定无此 API——本地 1.13.2 与最新 1.13.5 均无;且实测 SenseVoice ≈40× 实时,触发条件不成立)** | 中文转写成为瓶颈时 | — | 中:改 worker 协议 |
 
 ## 建议落地顺序
 
-> **实施状态(2026-08-16)**:序 1-3 与小问题 1/2/3 已实施并通过全量验证(test 447 passed / typecheck / lint);序 4-6 未动。实施明细:
+> **实施状态(2026-08-16)**:序 1-6 与小问题 1/2/3/4 已全部实施并通过全量验证。实施明细:
 > - P1:`llmClient.LLMChatOptions.responseSchema` → `llmBackendLlamaServer.buildBody()` 注入 `response_format: json_schema`;`translate.ts` 导出 `SUPER_BATCH_SIZE` + `jsonStringArraySchema()`,`polish.ts` 复用。
 > - 小问题1:`llmQueue.ts` 改用导出常量(translate 侧 `/40` bug 修复,polish 侧 `/25` 同步收敛)。
 > - P2.1:新增 `server/utils/wavSlice.ts`(RIFF 解析 + 内存切片 + 单条目父缓存),`whisper.ts` 切片改内存优先、ffmpeg 降级;`transcribeQueue` 任务结束调用 `releaseWavSliceCache()`。
@@ -125,6 +125,26 @@
 > - **打包验证时发现并修复既有地雷**:上游 llama.cpp b10435 release 的 dylib 把 GitHub runner 的 `__FILE__` 字符串(`/Users/runner/work/llama.cpp/...`)编进了 `__TEXT,__const`(`strip -S`/`-x` 均无法移除,实测确认),任何一次重新下载 stage 后 `assertNoBuildMachinePaths` 都会拒掉整个 mac 构建。修复:检查正则豁免 `/Users/runner/work/`(上游 CI 标准路径、非本机泄漏,检查本意是拦本地路径)。
 > - **生产复验通过(2026-08-16 22:53 批量导入 4 视频)**:fallback 零次、whisper-cli/ffmpeg-slice spawn 零次、whisper-server 全程单次 spawn 零崩溃(崩溃疑团随 timeout 浮点修复一并结案);whisper 引擎任务 27 chunks/54s ≈ **2.0s/chunk**,较 CLI 基线(2.75-4.9s)提速 25-60%;预热链(llm/whisper)每任务命中;润色与下一视频转写重叠执行。
 > - **P4 决策数据**:批量导入时 4 个润色任务在 LLM 队列串行排空(8-10s/批,Qwen3-8B)——批量场景 `--parallel 2` 有真实收益,单视频场景无感。
+
+> **实施状态(2026-08-16 补充:P4 + 小问题4 已实施,分支 feat/llm-queue-concurrency)**:
+> - llama-server:spawn argv 提为 `llamaServerSpawnArgs()` 纯函数并新增 `--parallel 2`;`--ctx-size` 8192 → 16384(llama-server 按槽均分 ctx,16384/2 = 每槽 8192,insight 行为与单槽时代一致;代价是 KV 内存翻倍——4B 档 16k ctx ≈ 2.3GB,加上 2.6GB 权重仍在 8GB 预算内,14B 档 ~2.7GB 无压力)。
+> - llmQueue:单槽 `active` → `activeSlots[]`(上限 `LLM_PARALLEL_SLOTS = 2`,与 llmServer 同源导出常量)。translate/polish 双任务并发(translateAll/polishAll 每任务单请求串行,2 任务恰好填满双槽);**insight 独占**:运行中不派发任何新任务,已有 1 个非 insight 槽时只派非 insight(排队中的 insight 被旁路至双槽皆空;FIFO 保证其不晚于原串行队列会跑的时刻)。cancel/cancelActive/cancelAll/waitForSlot/attach×3 全部槽位化。
+> - 顺手修掉 `startInsight` IIFE 的 `this.active!` 悬空引用(原代码在多个 await 之后回读队列槽位,并发下会误指向别的任务)。
+> - 小问题4(与 P4 同批定):出队硬编码 `polish priority=1` 移除,三 kind 统一 FIFO(created_at);唯一插队途径保留为 translate 的 `bumpPriority`(用户 attach SSE 时触发,即"用户正在等的任务优先")。出队 SQL 提为导出纯函数 `pickNextLlmTask(excludeInsight)`。
+> - 测试:llm-queue 新增 8 例(FIFO 无 polish 插队 / bump 插队 / excludeInsight 旁路 + 槽位门控:占位补槽、双满不派、insight 运行独占、第二槽旁路 insight、空槽可派 insight);llmServer 新增 spawn 契约 2 例(`--parallel 2` + `--ctx-size 16384` + 无裸 `-fa`)。全量 test 462 passed / typecheck / lint 绿。
+> - 真机验证挂账(2026-08-16 决定跳过专项验证、直接合入:本机 Qwen3 GGUF 已被清理,暂不重新下载):argv 已用 staged b10435 二进制冒烟通过;双并发吞吐与内存留待下次实际批量导入时观察——llm 队列日志中双润色任务批次应交错(对比 8-10s/批 串行基线),活动监视器看 llama-server 常驻 RSS。
+
+> **实施状态(2026-08-17:P6 已实施,分支 feat/transcribe-llm-pipeline)**:
+> - 单批提取:`translate.ts`/`polish.ts` 循环体提为 `translateSuperBatch()`/`polishOneBatch()`(输入 cues + 滚动 5 对上下文,输出 cues + contextPairs),`translateAll`/`polishAll` 变为薄循环——批式行为与既有测试零变化。
+> - 就绪门:新 `server/utils/transcriptSource.ts`(叶子模块,避免队列互引环)。`pipelineReadyShas()` = 已完成转写(subtitles original 行)∪ 运行中转写且 cues ≥25(SQL `SUM(json_array_length)`);`pickNextLlmTask(excludeInsight, readyShas)` 据此跳过未就绪的 translate/polish 行(insight 豁免,维持原语义)。cue 身份保证:original.vtt 本就是 chunks 的 flatMap 序列化,speaker 标签仅导出时合并,流式与批式产物同源。
+> - 流式 worker:runTranslate/PolishWorker 双路径——vtt 存在走原批式;否则挂到运行中转写任务,从 chunks 快照逐 25 cue 发批(1s 轮询,env `SUBCAST_PIPELINE_POLL_MS` 可调),尾批等 vtt 冻结终表后补发,收尾复用原 finalize 块。进度按 chunk 比例估算、单调不回退、封顶 99(前端只渲染 progressPct,totalBatches 无关紧要)。
+> - 部分失败语义(v1 取舍):转写取消/失败 → `cancelTasksForSource()` 联动取消该 sha 的 queued/running 翻译+润色(部分输出从未落盘);复活重跑从头,已持久化 chunk 使追赶快。按批持久化 LLM 结果的真断点续跑仍为非目标。
+> - 挂钩:自动润色入队点从完成块移到转写 worker 启动处;逐 chunk 持久化后 nudge tryStartNext;完成块保留兜底 nudge(短视频全程 <25 cue 靠 vtt-ready 触发)。P5 的 80% 预热移除,改为派发首个流式任务时 fire-and-forget `ensure()`(更贴近首个 chat 落点)。
+> - API 与恢复:translate/polish.get 的 409 门放宽为「vtt 存在 ∪ 转写存活」;`02.recover-zombie-tasks` 补上 polish_tasks(既有缺口:退出时 running 的 polish 行会永久卡死 UNIQUE 约束)。
+> - 前端:切译文/手动润色门放宽到「转写进行中或完成」——转写中切译文 = 按需启动流式翻译(新能力);播放器在转写开始即挂润色流,原文|润色切换与部分润色层转写期间即可查看。i18n 零新增。
+> - 顺手修真 bug:`db.ts` 的 `SUBCAST_PATHS` 原是模块加载时冻结的快照,与 `getDb()` 的惰性 env 解析不一致——测试切换 SUBCAST_HOME 时 cache 路径仍指向真实 `~/.subcast`(既有测试 fixture 一直写进用户真目录)。改为 getter 逐读解析,并清掉了被污染的目录。
+> - 测试:新增 `llm-queue-pipeline.test.ts` 9 例(就绪阈值/insight 豁免、双阶段派发 + 联动取消 + 无部分落盘、流式批次时序 + 尾批冻结语义、attach 帧序以 done 收尾、translate 流式、zombie 恢复×2)+ `translate.test.ts` 单批上下文衔接 1 例;llm-queue 既有用例补 readiness fixture。全量 472 passed / typecheck / lint 绿。
+> - 待真机复验:端到端墙钟(目标 ≈ max(T_asr,T_llm),场景 B 估 21-35 → 15-26 min)及与 P4 双并发叠加的批量导入行为。
 
 | 序 | 项 | 改动量 | 风险 |
 |----|----|--------|------|
