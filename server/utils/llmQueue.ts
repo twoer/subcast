@@ -7,6 +7,7 @@ import { join } from 'node:path';
 
 import { getDb, SUBCAST_PATHS } from './db';
 import { logEvent } from './log';
+import { sanitizeUserErrorMessage } from './logSanitize';
 import { buildInsightMessages } from './insights';
 import { runInsightWorker, type InsightWorkerParams } from './insightTasks';
 import {
@@ -30,6 +31,7 @@ import {
 import {
   buildInsightArtifactFingerprint,
 } from './artifactFingerprint';
+import { selectTaskModel, TASK_MODEL_POLICY_ID } from './taskModelPolicy';
 import { readLatestInsightArtifact } from './artifactStore';
 import {
   pipelineReadyShas,
@@ -44,7 +46,7 @@ import { activeRuntimeProfile } from './runtimeProfile';
 import { isLlmConfigError, type TaskErrorCode } from '#shared/errorCodes';
 import { POLISH_LAYER_LANG } from '#shared/polishLayer';
 import type { SseFrame } from './sse';
-import { isLlmModelId, type LlmModelId } from '#shared/llmModels';
+import { isLlmModelId, type LlmModelId, type LlmTaskKind } from '#shared/llmModels';
 import type {
   QueueActiveLLMTask as ActiveLLMTask,
   QueueInsightTaskSummary as InsightTaskSummary,
@@ -154,6 +156,40 @@ function resolveInvocationModel(
   return isLlmModelId(model) ? model : settingsModel;
 }
 
+function invocationPolicy(
+  task: LlmTaskKind,
+  configuredModel: LlmModelId | undefined,
+): ReturnType<typeof selectTaskModel> | null {
+  return configuredModel
+    ? selectTaskModel({ task, configuredModel, dryRun: false })
+    : null;
+}
+
+function policyFieldsFromSpecJson(
+  specJson: string | null | undefined,
+  fallbackTask: LlmTaskKind,
+): { taskRole: LlmTaskKind; policyId: string } {
+  if (specJson) {
+    try {
+      const parsed = JSON.parse(specJson) as Partial<InvocationSpec>;
+      return {
+        taskRole: parsed.taskRole ?? fallbackTask,
+        policyId: parsed.policyId ?? TASK_MODEL_POLICY_ID,
+      };
+    } catch {
+      // Fall through to the compatibility defaults below.
+    }
+  }
+  return { taskRole: fallbackTask, policyId: TASK_MODEL_POLICY_ID };
+}
+
+function userVisibleLlmErrorMessage(code: TaskErrorCode | 'CANCELED', msg: string): string {
+  if (code === 'MODEL_NOT_CONFIGURED') {
+    return 'Local LLM model is not configured or unavailable.';
+  }
+  return sanitizeUserErrorMessage(msg);
+}
+
 export class LLMQueue {
   private activeSlots: ActiveLLMTask[] = [];
   private pauseDepth = 0;
@@ -197,10 +233,14 @@ export class LLMQueue {
     const db = getDb();
     const { llmModel } = loadSettings();
     const invocationModel = resolveInvocationModel(model, llmModel);
-    const effectiveModel = model ?? llmModel ?? 'llm';
-    const spec = invocationModel
+    const policy = invocationPolicy('translate', invocationModel);
+    const effectiveModel = policy?.modelId ?? model ?? llmModel ?? 'llm';
+    const spec = policy
       ? buildTranslateInvocationSpec({
-          modelId: invocationModel,
+          modelId: policy.modelId,
+          taskRole: policy.task,
+          policyId: policy.policyId,
+          policyReason: policy.reason,
           sourceRevision: sourceRevisionForVideo(videoSha),
           language: lang,
         })
@@ -267,8 +307,12 @@ export class LLMQueue {
     sourceRevision = sourceRevisionForVideo(videoSha),
   ): InsightTaskSummary {
     const db = getDb();
+    const policy = selectTaskModel({ task: 'insight', configuredModel: model, dryRun: false });
     const spec = buildInsightInvocationSpec({
-      modelId: model,
+      modelId: policy.modelId,
+      taskRole: policy.task,
+      policyId: policy.policyId,
+      policyReason: policy.reason,
       sourceRevision,
       uiLanguage,
     });
@@ -305,12 +349,12 @@ export class LLMQueue {
          invocation_spec_json, invocation_fingerprint, created_at
        )
        VALUES (?, ?, 'queued', ?, ?, ?, ?, ?)`,
-    ).run(id, videoSha, model, uiLanguage, specJson, fingerprint, Date.now());
+    ).run(id, videoSha, policy.modelId, uiLanguage, specJson, fingerprint, Date.now());
     return {
       id,
       video_sha: videoSha,
       status: 'queued',
-      model,
+      model: policy.modelId,
       ui_language: uiLanguage,
       error_msg: null,
       invocation_spec_json: specJson,
@@ -343,10 +387,14 @@ export class LLMQueue {
     const db = getDb();
     const settings = loadSettings();
     const invocationModel = resolveInvocationModel(model, settings.llmModel);
-    const effectiveModel = model ?? settings.llmModel ?? 'llm';
-    const spec = invocationModel
+    const policy = invocationPolicy('polish', invocationModel);
+    const effectiveModel = policy?.modelId ?? model ?? settings.llmModel ?? 'llm';
+    const spec = policy
       ? buildPolishInvocationSpec({
-          modelId: invocationModel,
+          modelId: policy.modelId,
+          taskRole: policy.task,
+          policyId: policy.policyId,
+          policyReason: policy.reason,
           sourceRevision: sourceRevisionForVideo(videoSha),
           hints: settings.polishHints,
         })
@@ -544,7 +592,7 @@ export class LLMQueue {
     const db = getDb();
     const row = db
       .prepare(
-        `SELECT id, video_sha, model, ui_language
+        `SELECT id, video_sha, model, ui_language, invocation_spec_json
          FROM insight_tasks WHERE id = ?`,
       )
       .get(taskId) as {
@@ -552,6 +600,7 @@ export class LLMQueue {
         video_sha: string;
         model: LlmModelId;
         ui_language: 'zh-CN' | 'en';
+        invocation_spec_json: string | null;
       };
     const origPath = join(SUBCAST_PATHS.cache, row.video_sha, 'original.vtt');
     if (!existsSync(origPath)) {
@@ -563,11 +612,13 @@ export class LLMQueue {
     const transcript = readFileSync(origPath, 'utf-8');
     const cues = parseVtt(transcript);
     const messages = buildInsightMessages(transcript, row.ui_language);
+    const policyFields = policyFieldsFromSpecJson(row.invocation_spec_json, 'insight');
     const artifactFingerprint = buildInsightArtifactFingerprint({
       videoSha: row.video_sha,
       transcript,
       uiLanguage: row.ui_language,
       modelId: row.model,
+      ...policyFields,
     });
 
     db.prepare(`UPDATE insight_tasks SET status='running' WHERE id=?`).run(taskId);
@@ -728,9 +779,10 @@ export class LLMQueue {
         // status row already 'canceled' by cancel()
         emit({ event: 'status', data: { taskId, status: 'canceled' } });
       } else {
+        const userMsg = userVisibleLlmErrorMessage(code, msg);
         db.prepare(`UPDATE translate_tasks SET status='failed', error_msg=?, error_code=? WHERE id=?`)
-          .run(msg, code, taskId);
-        emit({ event: 'error', data: { taskId, code, msg } });
+          .run(userMsg, code, taskId);
+        emit({ event: 'error', data: { taskId, code, msg: userMsg } });
       }
       logEvent({ level: 'error', event: 'translate_failed', taskId, lang, code, msg });
     } finally {
@@ -768,6 +820,7 @@ export class LLMQueue {
     });
 
     return translateAll(origCues, lang, {
+      modelId: isLlmModelId(model) ? model : undefined,
       signal: active.abort.signal,
       onSuperBatchStart: (info) => {
         emit({
@@ -906,6 +959,7 @@ export class LLMQueue {
         const batch = snap.cues.slice(out.length, out.length + SUPER_BATCH_SIZE);
         const res = await translateSuperBatch(batch, lang, context.slice(-5), {
           batchIdx,
+          modelId: isLlmModelId(model) ? model : undefined,
           signal: active.abort.signal,
           onRetry: (attempt) => {
             emit({
@@ -1025,9 +1079,10 @@ export class LLMQueue {
         // status row already 'canceled' by cancel()
         emit({ event: 'status', data: { taskId, status: 'canceled' } });
       } else {
+        const userMsg = userVisibleLlmErrorMessage(code, msg);
         db.prepare(`UPDATE polish_tasks SET status='failed', error_msg=?, error_code=? WHERE id=?`)
-          .run(msg, code, taskId);
-        emit({ event: 'error', data: { taskId, code, msg } });
+          .run(userMsg, code, taskId);
+        emit({ event: 'error', data: { taskId, code, msg: userMsg } });
       }
       logEvent({ level: 'error', event: 'polish_failed', taskId, code, msg });
     } finally {
@@ -1060,6 +1115,7 @@ export class LLMQueue {
     });
 
     return polishAll(origCues, {
+      modelId: isLlmModelId(model) ? model : undefined,
       hints,
       signal: active.abort.signal,
       onBatchDone: (info) => {
@@ -1158,7 +1214,11 @@ export class LLMQueue {
         : Math.floor(snap.cues.length / POLISH_BATCH_SIZE) * POLISH_BATCH_SIZE;
       while (out.length < readyEnd) {
         const batch = snap.cues.slice(out.length, out.length + POLISH_BATCH_SIZE);
-        const res = await polishOneBatch(batch, hints, context.slice(-5), active.abort.signal, batchIdx);
+        const res = await polishOneBatch(batch, hints, context.slice(-5), {
+          modelId: isLlmModelId(model) ? model : undefined,
+          signal: active.abort.signal,
+          batchIdx,
+        });
         active.doneCues!.push(...res.cues);
         out.push(...res.cues);
         context.push(...res.contextPairs);
@@ -1562,7 +1622,7 @@ export class LLMQueue {
     const db = getDb();
     const task = db
       .prepare(
-        `SELECT id, video_sha, status, model, ui_language, error_msg
+        `SELECT id, video_sha, status, model, ui_language, error_msg, invocation_spec_json
          FROM insight_tasks WHERE id=?`,
       )
       .get(taskId) as InsightTaskSummary | undefined;
@@ -1589,11 +1649,13 @@ export class LLMQueue {
       let path = join(SUBCAST_PATHS.cache, task.video_sha, 'insights.json');
       if (existsSync(origPath)) {
         const transcript = readFileSync(origPath, 'utf-8');
+        const policyFields = policyFieldsFromSpecJson(task.invocation_spec_json, 'insight');
         const artifactFingerprint = buildInsightArtifactFingerprint({
           videoSha: task.video_sha,
           transcript,
           uiLanguage: task.ui_language,
           modelId: task.model,
+          ...policyFields,
         });
         const artifact = readLatestInsightArtifact(
           task.video_sha,

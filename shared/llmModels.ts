@@ -25,6 +25,8 @@
 
 export type LlmModelId = '4b' | '8b' | '14b';
 export type LlmMirror = 'huggingface' | 'hf-mirror' | 'auto';
+export type LlmTaskKind = 'translate' | 'polish' | 'insight' | 'insight-map' | 'insight-reduce';
+export type LlmQualityTier = 'fast' | 'balanced' | 'quality';
 
 export interface LlmModelInfo {
   filename: string;
@@ -42,6 +44,62 @@ export const LLM_MODELS: Record<LlmModelId, LlmModelInfo> = {
 
 /** All tier ids, in ascending-size order. Single source for API validators. */
 export const LLM_MODEL_IDS = Object.keys(LLM_MODELS) as LlmModelId[];
+
+export interface LlmModelCapability {
+  id: LlmModelId;
+  tasks: readonly LlmTaskKind[];
+  qualityTier: LlmQualityTier;
+  contextTokens: number;
+  supportsJsonSchema: boolean;
+  supportsThinking: boolean;
+  recommendedMinMemoryGB: number;
+}
+
+const ALL_LLM_TASKS: readonly LlmTaskKind[] = [
+  'translate',
+  'polish',
+  'insight',
+  'insight-map',
+  'insight-reduce',
+];
+
+export const LLM_MODEL_CAPABILITIES: Record<LlmModelId, LlmModelCapability> = {
+  '4b': {
+    id: '4b',
+    tasks: ALL_LLM_TASKS,
+    qualityTier: 'fast',
+    contextTokens: 32_768,
+    supportsJsonSchema: true,
+    supportsThinking: true,
+    recommendedMinMemoryGB: LLM_MODELS['4b'].minRamGB,
+  },
+  '8b': {
+    id: '8b',
+    tasks: ALL_LLM_TASKS,
+    qualityTier: 'balanced',
+    contextTokens: 32_768,
+    supportsJsonSchema: true,
+    supportsThinking: true,
+    recommendedMinMemoryGB: LLM_MODELS['8b'].minRamGB,
+  },
+  '14b': {
+    id: '14b',
+    tasks: ALL_LLM_TASKS,
+    qualityTier: 'quality',
+    contextTokens: 32_768,
+    supportsJsonSchema: true,
+    supportsThinking: true,
+    recommendedMinMemoryGB: LLM_MODELS['14b'].minRamGB,
+  },
+};
+
+export function capabilityForModel(id: LlmModelId): LlmModelCapability {
+  return LLM_MODEL_CAPABILITIES[id];
+}
+
+export function modelSupportsTask(id: LlmModelId, task: LlmTaskKind): boolean {
+  return capabilityForModel(id).tasks.includes(task);
+}
 
 /**
  * User-facing name for a tier id ('8b' → 'Qwen3-8B'). Tier ids are internal

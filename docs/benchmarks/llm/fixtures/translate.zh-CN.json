@@ -1,0 +1,15 @@
+{
+  "id": "translate.zh-CN.synthetic.short",
+  "task": "translate",
+  "locale": "zh-CN",
+  "sourceLanguage": "en",
+  "targetLanguage": "zh-CN",
+  "cues": [
+    "Welcome back to the release review.",
+    "We shipped the local model runtime baseline yesterday.",
+    "Today we are checking translation quality and JSON stability."
+  ],
+  "expected": {
+    "jsonArrayLength": 3
+  }
+}

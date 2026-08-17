@@ -18,6 +18,7 @@ import {
   insightSourceRevision,
 } from '../utils/artifactFingerprint';
 import { readLatestInsightArtifact } from '../utils/artifactStore';
+import { selectTaskModel } from '../utils/taskModelPolicy';
 import type { VideoRow } from '../types/db';
 
 const EMERGENCY_TRANSCRIPT_CHARS = 2_000_000;
@@ -60,18 +61,21 @@ export default defineEventHandler(async (event) => {
     res.end();
     return;
   }
+  const policy = selectTaskModel({ task: 'insight', configuredModel: model, dryRun: false });
 
   const transcript = readFileSync(origPath, 'utf-8');
   const artifactFingerprint = buildInsightArtifactFingerprint({
     videoSha: hash,
     transcript,
     uiLanguage,
-    modelId: model,
+    modelId: policy.modelId,
+    taskRole: policy.task,
+    policyId: policy.policyId,
   });
 
   const artifact = readLatestInsightArtifact(hash, uiLanguage, artifactFingerprint);
   if (artifact) {
-    res.write(`event: start\ndata: ${JSON.stringify({ taskId: 'cached', model, uiLanguage })}\n\n`);
+    res.write(`event: start\ndata: ${JSON.stringify({ taskId: 'cached', model: policy.modelId, uiLanguage })}\n\n`);
     res.write(`event: done\ndata: ${JSON.stringify({ insights: artifact.payload, fromCache: true })}\n\n`);
     res.end();
     return;
@@ -84,7 +88,7 @@ export default defineEventHandler(async (event) => {
   if (existsSync(legacyCachePath)) {
     try {
       const obj = JSON.parse(readFileSync(legacyCachePath, 'utf-8'));
-      res.write(`event: start\ndata: ${JSON.stringify({ taskId: 'cached', model, uiLanguage })}\n\n`);
+      res.write(`event: start\ndata: ${JSON.stringify({ taskId: 'cached', model: policy.modelId, uiLanguage })}\n\n`);
       res.write(`event: done\ndata: ${JSON.stringify({ insights: obj, fromCache: true, legacy: true })}\n\n`);
       res.end();
       return;
@@ -101,7 +105,7 @@ export default defineEventHandler(async (event) => {
     return;
   }
 
-  const task = llmQueue.ensureInsightTask(hash, uiLanguage, model, insightSourceRevision(transcript));
+  const task = llmQueue.ensureInsightTask(hash, uiLanguage, policy.modelId, insightSourceRevision(transcript));
   await llmQueue.tryStartNext();
 
   let closed = false;

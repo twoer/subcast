@@ -97,7 +97,7 @@ export default defineEventHandler(() => {
   const insights = db
     .prepare(
       `SELECT t.id, t.video_sha, t.status, t.model, t.ui_language, t.created_at,
-              t.error_msg, v.original_name, v.display_name
+              t.error_msg, t.error_code, v.original_name, v.display_name
        FROM insight_tasks t
        LEFT JOIN videos v ON v.sha256 = t.video_sha
        WHERE t.status IN ('queued','running') OR t.created_at > ?

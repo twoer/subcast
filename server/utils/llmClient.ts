@@ -11,6 +11,7 @@
  */
 
 import { LlamaServerBackend } from './llmBackendLlamaServer';
+import type { LlmModelId } from '#shared/llmModels';
 
 export interface LLMMessage {
   role: 'system' | 'user' | 'assistant';
@@ -18,6 +19,8 @@ export interface LLMMessage {
 }
 
 export interface LLMChatOptions {
+  /** Concrete local model tier selected for this task invocation. */
+  modelId?: LlmModelId;
   messages: LLMMessage[];
   /** Hard upper bound on generated tokens; default 2048. */
   maxTokens?: number;

@@ -32,7 +32,7 @@ const PASSTHROUGH_KEYS = new Set([
 ]);
 
 const ABSOLUTE_PATH_RE =
-  /(?:[A-Za-z]:\\|\/(?:Users|home|var|private|tmp|Volumes|System\/Volumes)\/)[^\s'",)]+/g;
+  /(?:[A-Za-z]:\\|~\/|\/(?:Users|home|var|private|tmp|Volumes|System\/Volumes)\/)[^\s'",)]+/g;
 
 function isSensitiveContentKey(key: string): boolean {
   const k = key.toLowerCase();
@@ -47,6 +47,10 @@ function isSensitiveContentKey(key: string): boolean {
 
 function redactPathsInText(s: string): string {
   return s.replace(ABSOLUTE_PATH_RE, (match) => `path:${shaShort(match)}`);
+}
+
+export function sanitizeUserErrorMessage(message: string): string {
+  return redactPathsInText(message);
 }
 
 export function sanitizeLine(line: string, debug: boolean): string {

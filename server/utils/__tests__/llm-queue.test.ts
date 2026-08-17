@@ -80,6 +80,9 @@ describe('LLMQueue', () => {
       expect(t.invocation_fingerprint).toBe(invocationFingerprint(spec));
       expect(spec).toMatchObject({
         kind: 'translate',
+        taskRole: 'translate',
+        policyId: 'llm-task-policy-v1',
+        policyReason: expect.any(String),
         modelId: '8b',
         sourceRevision: `video:${HASH_A}`,
         language: 'zh-CN',
@@ -93,6 +96,8 @@ describe('LLMQueue', () => {
       const spec = persistedInvocation('polish_tasks', t.id);
 
       expect(spec.kind).toBe('polish');
+      expect(spec.taskRole).toBe('polish');
+      expect(spec.policyId).toBe('llm-task-policy-v1');
       expect(spec.modelId).toBe('8b');
       expect(spec.hintsHash).toMatch(/^[0-9a-f]{64}$/);
       expect(JSON.stringify(spec)).not.toContain('布尔运算');
@@ -112,6 +117,21 @@ describe('LLMQueue', () => {
       expect(specA).toMatchObject({ kind: 'insight', modelId: '8b', language: 'en' });
       expect(specB).toMatchObject({ kind: 'insight', modelId: '4b', language: 'en' });
       expect(invocationFingerprint(specB)).not.toBe(invocationFingerprint(specA));
+    });
+
+    it('persists the policy-selected concrete model while preserving single-model 8b behavior', () => {
+      saveSettings({ llmModel: '8b' });
+
+      const translateTask = translateQueue.ensureTask(HASH_A, 'zh-CN');
+      const polishTask = llmQueue.ensurePolishTask(HASH_A);
+      const insightTask = llmQueue.ensureInsightTask(HASH_A, 'en', '8b');
+
+      expect(translateTask.model).toBe('8b');
+      expect(polishTask.model).toBe('8b');
+      expect(insightTask.model).toBe('8b');
+      expect(persistedInvocation('translate_tasks', translateTask.id).modelId).toBe('8b');
+      expect(persistedInvocation('polish_tasks', polishTask.id).modelId).toBe('8b');
+      expect(persistedInvocation('insight_tasks', insightTask.id).modelId).toBe('8b');
     });
   });
 

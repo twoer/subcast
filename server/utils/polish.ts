@@ -27,6 +27,7 @@ import { llmBackend, type LLMChatResult, type LLMMessage } from './llmClient';
 import { logEvent } from './log';
 import { jsonStringArraySchema, parseJsonArray } from './translate';
 import type { Cue } from './vtt';
+import type { LlmModelId } from '#shared/llmModels';
 
 export const BATCH_SIZE = 25;
 const RETRY_BATCH_SIZE = 10;
@@ -109,6 +110,7 @@ async function tryPolishBatch(
   batch: readonly Cue[],
   hints: string,
   context: ReadonlyArray<{ src: string; polished: string }>,
+  modelId?: LlmModelId,
   signal?: AbortSignal,
 ): Promise<{
   ok: boolean;
@@ -118,6 +120,7 @@ async function tryPolishBatch(
   metrics: LlmResultMetrics;
 }> {
   const result = await llmBackend().chat({
+    modelId,
     messages: buildPolishMessages(batch, hints, context),
     temperature: 0,
     responseSchema: jsonStringArraySchema(batch.length),
@@ -134,6 +137,7 @@ async function tryPolishBatch(
 }
 
 export interface PolishAllOptions {
+  modelId?: LlmModelId;
   hints?: string;
   signal?: AbortSignal;
   onBatchDone?: (info: { batchIdx: number; totalBatches: number; cues: Cue[] }) => void;
@@ -158,11 +162,11 @@ export async function polishOneBatch(
   batch: readonly Cue[],
   hints: string,
   ctx: ReadonlyArray<{ src: string; polished: string }>,
-  signal?: AbortSignal,
-  batchIdx = 0,
+  opts: { modelId?: LlmModelId; signal?: AbortSignal; batchIdx?: number } = {},
 ): Promise<PolishBatchResult> {
   let items: string[] | null = null;
-  const attempt1 = await tryPolishBatch(batch, hints, ctx, signal);
+  const batchIdx = opts.batchIdx ?? 0;
+  const attempt1 = await tryPolishBatch(batch, hints, ctx, opts.modelId, opts.signal);
   if (attempt1.ok) {
     items = attempt1.items;
   } else {
@@ -182,7 +186,7 @@ export async function polishOneBatch(
     let allOk = true;
     for (let j = 0; j < batch.length && allOk; j += RETRY_BATCH_SIZE) {
       const sub = batch.slice(j, j + RETRY_BATCH_SIZE);
-      const attempt2 = await tryPolishBatch(sub, hints, ctx, signal);
+      const attempt2 = await tryPolishBatch(sub, hints, ctx, opts.modelId, opts.signal);
       if (!attempt2.ok) {
         allOk = false;
         logEvent({
@@ -243,7 +247,11 @@ export async function polishAll(
     const start = batchIdx * BATCH_SIZE;
     const batch = cues.slice(start, start + BATCH_SIZE);
 
-    const res = await polishOneBatch(batch, hints, context.slice(-5), opts.signal, batchIdx);
+    const res = await polishOneBatch(batch, hints, context.slice(-5), {
+      modelId: opts.modelId,
+      signal: opts.signal,
+      batchIdx,
+    });
     out.push(...res.cues);
     context.push(...res.contextPairs);
     if (res.fallback) fallbackCount++;

@@ -15,6 +15,8 @@ function base(overrides: Partial<ArtifactFingerprintInput> = {}): ArtifactFinger
     sourceHash: hashArtifactSource('hello transcript'),
     language: 'zh-CN',
     modelId: '8b',
+    taskRole: 'insight',
+    policyId: 'llm-task-policy-v1',
     promptVersion: 'insight-v1',
     schemaVersion: 'insight-markdown-v1',
     generationHash: hashArtifactGenerationOptions({ temperature: 0.3, maxTokens: 4096 }),
@@ -30,6 +32,8 @@ describe('artifactFingerprint', () => {
   it.each([
     ['sourceHash', { sourceHash: hashArtifactSource('changed transcript') }],
     ['modelId', { modelId: '4b' }],
+    ['taskRole', { taskRole: 'insight-reduce' }],
+    ['policyId', { policyId: 'llm-task-policy-v2' }],
     ['language', { language: 'en' }],
     ['promptVersion', { promptVersion: 'insight-v2' }],
     ['schemaVersion', { schemaVersion: 'insight-json-v2' }],

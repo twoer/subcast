@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
 import { rmSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 
-const { tmpRoot } = vi.hoisted(() => {
+const { tmpRoot, llmCalls } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { mkdtempSync } = require('node:fs');
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -11,14 +11,18 @@ const { tmpRoot } = vi.hoisted(() => {
   const { join } = require('node:path');
   const r = mkdtempSync(join(tmpdir(), 'subcast-insights-'));
   process.env.SUBCAST_HOME = r;
-  return { tmpRoot: r };
+  return {
+    tmpRoot: r,
+    llmCalls: [] as Array<{ kind: 'chat' | 'chatStream'; modelId?: string }>,
+  };
 });
 
 vi.mock('../llmClient', () => {
   // Deterministic stub backend: yields the same canned markdown the
   // previous Ollama mock did, but through the new LLMBackend interface.
   const stub = {
-    async chat(opts?: { responseSchema?: unknown }) {
+    async chat(opts?: { responseSchema?: unknown; modelId?: string }) {
+      llmCalls.push({ kind: 'chat', modelId: opts?.modelId });
       if (opts?.responseSchema) {
         return {
           content: JSON.stringify({
@@ -42,7 +46,8 @@ vi.mock('../llmClient', () => {
         coldStart: false,
       };
     },
-    async *chatStream() {
+    async *chatStream(opts?: { modelId?: string }) {
+      llmCalls.push({ kind: 'chatStream', modelId: opts?.modelId });
       yield { delta: '## Summary\n\n' };
       yield { delta: 'Mock summary text.\n\n' };
       yield { delta: '- Point A\n- Point B\n\n' };
@@ -114,6 +119,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  llmCalls.length = 0;
   saveSettings({ llmModel: '8b' });
   getDb().prepare(`DELETE FROM insight_tasks`).run();
   writeFileSync(
@@ -156,6 +162,7 @@ describe('/api/insights SSE', () => {
     const written = readLatestInsightArtifact(HASH, 'en', artifactFingerprint)?.payload as {
       _meta: Record<string, unknown>;
     };
+    expect(llmCalls).toEqual([expect.objectContaining({ kind: 'chatStream', modelId: '8b' })]);
     expect(written._meta.modelId).toBe('8b');
     expect(written._meta.ollamaModel).toBeUndefined();
     expect(written._meta.rawMarkdown).toBeUndefined();
@@ -185,6 +192,8 @@ describe('/api/insights SSE', () => {
 
     const done = JSON.parse(events[events.length - 1]!.data);
     expect(done.insights.summary).toContain('Mock summary');
+    expect(llmCalls.length).toBeGreaterThan(1);
+    expect(llmCalls.every((call) => call.kind === 'chat' && call.modelId === '8b')).toBe(true);
   });
 
   it('ignores legacy ollama_model when choosing the Insight model', async () => {

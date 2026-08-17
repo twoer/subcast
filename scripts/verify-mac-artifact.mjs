@@ -11,7 +11,11 @@ const root = process.cwd();
 const appPath = process.argv[2] ?? join(root, 'dist-electron', 'mac-arm64', 'Subcast.app');
 const resourcesDir = join(appPath, 'Contents', 'Resources');
 const expectedVersion = packageJson.version;
-const forbiddenBuildPath = /\/Users\/|Documents\/Code|node_modules\/nodejs-whisper|whisper\.cpp\/build/;
+// Upstream llama.cpp release assets embed GitHub runner `__FILE__` strings
+// such as /Users/runner/work/llama.cpp/... in __TEXT,__const. They are not
+// runtime load paths and cannot be stripped reliably. Keep rejecting local
+// build-machine paths and old nodejs-whisper paths.
+const forbiddenBuildPath = /\/Users\/(?!runner\/work\/)|Documents\/Code|node_modules\/nodejs-whisper|whisper\.cpp\/build/;
 
 const failures = [];
 

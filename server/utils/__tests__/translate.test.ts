@@ -68,6 +68,20 @@ describe('translateAll', () => {
     ]);
   });
 
+  it('passes the selected concrete model id to every chat call', async () => {
+    chatMock.mockImplementation(async (opts) => {
+      const match = opts.messages.at(-1)?.content.match(/INPUT \((\d+) subtitle/);
+      const n = Number(match?.[1] ?? 0);
+      return chatResult(jsonItems('translated', n));
+    });
+
+    await translateAll(Array.from({ length: 26 }, (_, i) => cue(i)), 'zh-CN', {
+      modelId: '4b',
+    });
+
+    expect(chatMock.mock.calls.map(([opts]) => opts.modelId)).toEqual(['4b', '4b']);
+  });
+
   it('uses 25-cue super batches to reduce local LLM format drift', async () => {
     chatMock.mockImplementation(async (opts) => {
       const match = opts.messages.at(-1)?.content.match(/INPUT \((\d+) subtitle/);

@@ -1,15 +1,19 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { createHash } from 'node:crypto';
 
-import { isLlmModelId, type LlmModelId } from '#shared/llmModels';
+import { isLlmModelId, type LlmModelId, type LlmTaskKind } from '#shared/llmModels';
+import { TASK_MODEL_POLICY_ID } from './taskModelPolicy';
 
 export type InvocationKind = 'translate' | 'polish' | 'insight';
 export type InvocationBackend = 'llama-server';
 
 export interface InvocationSpec {
   kind: InvocationKind;
+  taskRole: LlmTaskKind;
   modelId: LlmModelId;
   backend: InvocationBackend;
+  policyId: string;
+  policyReason?: string;
   promptVersion: string;
   schemaVersion: string;
   sourceRevision: string;
@@ -25,6 +29,9 @@ export interface InvocationSpec {
 interface BaseSpecInput {
   modelId: unknown;
   sourceRevision: string;
+  taskRole?: LlmTaskKind;
+  policyId?: string;
+  policyReason?: string;
 }
 
 interface TranslateSpecInput extends BaseSpecInput {
@@ -79,14 +86,18 @@ function stableJson(value: unknown): string {
 }
 
 export function invocationFingerprint(spec: InvocationSpec): string {
-  return sha256(stableJson(spec));
+  const { policyReason: _policyReason, ...fingerprinted } = spec;
+  return sha256(stableJson(fingerprinted));
 }
 
 export function buildTranslateInvocationSpec(input: TranslateSpecInput): InvocationSpec {
   return {
     kind: 'translate',
+    taskRole: input.taskRole ?? 'translate',
     modelId: requireLlmModelId(input.modelId),
     backend: BACKEND,
+    policyId: input.policyId ?? TASK_MODEL_POLICY_ID,
+    policyReason: input.policyReason,
     promptVersion: PROMPT_VERSIONS.translate,
     schemaVersion: SCHEMA_VERSIONS.translate,
     sourceRevision: input.sourceRevision,
@@ -102,8 +113,11 @@ export function buildPolishInvocationSpec(input: PolishSpecInput): InvocationSpe
   const hints = input.hints?.trim();
   return {
     kind: 'polish',
+    taskRole: input.taskRole ?? 'polish',
     modelId: requireLlmModelId(input.modelId),
     backend: BACKEND,
+    policyId: input.policyId ?? TASK_MODEL_POLICY_ID,
+    policyReason: input.policyReason,
     promptVersion: PROMPT_VERSIONS.polish,
     schemaVersion: SCHEMA_VERSIONS.polish,
     sourceRevision: input.sourceRevision,
@@ -118,8 +132,11 @@ export function buildPolishInvocationSpec(input: PolishSpecInput): InvocationSpe
 export function buildInsightInvocationSpec(input: InsightSpecInput): InvocationSpec {
   return {
     kind: 'insight',
+    taskRole: input.taskRole ?? 'insight',
     modelId: requireLlmModelId(input.modelId),
     backend: BACKEND,
+    policyId: input.policyId ?? TASK_MODEL_POLICY_ID,
+    policyReason: input.policyReason,
     promptVersion: PROMPT_VERSIONS.insight,
     schemaVersion: SCHEMA_VERSIONS.insight,
     sourceRevision: input.sourceRevision,
@@ -130,4 +147,3 @@ export function buildInsightInvocationSpec(input: InsightSpecInput): InvocationS
     },
   };
 }
-

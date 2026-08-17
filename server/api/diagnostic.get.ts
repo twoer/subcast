@@ -12,6 +12,7 @@ import { LOG_FILE_PATTERN, LOG_RETENTION_DAYS } from '../utils/log';
 import { sanitizeLine } from '../utils/logSanitize';
 import { resolveRuntimeProfile, runtimeProfileDiagnostics } from '../utils/runtimeProfile';
 import { loadSettings } from '../utils/settings';
+import { taskModelPolicyDecisions } from '../utils/taskModelPolicy';
 
 /**
  * Stable 6-char hash of (hostname + username). Mirrors the Electron-side
@@ -127,6 +128,16 @@ export default defineEventHandler(async (event) => {
           parallelSlots: runtimeProfile.parallelSlots,
           perSlotContext: runtimeProfile.perSlotContext,
           warnings: runtimeProfile.warnings,
+        },
+        llmPolicy: {
+          configuredModel: settings.llmModel,
+          dryRun: true,
+          decisions: settings.llmModel
+            ? taskModelPolicyDecisions({
+                configuredModel: settings.llmModel,
+                dryRun: true,
+              })
+            : [],
         },
       },
       null,

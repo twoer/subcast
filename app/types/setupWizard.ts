@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import type { LlmModelId } from '#shared/llmModels';
+import type { LlmModelId, LlmTaskKind } from '#shared/llmModels';
 import type { WhisperModelName as CanonicalWhisperModelName } from '#shared/whisperModels';
 
 export type WhisperModelName = Extract<
@@ -35,6 +35,15 @@ export interface LlmScannedHit {
   sizeBytes: number;
 }
 
+export interface LlmTaskPolicyDecision {
+  modelId: LlmModelId;
+  policyId: string;
+  task: LlmTaskKind;
+  reason: string;
+  fallback: boolean;
+  dryRun: boolean;
+}
+
 export interface LlmStatusResp {
   active: LlmModelId | undefined;
   recommended: LlmModelId;
@@ -49,6 +58,7 @@ export interface LlmStatusResp {
     perSlotContext: number;
     warnings: string[];
   };
+  taskPolicies: LlmTaskPolicyDecision[];
   migrationHint: LlmModelId | undefined;
   installed: LlmInstalledHit[];
   scanned: LlmScannedHit[];

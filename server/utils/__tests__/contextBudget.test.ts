@@ -28,6 +28,7 @@ describe('Insight context budget', () => {
       finalOutputTokens: 32,
       mapOutputTokens: 16,
       safetyMarginTokens: 8,
+      promptOverheadTokens: 4,
     });
 
     expect(plan.mode).toBe('map-reduce');
@@ -43,18 +44,34 @@ describe('Insight context budget', () => {
       finalOutputTokens: 48,
       mapOutputTokens: 24,
       safetyMarginTokens: 12,
+      promptOverheadTokens: 8,
     });
 
     expect(plan.mode).toBe('map-reduce');
     for (const window of plan.windows) {
       expect(window.estimatedInputTokens).toBeLessThanOrEqual(window.maxInputTokens);
-      expect(window.maxInputTokens + window.maxOutputTokens + plan.safetyMarginTokens)
+      expect(window.maxInputTokens + window.maxOutputTokens + plan.safetyMarginTokens + 8)
         .toBeLessThanOrEqual(plan.contextWindowTokens);
     }
   });
 
   it('estimates CJK text conservatively compared with ASCII text', () => {
     expect(estimateTextTokens('你好世界')).toBeGreaterThanOrEqual(4);
-    expect(estimateTextTokens('hello world hello world')).toBeLessThan(estimateTextTokens('你好世界你好世界'));
+    expect(estimateTextTokens('hello world')).toBeLessThan(estimateTextTokens('你好世界你好世界'));
+  });
+
+  it('counts VTT timestamp punctuation so prompt-heavy cue lists use map/reduce', () => {
+    const transcript = [
+      'WEBVTT',
+      '',
+      ...Array.from({ length: 220 }, (_, i) => [
+        `00:${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}.000 --> 00:${String(Math.floor((i + 1) / 60)).padStart(2, '0')}:${String((i + 1) % 60).padStart(2, '0')}.000`,
+        'ok',
+      ].join('\n')),
+    ].join('\n\n');
+
+    const plan = planInsightContext(transcript);
+
+    expect(plan.mode).toBe('map-reduce');
   });
 });

@@ -40,6 +40,7 @@ export const LLM_ERROR_MARKERS = [
   'LLM_MODEL_NOT_CONFIGURED',
   'LLM_BINARY_MISSING',
   'MODEL_UNUSABLE',
+  'failed to load model',
 ] as const;
 
 export function isLlmConfigError(message: string): boolean {

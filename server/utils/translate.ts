@@ -20,6 +20,7 @@
 import { llmBackend, type LLMChatResult, type LLMMessage } from './llmClient';
 import { logEvent } from './log';
 import type { Cue } from './vtt';
+import type { LlmModelId } from '#shared/llmModels';
 
 const LANG_NAMES: Record<string, string> = {
   'zh-CN': 'Simplified Chinese',
@@ -133,10 +134,12 @@ async function tryBatch(
   cues: readonly Cue[],
   targetLang: string,
   context: ReadonlyArray<{ src: string; tr: string }>,
+  modelId?: LlmModelId,
   signal?: AbortSignal,
 ): Promise<BatchAttemptResult> {
   const messages = buildMessages(targetLang, cues, context);
   const result = await llmBackend().chat({
+    modelId,
     messages,
     temperature: 0,
     responseSchema: jsonStringArraySchema(cues.length),
@@ -156,6 +159,7 @@ async function tryBatch(
 }
 
 export interface TranslateAllOptions {
+  modelId?: LlmModelId;
   signal?: AbortSignal;
   onSuperBatchStart?: (info: {
     batchIdx: number;
@@ -201,6 +205,7 @@ export interface TranslateBatchResult {
 }
 
 export interface TranslateBatchOptions {
+  modelId?: LlmModelId;
   /** Only feeds logEvent fields — no behavioral meaning. */
   batchIdx?: number;
   signal?: AbortSignal;
@@ -226,7 +231,7 @@ export async function translateSuperBatch(
   const segCues: Cue[] = [];
   let fallbackCount = 0;
 
-  const out1 = await tryBatch(superBatch, targetLang, ctx, opts.signal);
+  const out1 = await tryBatch(superBatch, targetLang, ctx, opts.modelId, opts.signal);
   if (out1.ok) {
     for (let i = 0; i < superBatch.length; i++) {
       segCues.push({
@@ -257,7 +262,7 @@ export async function translateSuperBatch(
   for (let j = 0; j < superBatch.length; j += SUB_BATCH_SIZE) {
     if (opts.signal?.aborted) throw new Error('CANCELED');
     const sub = superBatch.slice(j, j + SUB_BATCH_SIZE);
-    const out2 = await tryBatch(sub, targetLang, ctx, opts.signal);
+    const out2 = await tryBatch(sub, targetLang, ctx, opts.modelId, opts.signal);
     if (out2.ok) {
       for (let i = 0; i < sub.length; i++) {
         segCues.push({
@@ -289,7 +294,7 @@ export async function translateSuperBatch(
     });
     for (const cue of sub) {
       if (opts.signal?.aborted) throw new Error('CANCELED');
-      const single = await tryBatch([cue], targetLang, ctx, opts.signal);
+      const single = await tryBatch([cue], targetLang, ctx, opts.modelId, opts.signal);
       if (!single.ok) {
         fallbackCount++;
         logEvent({
@@ -332,6 +337,7 @@ export async function translateAll(
 
     const res = await translateSuperBatch(superBatch, targetLang, context.slice(-5), {
       batchIdx,
+      modelId: opts.modelId,
       signal: opts.signal,
       onRetry: (attempt) => opts.onBatchRetry?.({ batchIdx, attempt, reason: 'count-mismatch' }),
     });

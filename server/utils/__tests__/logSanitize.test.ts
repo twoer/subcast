@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { describe, it, expect } from 'vitest';
-import { sanitizeLine } from '../logSanitize';
+import { sanitizeLine, sanitizeUserErrorMessage } from '../logSanitize';
 
 describe('sanitizeLine', () => {
   it('passes through unchanged when debug=true', () => {
@@ -74,6 +74,17 @@ describe('sanitizeLine', () => {
     expect(parsed.msg).toContain('failed to open ');
     expect(parsed.msg).not.toContain('/Users/alice');
     expect(parsed.msg).toMatch(/path:[0-9a-f]{12}/);
+  });
+
+  it('redacts tilde-prefixed paths in user-facing errors', () => {
+    const out = sanitizeUserErrorMessage(
+      "failed to load model '~/Documents/Code/subcast/.dev-userdata/models/llm/Qwen3-4B-Q4_K_M.gguf'",
+    );
+
+    expect(out).toContain('failed to load model ');
+    expect(out).not.toContain('~/Documents');
+    expect(out).not.toContain('Qwen3-4B-Q4_K_M.gguf');
+    expect(out).toMatch(/path:[0-9a-f]{12}/);
   });
 
   it('redacts absolute paths embedded in stderr text fields', () => {

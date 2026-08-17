@@ -26,6 +26,7 @@ import { detectHardware } from '../../../utils/hardware';
 import { resolveRuntimeProfile } from '../../../utils/runtimeProfile';
 import { loadSettings, remapLegacyLlmTier } from '../../../utils/settings';
 import { logEvent } from '../../../utils/log';
+import { taskModelPolicyDecisions } from '../../../utils/taskModelPolicy';
 import { scanLlmModels } from '../../../../desktop/modelManager/llmScan';
 import { recommendLlmModel, type LlmModelId } from '#shared/llmModels';
 import { llmModelPath } from '../../../../desktop/modelManager/llmInstall';
@@ -80,6 +81,9 @@ export default defineEventHandler(async (event) => {
     installed: m.path === llmModelPath(m.name),
   }));
   const runtimeProfile = resolveRuntimeProfile(hw);
+  const installedModelIds = tagged
+    .filter((m) => m.installed)
+    .map((m) => m.name);
   return {
     active: settings.llmModel,
     recommended: recommendLlmModel({ totalMemoryGB: hw.totalMemoryGB }),
@@ -94,6 +98,13 @@ export default defineEventHandler(async (event) => {
       perSlotContext: runtimeProfile.perSlotContext,
       warnings: runtimeProfile.warnings,
     },
+    taskPolicies: settings.llmModel
+      ? taskModelPolicyDecisions({
+          configuredModel: settings.llmModel,
+          installedModels: installedModelIds,
+          dryRun: true,
+        })
+      : [],
     migrationHint: readAndConsumeMigrationHint(),
     installed: tagged.filter((m) => m.installed),
     scanned: tagged.filter((m) => !m.installed),

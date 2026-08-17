@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { createHash } from 'node:crypto';
 import { PROMPT_VERSIONS, SCHEMA_VERSIONS } from './invocationSpec';
+import { TASK_MODEL_POLICY_ID } from './taskModelPolicy';
+import type { LlmTaskKind } from '#shared/llmModels';
 
 export interface ArtifactFingerprintInput {
   kind: 'insight' | 'translate' | 'polish';
@@ -8,6 +10,8 @@ export interface ArtifactFingerprintInput {
   sourceHash: string;
   language?: string;
   modelId: string;
+  taskRole?: LlmTaskKind;
+  policyId?: string;
   promptVersion: string;
   schemaVersion: string;
   generationHash: string;
@@ -48,6 +52,8 @@ export function buildInsightArtifactFingerprint(input: {
   transcript: string;
   uiLanguage: 'zh-CN' | 'en';
   modelId: string;
+  taskRole?: LlmTaskKind;
+  policyId?: string;
 }): string {
   return artifactFingerprint({
     kind: 'insight',
@@ -55,6 +61,8 @@ export function buildInsightArtifactFingerprint(input: {
     sourceHash: hashArtifactSource(input.transcript),
     language: input.uiLanguage,
     modelId: input.modelId,
+    taskRole: input.taskRole ?? 'insight',
+    policyId: input.policyId ?? TASK_MODEL_POLICY_ID,
     promptVersion: PROMPT_VERSIONS.insight,
     schemaVersion: SCHEMA_VERSIONS.insight,
     generationHash: hashArtifactGenerationOptions({ temperature: 0.3, maxTokens: 4096 }),

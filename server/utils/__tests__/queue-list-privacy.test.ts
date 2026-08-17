@@ -63,4 +63,43 @@ describe('GET /api/queue/list privacy logging', () => {
     expect(entry).not.toHaveProperty('path');
     expect(JSON.stringify(entry)).not.toContain(tmpHome);
   });
+
+  it('includes structured Insight error codes in queue items', () => {
+    const db = getDb();
+    const now = Date.now();
+
+    db.prepare(
+      `INSERT INTO videos
+        (sha256, original_name, display_name, ext, size_bytes, duration_s, created_at, last_opened_at, deleted_at, source_url)
+       VALUES
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'abc123def456',
+      'private-source-name.mp3',
+      'Episode',
+      '.mp3',
+      123,
+      3.2,
+      now,
+      now,
+      null,
+      null,
+    );
+    db.prepare(
+      `INSERT INTO insight_tasks
+        (id, video_sha, status, model, ui_language, error_msg, error_code, created_at, completed_at)
+       VALUES
+        (?, ?, 'error', '8b', 'zh-CN', ?, 'MODEL_NOT_CONFIGURED', ?, ?)`,
+    ).run('insight-1', 'abc123def456', 'Local LLM model is not configured or unavailable.', now, now);
+
+    const res = handler();
+
+    expect(res.items).toEqual([
+      expect.objectContaining({
+        kind: 'insight',
+        id: 'insight-1',
+        errorCode: 'MODEL_NOT_CONFIGURED',
+      }),
+    ]);
+  });
 });

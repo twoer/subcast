@@ -6,6 +6,7 @@ import { backfillVideoDurationS } from '../../utils/videoDuration';
 import { loadSettings } from '../../utils/settings';
 import { buildInsightArtifactFingerprint } from '../../utils/artifactFingerprint';
 import { readLatestInsightArtifact } from '../../utils/artifactStore';
+import { selectTaskModel } from '../../utils/taskModelPolicy';
 import { POLISH_LAYER_LANG } from '#shared/polishLayer';
 import type { VideoRow } from '../../types/db';
 
@@ -50,13 +51,16 @@ function hasCurrentInsights(videoSha: string): boolean {
   if (!existsSync(transcriptPath)) return false;
   const model = loadSettings().llmModel;
   if (!model) return false;
+  const policy = selectTaskModel({ task: 'insight', configuredModel: model, dryRun: false });
   const transcript = readFileSync(transcriptPath, 'utf8');
   for (const uiLanguage of ['zh-CN', 'en'] as const) {
     const fingerprint = buildInsightArtifactFingerprint({
       videoSha,
       transcript,
       uiLanguage,
-      modelId: model,
+      modelId: policy.modelId,
+      taskRole: policy.task,
+      policyId: policy.policyId,
     });
     if (readLatestInsightArtifact(videoSha, uiLanguage, fingerprint)) return true;
   }

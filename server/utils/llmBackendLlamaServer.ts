@@ -163,7 +163,7 @@ function optionalNumber(value: unknown): number | undefined {
  */
 export class LlamaServerBackend implements LLMBackend {
   async chat(opts: LLMChatOptions): Promise<LLMChatResult> {
-    let lease = await getLlmServer().ensureLease();
+    let lease = await getLlmServer().ensureLease({ modelId: opts.modelId });
     let coldStart = lease.coldStart;
     const startedAt = Date.now();
     for (let attempt = 0; ; attempt++) {
@@ -178,7 +178,7 @@ export class LlamaServerBackend implements LLMBackend {
       } catch (err) {
         if (isConnectionFailure(err) && canRetry(opts, attempt)) {
           await sleep(TRANSIENT_RETRY_DELAYS_MS[attempt]!);
-          lease = await getLlmServer().ensureLease();
+          lease = await getLlmServer().ensureLease({ modelId: opts.modelId });
           coldStart ||= lease.coldStart;
           continue;
         }
@@ -190,7 +190,7 @@ export class LlamaServerBackend implements LLMBackend {
         const text = await res.text().catch(() => '<no body>');
         if (res.status >= 500 && canRetry(opts, attempt)) {
           await sleep(TRANSIENT_RETRY_DELAYS_MS[attempt]!);
-          lease = await getLlmServer().ensureLease();
+          lease = await getLlmServer().ensureLease({ modelId: opts.modelId });
           coldStart ||= lease.coldStart;
           continue;
         }
@@ -221,7 +221,7 @@ export class LlamaServerBackend implements LLMBackend {
   }
 
   async *chatStream(opts: LLMChatOptions): AsyncIterable<LLMChunk> {
-    let lease = await getLlmServer().ensureLease();
+    let lease = await getLlmServer().ensureLease({ modelId: opts.modelId });
     // Retry only PRE-response failures — once the SSE stream has started
     // delivering bytes, a mid-stream break cannot be transparently
     // replayed to the consumer.
@@ -237,7 +237,7 @@ export class LlamaServerBackend implements LLMBackend {
       } catch (err) {
         if (isConnectionFailure(err) && canRetry(opts, attempt)) {
           await sleep(TRANSIENT_RETRY_DELAYS_MS[attempt]!);
-          lease = await getLlmServer().ensureLease();
+          lease = await getLlmServer().ensureLease({ modelId: opts.modelId });
           continue;
         }
         throw err;
@@ -246,7 +246,7 @@ export class LlamaServerBackend implements LLMBackend {
       const text = res.body ? await res.text().catch(() => '<no body>') : '<no body>';
       if (res.status >= 500 && canRetry(opts, attempt)) {
         await sleep(TRANSIENT_RETRY_DELAYS_MS[attempt]!);
-        lease = await getLlmServer().ensureLease();
+        lease = await getLlmServer().ensureLease({ modelId: opts.modelId });
         continue;
       }
       if (res.status >= 500) getLlmServer().noteHttpFailure();

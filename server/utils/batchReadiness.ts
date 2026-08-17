@@ -7,6 +7,7 @@ import { getDb, SUBCAST_PATHS } from './db';
 import { loadSettings } from './settings';
 import { buildInsightArtifactFingerprint } from './artifactFingerprint';
 import { readLatestInsightArtifact } from './artifactStore';
+import { selectTaskModel } from './taskModelPolicy';
 
 export interface BatchWorkItem {
   videoSha: string;
@@ -33,12 +34,15 @@ function hasInsights(videoSha: string, uiLanguage: 'zh-CN' | 'en'): boolean {
   if (!existsSync(transcriptPath)) return existsSync(legacyPath);
   const model = loadSettings().llmModel;
   if (!model) return existsSync(legacyPath);
+  const policy = selectTaskModel({ task: 'insight', configuredModel: model, dryRun: false });
   const transcript = readFileSync(transcriptPath, 'utf8');
   const fingerprint = buildInsightArtifactFingerprint({
     videoSha,
     transcript,
     uiLanguage,
-    modelId: model,
+    modelId: policy.modelId,
+    taskRole: policy.task,
+    policyId: policy.policyId,
   });
   return readLatestInsightArtifact(videoSha, uiLanguage, fingerprint) !== null ||
     existsSync(legacyPath);

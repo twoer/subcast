@@ -12,6 +12,7 @@ import {
   insightSourceRevision,
 } from './artifactFingerprint';
 import { readLatestInsightArtifact } from './artifactStore';
+import { selectTaskModel } from './taskModelPolicy';
 import { ensureDiarizeTask } from './diarize/tasks';
 import { runDiarize } from './diarize/diarize';
 import {
@@ -66,12 +67,15 @@ export const defaultBatchRunnerAdapter: BatchRunnerAdapter = {
     if (!existsSync(transcriptPath)) return existsSync(legacyPath);
     const model = loadSettings().llmModel;
     if (!model) return existsSync(legacyPath);
+    const policy = selectTaskModel({ task: 'insight', configuredModel: model, dryRun: false });
     const transcript = readFileSync(transcriptPath, 'utf8');
     const fingerprint = buildInsightArtifactFingerprint({
       videoSha,
       transcript,
       uiLanguage,
-      modelId: model,
+      modelId: policy.modelId,
+      taskRole: policy.task,
+      policyId: policy.policyId,
     });
     return readLatestInsightArtifact(videoSha, uiLanguage, fingerprint) !== null ||
       existsSync(legacyPath);
@@ -95,6 +99,7 @@ export const defaultBatchRunnerAdapter: BatchRunnerAdapter = {
   async runInsights(videoSha, uiLanguage) {
     const model = loadSettings().llmModel;
     if (!model) throw new Error('MODEL_NOT_CONFIGURED');
+    const policy = selectTaskModel({ task: 'insight', configuredModel: model, dryRun: false });
     const transcriptPath = join(SUBCAST_PATHS.cache, videoSha, 'original.vtt');
     const transcript = existsSync(transcriptPath)
       ? readFileSync(transcriptPath, 'utf8')
@@ -102,7 +107,7 @@ export const defaultBatchRunnerAdapter: BatchRunnerAdapter = {
     const task = llmQueue.ensureInsightTask(
       videoSha,
       uiLanguage,
-      model,
+      policy.modelId,
       transcript ? insightSourceRevision(transcript) : undefined,
     );
     await llmQueue.tryStartNext();

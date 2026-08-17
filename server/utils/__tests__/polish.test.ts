@@ -110,6 +110,15 @@ describe('polishAll', () => {
     ]);
   });
 
+  it('passes the selected concrete model id to every chat call', async () => {
+    const input = Array.from({ length: 26 }, (_, i) => cue(i));
+    mockCompliantChat();
+
+    await polishAll(input, { modelId: '14b' });
+
+    expect(chatMock.mock.calls.map(([opts]) => opts.modelId)).toEqual(['14b', '14b']);
+  });
+
   it('falls back to the original text when the model never complies', async () => {
     const input = [cue(0, '球叉运算'), cue(1, '音化同步')];
     chatMock.mockResolvedValue(chatResult('抱歉，我无法处理。')); // no JSON array at all

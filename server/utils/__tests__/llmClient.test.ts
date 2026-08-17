@@ -117,6 +117,17 @@ describe('LlamaServerBackend', () => {
     expect(getLlmServer().ensureLease).toHaveBeenCalledTimes(1);
   });
 
+  it('chat() acquires a lease for the requested concrete model id', async () => {
+    globalThis.fetch = vi.fn(async () =>
+      jsonResponse({ choices: [{ message: { content: 'ok' } }] }),
+    ) as unknown as typeof fetch;
+
+    const backend = new LlamaServerBackend();
+    await backend.chat({ modelId: '4b', messages: [{ role: 'user', content: 'hi' }] });
+
+    expect(getLlmServer().ensureLease).toHaveBeenCalledWith({ modelId: '4b' });
+  });
+
   it('chat() reacquires the lease before retrying a connection failure', async () => {
     const fetchMock = vi
       .fn()
@@ -131,6 +142,8 @@ describe('LlamaServerBackend', () => {
     });
 
     expect(getLlmServer().ensureLease).toHaveBeenCalledTimes(2);
+    expect(getLlmServer().ensureLease).toHaveBeenNthCalledWith(1, { modelId: undefined });
+    expect(getLlmServer().ensureLease).toHaveBeenNthCalledWith(2, { modelId: undefined });
   });
 
   it('chat() throws on 5xx including the response body', async () => {
@@ -191,6 +204,22 @@ describe('LlamaServerBackend', () => {
     }
     expect(out.join('')).toBe('hello');
     expect(finish).toBe('stop');
+  });
+
+  it('chatStream() acquires a lease for the requested concrete model id', async () => {
+    globalThis.fetch = vi.fn(async () =>
+      streamResponse(['data: [DONE]\n']),
+    ) as unknown as typeof fetch;
+
+    const backend = new LlamaServerBackend();
+    for await (const _chunk of backend.chatStream({
+      modelId: '14b',
+      messages: [{ role: 'user', content: 'hi' }],
+    })) {
+      // drain
+    }
+
+    expect(getLlmServer().ensureLease).toHaveBeenCalledWith({ modelId: '14b' });
   });
 
   it('chatStream() emits cancel marker when signal aborts mid-stream', async () => {

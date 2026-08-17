@@ -5,6 +5,7 @@ export interface InsightContextBudget {
   finalOutputTokens: number;
   mapOutputTokens: number;
   safetyMarginTokens: number;
+  promptOverheadTokens: number;
 }
 
 export interface InsightContextWindow {
@@ -29,26 +30,38 @@ export const DEFAULT_INSIGHT_CONTEXT_BUDGET: InsightContextBudget = {
   finalOutputTokens: 4096,
   mapOutputTokens: 1024,
   safetyMarginTokens: 512,
+  promptOverheadTokens: 384,
 };
 
 const CJK_RE = /[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/u;
+const ASCII_WORD_RE = /[A-Za-z0-9_]/;
+const WHITESPACE_RE = /\s/;
 
 export function estimateTextTokens(text: string): number {
   let cjk = 0;
-  let other = 0;
+  let asciiWordChars = 0;
+  let punctuation = 0;
+  let whitespace = 0;
   for (const char of text) {
-    if (CJK_RE.test(char)) cjk++;
-    else other++;
+    if (CJK_RE.test(char)) {
+      cjk++;
+    } else if (ASCII_WORD_RE.test(char)) {
+      asciiWordChars++;
+    } else if (WHITESPACE_RE.test(char)) {
+      whitespace++;
+    } else {
+      punctuation++;
+    }
   }
-  return Math.max(1, Math.ceil(cjk + other / 4));
+  return Math.max(1, Math.ceil(cjk + asciiWordChars / 3 + punctuation + whitespace / 8));
 }
 
 function normalizeBudget(overrides: Partial<InsightContextBudget> = {}): InsightContextBudget {
   const budget = { ...DEFAULT_INSIGHT_CONTEXT_BUDGET, ...overrides };
-  if (budget.contextWindowTokens <= budget.finalOutputTokens + budget.safetyMarginTokens) {
+  if (budget.contextWindowTokens <= budget.finalOutputTokens + budget.safetyMarginTokens + budget.promptOverheadTokens) {
     throw new Error('INSIGHT_CONTEXT_BUDGET_TOO_SMALL');
   }
-  if (budget.contextWindowTokens <= budget.mapOutputTokens + budget.safetyMarginTokens) {
+  if (budget.contextWindowTokens <= budget.mapOutputTokens + budget.safetyMarginTokens + budget.promptOverheadTokens) {
     throw new Error('INSIGHT_CONTEXT_BUDGET_TOO_SMALL');
   }
   return budget;
@@ -124,10 +137,12 @@ export function planInsightContext(
   const transcriptTokens = estimateTextTokens(transcript);
   const singleInputBudget = budget.contextWindowTokens
     - budget.finalOutputTokens
-    - budget.safetyMarginTokens;
+    - budget.safetyMarginTokens
+    - budget.promptOverheadTokens;
   const mapInputBudget = budget.contextWindowTokens
     - budget.mapOutputTokens
-    - budget.safetyMarginTokens;
+    - budget.safetyMarginTokens
+    - budget.promptOverheadTokens;
 
   if (transcriptTokens <= singleInputBudget) {
     return {

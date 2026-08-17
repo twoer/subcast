@@ -17,6 +17,7 @@ import {
 } from './insightReduce';
 import { getDb } from './db';
 import { logEvent } from './log';
+import { sanitizeUserErrorMessage } from './logSanitize';
 import { writeInsightArtifact } from './artifactStore';
 import type { Cue } from './vtt';
 import type { QueueActiveLLMTask as ActiveLLMTask } from './queueTypes';
@@ -25,6 +26,7 @@ import { isLlmConfigError } from '#shared/errorCodes';
 import type { LlmModelId } from '#shared/llmModels';
 
 export const TEMPS = [0.3, 0.0] as const;
+const MODEL_UNAVAILABLE_MESSAGE = 'Local LLM model is not configured or unavailable.';
 
 export interface InsightWorkerParams {
   videoSha: string;
@@ -57,7 +59,8 @@ export async function runInsightWorker(
             messages,
             cues,
             temperature: TEMPS[attempt]!,
-            streamTokens: attempt === 0,
+          streamTokens: attempt === 0,
+            modelId: model,
           })
         : await runMapReduceInsight({
             active,
@@ -66,6 +69,7 @@ export async function runInsightWorker(
             uiLanguage,
             cues,
             temperature: TEMPS[attempt]!,
+            modelId: model,
           });
 
       const payload = {
@@ -101,12 +105,16 @@ export async function runInsightWorker(
       if (isLlmConfigError(errMsg)) {
         db.prepare(
           `UPDATE insight_tasks SET status='error', error_msg=?, error_code='MODEL_NOT_CONFIGURED', completed_at=? WHERE id=?`,
-        ).run(errMsg, Date.now(), taskId);
-        emit({ event: 'error', data: { code: 'MODEL_NOT_CONFIGURED', message: errMsg } });
+        ).run(MODEL_UNAVAILABLE_MESSAGE, Date.now(), taskId);
+        emit({
+          event: 'error',
+          data: { code: 'MODEL_NOT_CONFIGURED', message: MODEL_UNAVAILABLE_MESSAGE },
+        });
         return;
       }
       if (attempt >= TEMPS.length) {
         const message = err instanceof Error ? err.message : String(err);
+        const userMessage = sanitizeUserErrorMessage(message);
         logEvent({
           level: 'warn',
           event: 'insights_parse_failed',
@@ -118,8 +126,8 @@ export async function runInsightWorker(
         });
         db.prepare(
           `UPDATE insight_tasks SET status='error', error_msg=?, error_code='PARSE_FAILED', completed_at=? WHERE id=?`,
-        ).run(message, Date.now(), taskId);
-        emit({ event: 'error', data: { code: 'PARSE_FAILED', message } });
+        ).run(userMessage, Date.now(), taskId);
+        emit({ event: 'error', data: { code: 'PARSE_FAILED', message: userMessage } });
         return;
       }
     }
@@ -133,10 +141,12 @@ async function runSinglePassInsight(input: {
   cues: readonly Cue[];
   temperature: number;
   streamTokens: boolean;
+  modelId: LlmModelId;
 }): Promise<Insights> {
   const backend = llmBackend();
   let raw = '';
   const stream = backend.chatStream({
+    modelId: input.modelId,
     messages: input.messages,
     temperature: input.temperature,
     maxTokens: 4096,
@@ -164,6 +174,7 @@ async function runMapReduceInsight(input: {
   uiLanguage: 'zh-CN' | 'en';
   cues: readonly Cue[];
   temperature: number;
+  modelId: LlmModelId;
 }): Promise<Insights> {
   const backend = llmBackend();
   const partials: PartialInsight[] = [];
@@ -176,6 +187,7 @@ async function runMapReduceInsight(input: {
 
   for (const window of input.contextPlan.windows) {
     const result = await backend.chat({
+      modelId: input.modelId,
       messages: buildInsightMapMessages({
         transcriptWindow: window.text,
         uiLanguage: input.uiLanguage,
@@ -205,6 +217,7 @@ async function runMapReduceInsight(input: {
     data: { phase: 'reduce', doneWindows: totalWindows, totalWindows, progressPct: 90 },
   });
   const reduced = await backend.chat({
+    modelId: input.modelId,
     messages: buildInsightReduceMessages({ uiLanguage: input.uiLanguage, partials }),
     temperature: input.temperature,
     maxTokens: 4096,

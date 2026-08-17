@@ -27,6 +27,8 @@ describe('InvocationSpec', () => {
       kind: 'translate',
       modelId: '8b',
       backend: 'llama-server',
+      taskRole: 'translate',
+      policyId: 'llm-task-policy-v1',
       promptVersion: expect.any(String),
       schemaVersion: expect.any(String),
       sourceRevision: 'transcript:abc',
@@ -61,6 +63,8 @@ describe('InvocationSpec', () => {
 
     expect(spec).toMatchObject({
       kind: 'insight',
+      taskRole: 'insight',
+      policyId: 'llm-task-policy-v1',
       modelId: '14b',
       language: 'en',
       generation: {
@@ -106,5 +110,38 @@ describe('InvocationSpec', () => {
     expect(invocationFingerprint(base)).not.toBe(invocationFingerprint(changedModel));
     expect(invocationFingerprint(base)).not.toBe(invocationFingerprint(changedSource));
   });
-});
 
+  it('keys fingerprints by policy id and task role, but not policy reason', () => {
+    const base = buildInsightInvocationSpec({
+      modelId: '8b',
+      sourceRevision: 'transcript:abc',
+      uiLanguage: 'en',
+      policyId: 'policy-a',
+      policyReason: 'selected-balanced',
+    });
+    const sameWithDifferentReason = buildInsightInvocationSpec({
+      modelId: '8b',
+      sourceRevision: 'transcript:abc',
+      uiLanguage: 'en',
+      policyId: 'policy-a',
+      policyReason: 'diagnostic-only-reason',
+    });
+    const changedPolicy = buildInsightInvocationSpec({
+      modelId: '8b',
+      sourceRevision: 'transcript:abc',
+      uiLanguage: 'en',
+      policyId: 'policy-b',
+    });
+    const changedTaskRole = buildInsightInvocationSpec({
+      modelId: '8b',
+      sourceRevision: 'transcript:abc',
+      uiLanguage: 'en',
+      policyId: 'policy-a',
+      taskRole: 'insight-reduce',
+    });
+
+    expect(invocationFingerprint(base)).toBe(invocationFingerprint(sameWithDifferentReason));
+    expect(invocationFingerprint(base)).not.toBe(invocationFingerprint(changedPolicy));
+    expect(invocationFingerprint(base)).not.toBe(invocationFingerprint(changedTaskRole));
+  });
+});
