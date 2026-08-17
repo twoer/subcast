@@ -75,6 +75,21 @@ describe('batchRepo', () => {
     expect(detail?.items.every((i) => i.status === 'queued')).toBe(true);
   });
 
+  it('persists fast-first batch execution strategy', () => {
+    const { id } = createBatchJob({
+      name: 'Long videos',
+      preset: 'long_media_fast_first',
+      options: {
+        ...OPTIONS,
+        diarize: true,
+        executionStrategy: 'fast_first',
+      },
+      videoShas: [HASH_A],
+    });
+
+    expect(getBatchJob(id)?.options.executionStrategy).toBe('fast_first');
+  });
+
   it('updates item steps and recomputes aggregate job counts', () => {
     const { id } = createBatchJob({
       name: 'Batch',
@@ -97,6 +112,22 @@ describe('batchRepo', () => {
       doneItems: 1,
       failedItems: 1,
     });
+  });
+
+  it('counts batch items with original subtitles ready', () => {
+    const { id } = createBatchJob({
+      name: 'Batch',
+      preset: 'long_media_fast_first',
+      options: { ...OPTIONS, executionStrategy: 'fast_first' },
+      videoShas: [HASH_A, HASH_B],
+    });
+    const detail = getBatchJob(id)!;
+
+    markItemStep(detail.items[0]!.id, 'transcribe', 'done');
+    markItemStep(detail.items[1]!.id, 'transcribe', 'skipped');
+
+    expect(getBatchJob(id)?.transcribedItems).toBe(2);
+    expect(listBatchJobs().find((job) => job.id === id)?.transcribedItems).toBe(2);
   });
 
   it('marks a batch completed when every item completes', () => {

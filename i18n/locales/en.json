@@ -313,6 +313,7 @@
     "defaultName": "Batch · {count} files",
     "uploadProgress": "Uploading {done}/{total}",
     "summary": "{done} done · {failed} failed · {total} total",
+    "originalReady": "Original subtitles ready for {done}/{total}",
     "retryFailed": "Retry failed items",
     "create": {
       "title": "Batch process {count} files",
@@ -336,6 +337,7 @@
       "transcribe_translate": "Transcribe+translate",
       "transcribe_insights": "Transcribe+summary",
       "transcribe_translate_insights": "Transcribe+translate+summary",
+      "long_media_fast_first": "Fast subtitles first",
       "full": "All steps"
     },
     "presetDescriptions": {
@@ -343,6 +345,7 @@
       "transcribe_translate": "Runs transcription and translation.",
       "transcribe_insights": "Runs transcription and AI summary.",
       "transcribe_translate_insights": "Runs transcription, translation, and AI summary.",
+      "long_media_fast_first": "Runs transcription for every file first, then translation. AI summary and speaker recognition can be added later from the player.",
       "full": "Runs transcription, translation, AI summary, and speaker recognition."
     },
     "errors": {

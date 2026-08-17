@@ -11,6 +11,18 @@ vi.hoisted(() => {
   process.env.SUBCAST_HOME = mkdtempSync(join(tmpdir(), 'subcast-batch-runner-'));
 });
 
+const { logEventMock } = vi.hoisted(() => ({
+  logEventMock: vi.fn(),
+}));
+
+vi.mock('../log', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../log')>();
+  return {
+    ...actual,
+    logEvent: logEventMock,
+  };
+});
+
 /* eslint-disable import/first -- SUBCAST_HOME must be set before db import */
 import type { BatchOptions } from '../../types/batch';
 import { cancelBatch, createBatchJob, getBatchJob } from '../batchRepo';
@@ -65,6 +77,9 @@ function fakeAdapter(calls: string[], fail?: string): BatchRunnerAdapter {
 }
 
 beforeEach(resetDb);
+beforeEach(() => {
+  logEventMock.mockClear();
+});
 
 describe('runBatchOnce', () => {
   it('runs the full selected workflow for one file before starting the next', async () => {
@@ -93,6 +108,127 @@ describe('runBatchOnce', () => {
       doneItems: 2,
       failedItems: 0,
     });
+  });
+
+  it('fast-first transcribes every file before running enhancements', async () => {
+    const { id } = createBatchJob({
+      name: 'Long batch',
+      preset: 'long_media_fast_first',
+      options: options({ executionStrategy: 'fast_first' }),
+      videoShas: [HASH_A, HASH_B],
+    });
+    const calls: string[] = [];
+
+    await runBatchOnce(id, { adapter: fakeAdapter(calls) });
+
+    expect(calls).toEqual([
+      'a:transcribe',
+      'b:transcribe',
+      'a:translate:zh-CN',
+      'a:insights',
+      'a:diarize',
+      'b:translate:zh-CN',
+      'b:insights',
+      'b:diarize',
+    ]);
+    expect(getBatchJob(id)).toMatchObject({
+      status: 'completed',
+      doneItems: 2,
+      failedItems: 0,
+    });
+  });
+
+  it('logs sanitized per-stage durations', async () => {
+    const { id } = createBatchJob({
+      name: 'Batch',
+      preset: 'full',
+      options: options(),
+      videoShas: [HASH_A],
+    });
+
+    await runBatchOnce(id, { adapter: fakeAdapter([]) });
+
+    const stageEvents = logEventMock.mock.calls
+      .map((call) => call[0])
+      .filter((entry) => entry.event === 'batch_item_stage_done');
+    expect(stageEvents.map((entry) => entry.stage)).toEqual([
+      'transcribe',
+      'translate',
+      'insights',
+      'diarize',
+    ]);
+    for (const entry of stageEvents) {
+      expect(entry).toMatchObject({
+        level: 'info',
+        batchId: id,
+        videoSha: HASH_A,
+        executionStrategy: 'complete_each_file',
+      });
+      expect(typeof entry.itemId).toBe('string');
+      expect(typeof entry.durationMs).toBe('number');
+      expect(entry.durationMs).toBeGreaterThanOrEqual(0);
+      expect(Object.keys(entry).sort()).toEqual([
+        'batchId',
+        'durationMs',
+        'event',
+        'executionStrategy',
+        'itemId',
+        'level',
+        'stage',
+        'videoSha',
+      ]);
+    }
+  });
+
+  it('fast-first keeps transcribed items running while enhancements wait', async () => {
+    const { id } = createBatchJob({
+      name: 'Long batch',
+      preset: 'long_media_fast_first',
+      options: options({ executionStrategy: 'fast_first' }),
+      videoShas: [HASH_A, HASH_B],
+    });
+    const calls: string[] = [];
+    let releaseTranslate!: () => void;
+    let blockedFirstTranslate = false;
+    const adapter = fakeAdapter(calls);
+    adapter.runTranslate = async (hash, lang) => {
+      calls.push(`${hash[0]}:translate:${lang}`);
+      if (blockedFirstTranslate) return;
+      blockedFirstTranslate = true;
+      await new Promise<void>((resolve) => {
+        releaseTranslate = resolve;
+      });
+    };
+
+    const running = runBatchOnce(id, { adapter });
+    await vi.waitFor(() => {
+      expect(calls).toEqual(['a:transcribe', 'b:transcribe', 'a:translate:zh-CN']);
+    });
+
+    const job = getBatchJob(id)!;
+    expect(job).toMatchObject({ status: 'running', doneItems: 0, failedItems: 0 });
+    expect(job.items).toEqual([
+      expect.objectContaining({
+        status: 'running',
+        currentStep: 'translate',
+        stepStatus: expect.objectContaining({
+          transcribe: 'done',
+          translate: { 'zh-CN': 'running' },
+        }),
+      }),
+      expect.objectContaining({
+        status: 'running',
+        currentStep: 'transcribe',
+        stepStatus: expect.objectContaining({
+          transcribe: 'done',
+          translate: { 'zh-CN': 'pending' },
+        }),
+      }),
+    ]);
+
+    releaseTranslate();
+    await running;
+    expect(getBatchJob(id)).toMatchObject({ status: 'completed', doneItems: 2 });
   });
 
   it('skips artifacts that already exist', async () => {

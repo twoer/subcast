@@ -22,6 +22,7 @@ interface BatchJobRow {
   total_items: number;
   done_items: number;
   failed_items: number;
+  transcribed_items?: number;
   created_at: number;
   started_at: number | null;
   completed_at: number | null;
@@ -62,6 +63,14 @@ function parseStepStatus(raw: string): BatchStepStatus {
   return JSON.parse(raw) as BatchStepStatus;
 }
 
+function isTranscribeReady(state: BatchStepState | undefined): boolean {
+  return state === 'done' || state === 'skipped';
+}
+
+function countTranscribedItems(items: BatchJobDetail['items']): number {
+  return items.filter((item) => isTranscribeReady(item.stepStatus.transcribe)).length;
+}
+
 function mapJob(row: BatchJobRow): BatchJobSummary {
   return {
     id: row.id,
@@ -72,6 +81,7 @@ function mapJob(row: BatchJobRow): BatchJobSummary {
     totalItems: row.total_items,
     doneItems: row.done_items,
     failedItems: row.failed_items,
+    transcribedItems: row.transcribed_items ?? 0,
     createdAt: row.created_at,
     startedAt: row.started_at,
     completedAt: row.completed_at,
@@ -128,7 +138,19 @@ export function createBatchJob(input: {
 
 export function listBatchJobs(): BatchJobSummary[] {
   const rows = getDb()
-    .prepare(`SELECT * FROM batch_jobs ORDER BY created_at DESC, rowid DESC`)
+    .prepare(
+      `SELECT j.*,
+              COALESCE(SUM(
+                CASE
+                  WHEN json_extract(i.step_status_json, '$.transcribe') IN ('done', 'skipped') THEN 1
+                  ELSE 0
+                END
+              ), 0) AS transcribed_items
+       FROM batch_jobs j
+       LEFT JOIN batch_items i ON i.batch_id = j.id
+       GROUP BY j.id
+       ORDER BY j.created_at DESC, j.rowid DESC`,
+    )
     .all() as BatchJobRow[];
   return rows.map(mapJob);
 }
@@ -146,7 +168,11 @@ export function getBatchJob(id: string): BatchJobDetail | null {
        ORDER BY i.created_at ASC, i.rowid ASC`,
     )
     .all(id) as BatchItemRow[];
-  return { ...mapJob(job), items: items.map(mapItem) };
+  const mappedItems = items.map(mapItem);
+  return {
+    ...mapJob({ ...job, transcribed_items: countTranscribedItems(mappedItems) }),
+    items: mappedItems,
+  };
 }
 
 export function markItemStep(

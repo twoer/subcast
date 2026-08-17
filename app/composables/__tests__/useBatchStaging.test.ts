@@ -13,6 +13,13 @@ const batchOptions: BatchOptions = {
   insights: false,
   diarize: false,
 };
+const fastFirstOptions: BatchOptions = {
+  whisperModel: 'base',
+  targetLangs: ['zh-CN'],
+  insights: false,
+  diarize: false,
+  executionStrategy: 'fast_first',
+};
 
 function file(name: string): File {
   return new File(['x'], name);
@@ -106,7 +113,7 @@ describe('useBatchStaging', () => {
     batch.pendingBatchHashes.value = ['hash-a'];
     batch.pendingBatchStageIds.value = ['stage-a'];
 
-    await batch.startBatchUpload({ preset: 'fast', options: batchOptions });
+    await batch.startBatchUpload({ preset: 'long_media_fast_first', options: fastFirstOptions });
 
     expect(fetcher).toHaveBeenNthCalledWith(1, '/api/batches/commit', {
       method: 'POST',
@@ -116,9 +123,9 @@ describe('useBatchStaging', () => {
       method: 'POST',
       body: {
         name: 'batch.defaultName:{"count":1}',
-        preset: 'fast',
+        preset: 'long_media_fast_first',
         videoShas: ['hash-a'],
-        options: batchOptions,
+        options: fastFirstOptions,
       },
     });
     expect(batch.pendingBatchFiles.value).toEqual([]);

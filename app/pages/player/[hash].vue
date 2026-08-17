@@ -826,8 +826,10 @@ watch(activeIdx, (idx) => {
             <TabsList class="grid w-full grid-cols-2">
               <TabsTrigger value="subtitles">{{ t('player.subtitles') }}</TabsTrigger>
               <TabsTrigger value="insights">
-                <Sparkles class="mr-1 h-3.5 w-3.5" />
-                {{ t('player.insights.tabLabel') }}
+                <span class="inline-flex items-center gap-1">
+                  <Sparkles class="size-3.5 shrink-0" />
+                  <span>{{ t('player.insights.tabLabel') }}</span>
+                </span>
               </TabsTrigger>
             </TabsList>
             <TabsContent value="subtitles" class="flex flex-1 flex-col gap-2 min-h-0">
@@ -888,8 +890,10 @@ watch(activeIdx, (idx) => {
                     :class="textVariant === 'polished' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
                     @click="setVariant('polished')"
                   >
-                    {{ t('player.polish.polishedLabel') }}
-                    <Loader2 v-if="polishRunning" class="ml-1 inline h-3 w-3 animate-spin" />
+                    <span class="inline-flex items-center gap-1">
+                      <span>{{ t('player.polish.polishedLabel') }}</span>
+                      <Loader2 v-if="polishRunning" class="size-3 shrink-0 animate-spin" />
+                    </span>
                   </button>
                 </div>
                 <Button
@@ -899,15 +903,17 @@ watch(activeIdx, (idx) => {
                   class="h-8 shrink-0 gap-1.5 text-xs"
                   @click="openPolishStream"
                 >
-                  <Sparkles class="h-3.5 w-3.5" />
-                  {{ t('player.polish.runButton') }}
+                  <span class="inline-flex items-center gap-1.5">
+                    <Sparkles class="size-3.5 shrink-0" />
+                    <span>{{ t('player.polish.runButton') }}</span>
+                  </span>
                 </Button>
                 <span
                   v-if="polishRunning && !showVariantToggle"
                   class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border/60 bg-muted/40 px-2.5 text-xs text-muted-foreground"
                 >
-                  <Loader2 class="h-3 w-3 animate-spin" />
-                  {{ t('player.polish.runningLabel', { pct: polishProgress ?? 0 }) }}
+                  <Loader2 class="size-3 shrink-0 animate-spin" />
+                  <span>{{ t('player.polish.runningLabel', { pct: polishProgress ?? 0 }) }}</span>
                 </span>
                 <ViewToggle
                   v-if="subtitleView.toggleVisible.value"

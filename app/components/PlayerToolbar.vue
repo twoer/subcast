@@ -132,15 +132,15 @@ function onPlaybackRateUpdate(value: unknown): void {
           </span>
 
           <span v-if="isDiarizing" class="inline-flex items-center gap-1">
-            <Loader2 class="h-3 w-3 animate-spin" />
+            <Loader2 class="size-3 shrink-0 animate-spin" />
             {{ t('player.diarize.diarizing') }}
           </span>
           <span v-else-if="speakerCount === 1" class="inline-flex items-center gap-1">
-            <UsersRound class="h-3 w-3" />
+            <UsersRound class="size-3 shrink-0" />
             {{ t('player.diarize.singleSpeakerBadge') }}
           </span>
           <span v-else-if="speakerCount >= 2" class="inline-flex items-center gap-1">
-            <UsersRound class="h-3 w-3" />
+            <UsersRound class="size-3 shrink-0" />
             {{ t('player.diarize.doneBadge', { n: speakerCount }) }}
           </span>
 
@@ -251,11 +251,15 @@ function onPlaybackRateUpdate(value: unknown): void {
               : 'text-muted-foreground hover:bg-accent hover:text-foreground'"
             @click="emit('runDiarize')"
           >
-            <AlertCircle v-if="diarizeActionFailed" />
-            <UsersRound v-else />
-            {{ diarizeActionFailed
-              ? t('player.diarize.retryButton')
-              : t('player.diarize.runButton') }}
+            <span class="inline-flex items-center gap-1.5">
+              <AlertCircle v-if="diarizeActionFailed" class="size-4 shrink-0" />
+              <UsersRound v-else class="size-4 shrink-0" />
+              <span>
+                {{ diarizeActionFailed
+                  ? t('player.diarize.retryButton')
+                  : t('player.diarize.runButton') }}
+              </span>
+            </span>
           </Button>
         </TooltipTrigger>
         <TooltipContent class="max-w-xs">

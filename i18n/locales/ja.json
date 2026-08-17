@@ -313,6 +313,7 @@
     "defaultName": "バッチ処理 · {count} 件のファイル",
     "uploadProgress": "アップロード {done}/{total}",
     "summary": "{done} 完了 · {failed} 失敗 · 合計 {total}",
+    "originalReady": "元字幕の作成完了: {done}/{total}",
     "retryFailed": "失敗した項目を再試行",
     "create": {
       "title": "{count} 件のファイルをバッチ処理",
@@ -336,6 +337,7 @@
       "transcribe_translate": "文字起こし+翻訳",
       "transcribe_insights": "文字起こし+要約",
       "transcribe_translate_insights": "文字起こし+翻訳+要約",
+      "long_media_fast_first": "字幕を先に作成",
       "full": "すべてのステップ"
     },
     "presetDescriptions": {
@@ -343,6 +345,7 @@
       "transcribe_translate": "実行内容：文字起こし、翻訳。",
       "transcribe_insights": "実行内容：文字起こし、AI 要約。",
       "transcribe_translate_insights": "実行内容：文字起こし、翻訳、AI 要約。",
+      "long_media_fast_first": "先にすべてのファイルの文字起こしを行い、その後で翻訳します。AI 要約と話者識別はプレイヤーから後で追加できます。",
       "full": "実行内容：文字起こし、翻訳、AI 要約、話者識別。"
     },
     "errors": {

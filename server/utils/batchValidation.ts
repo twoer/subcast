@@ -8,12 +8,14 @@ export const BATCH_PRESETS = [
   'transcribe_translate',
   'transcribe_insights',
   'transcribe_translate_insights',
+  'long_media_fast_first',
   'full',
 ] as const;
 
 export type BatchPreset = typeof BATCH_PRESETS[number];
 
 const VALID_LANG = /^[a-z]{2}(-[A-Z]{2})?$/;
+const VALID_EXECUTION_STRATEGIES = ['complete_each_file', 'fast_first'] as const;
 
 export function isBatchPreset(value: unknown): value is BatchPreset {
   return typeof value === 'string' && BATCH_PRESETS.includes(value as BatchPreset);
@@ -39,6 +41,12 @@ export function parseBatchOptions(value: unknown): BatchOptions | null {
   if (raw.diarizeTopK !== undefined && (!Number.isInteger(raw.diarizeTopK) || raw.diarizeTopK < 1)) {
     return null;
   }
+  if (
+    raw.executionStrategy !== undefined
+    && !VALID_EXECUTION_STRATEGIES.includes(raw.executionStrategy)
+  ) {
+    return null;
+  }
   return {
     whisperModel: raw.whisperModel,
     targetLangs: [...new Set(raw.targetLangs)],
@@ -46,6 +54,7 @@ export function parseBatchOptions(value: unknown): BatchOptions | null {
     insightLanguage: raw.insightLanguage,
     diarize: raw.diarize,
     diarizeTopK: raw.diarizeTopK,
+    executionStrategy: raw.executionStrategy,
   };
 }
 

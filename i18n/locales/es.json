@@ -313,6 +313,7 @@
     "defaultName": "Lote · {count} archivos",
     "uploadProgress": "Subiendo {done}/{total}",
     "summary": "{done} completados · {failed} fallidos · {total} en total",
+    "originalReady": "Subtítulos originales listos: {done}/{total}",
     "retryFailed": "Reintentar los fallidos",
     "create": {
       "title": "Procesar {count} archivos por lote",
@@ -336,6 +337,7 @@
       "transcribe_translate": "Transcribir+traducir",
       "transcribe_insights": "Transcribir+resumen",
       "transcribe_translate_insights": "Transcribir+traducir+resumen",
+      "long_media_fast_first": "Subtítulos primero",
       "full": "Todos los pasos"
     },
     "presetDescriptions": {
@@ -343,6 +345,7 @@
       "transcribe_translate": "Ejecuta: transcripción y traducción.",
       "transcribe_insights": "Ejecuta: transcripción y resumen IA.",
       "transcribe_translate_insights": "Ejecuta: transcripción, traducción y resumen IA.",
+      "long_media_fast_first": "Transcribe primero todos los archivos y luego traduce. El resumen IA y el reconocimiento de hablantes pueden añadirse después desde el reproductor.",
       "full": "Ejecuta: transcripción, traducción, resumen IA y reconocimiento de hablantes."
     },
     "errors": {

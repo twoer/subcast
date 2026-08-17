@@ -119,6 +119,49 @@ Known warnings:
 
 Release decision: **no 0.5.2 yet**. The hardening work is useful and verified, but it is not a packaging/runtime emergency. Keep accumulating confidence and only prepare 0.5.2 if a follow-up packaged smoke or tester feedback shows these changes should ship immediately.
 
+### v0.5.1 fast-first packaged checkpoint — 2026-08-18
+
+> Scope: release-candidate confidence check for the long-media fast-first batch flow. This used a locally built macOS arm64 packaged app from the post-0.5.1 branch, with real files from `/Users/zhangkun/Documents/Backup/downloads-260816/测试音频`.
+
+Environment: MacBook Pro · Apple M3 Pro · 36 GB RAM · macOS arm64 · packaged app from `dist-electron/Subcast-0.5.1-arm64.dmg`.
+
+Commit range at checkpoint:
+
+- `main` was ahead of `origin/main` by 15 commits.
+- Relevant fast-first commits: `f6889c0`, `968e3de`, `0bf5de6`, `a1f54bb`.
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| `pnpm build:desktop:mac` | PASS | Built `dist-electron/Subcast-0.5.1-arm64.dmg` and `.dmg.blockmap` |
+| DMG attach / CRC | PASS | Mounted `/Volumes/Subcast 0.5.1`; detached after verification |
+| Packaged `whisper-cli --help` | PASS | Exit code 0 |
+| Packaged `llama-server --help` | PASS | Exit code 0 |
+| Packaged `ffmpeg` / `yt-dlp` | PASS | Both executable from `Contents/Resources` |
+| Whisper rpaths | PASS | `whisper-cli` rpath is `@loader_path/whisper-libs`; `whisper-libs/*.dylib` rpaths are `@loader_path` |
+| Local-path scan | PASS | No `/Users/...`, `Documents/Code`, or `node_modules/nodejs-whisper` paths in packaged whisper/llama load commands scan |
+| Whole-app codesign deep verify | Known unsigned-local caveat | Local unsigned package returned `code has no resources but signature indicates they must be present`; sidecars were still executable and ad-hoc signed |
+
+| Fast-first smoke item | Result | Notes |
+|-----------------------|--------|-------|
+| Batch preset | PASS | SQLite batch `4725b454-12ab-4d70-81cc-dc0d2ed89453`: `preset=long_media_fast_first`, `executionStrategy=fast_first` |
+| Batch completion | PASS | 10 total, 10 completed, 0 failed; completed at `2026-08-17 23:56:54` local time |
+| Fast-first ordering | PASS | Logs show `transcribe` 10/10 before `translate` 10/10 |
+| Original subtitle availability | PASS | All 10 files completed the transcription pass before translation pass drained |
+| Optional work scope | PASS | `insights` and `diarize` were skipped by the fast-first preset, matching the conservative long-media default |
+| Stage telemetry | PASS | `batch_item_stage_done` logged sanitized `batchId`, `itemId`, `videoSha`, `stage`, `durationMs`, and `executionStrategy` only |
+| New-batch errors | PASS | No warn/error for `4725b454-12ab-4d70-81cc-dc0d2ed89453` |
+| Sidecar release | PASS | `whisper-server` was gone after transcription; `llama-server` RSS was about 9.9 GB during idle keepalive, then exited automatically after the idle window |
+
+Observed timings:
+
+| Stage | Count | Notable timings |
+|-------|-------|-----------------|
+| Transcribe | 10/10 | Fast files completed in 0.1-4.9s; the longest transcription was 133.1s |
+| Translate | 10/10 | Fast files completed in 0.3-0.7s; longer files ranged from 10.3s to 76.7s |
+| End-to-end batch | 10/10 | `23:49:53` -> `23:56:54`, about 7m01s |
+
+Release decision: this is enough evidence to treat fast-first as a viable 0.5.2 candidate feature. Do not start adaptive LLM scheduling yet; telemetry shows the main user win is the execution order, not a proven need to change queue policy.
+
 ---
 
 ## Recipes

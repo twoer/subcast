@@ -225,6 +225,12 @@ function batchProgressPct(batch: BatchJobSummary): number {
   return Math.round(((batch.doneItems + batch.failedItems) / batch.totalItems) * 100);
 }
 
+function showBatchTranscribedProgress(batch: BatchJobSummary): boolean {
+  return batch.options.executionStrategy === 'fast_first'
+    && batch.transcribedItems > batch.doneItems
+    && batch.transcribedItems > 0;
+}
+
 async function cancelBatch(batch: BatchJobSummary): Promise<void> {
   await $fetch(`/api/batches/${batch.id}/cancel`, { method: 'POST' });
   await refreshBatches();
@@ -591,6 +597,15 @@ function statusBadgeClass(s: QueueItem['status']) {
                   </div>
                   <div class="mt-1 text-xs text-muted-foreground">
                     {{ t('batch.summary', { done: batch.doneItems, failed: batch.failedItems, total: batch.totalItems }) }}
+                  </div>
+                  <div
+                    v-if="showBatchTranscribedProgress(batch)"
+                    class="mt-1 flex items-center gap-1.5 text-xs text-primary"
+                  >
+                    <FileText class="size-3.5 shrink-0" />
+                    <span class="min-w-0 truncate">
+                      {{ t('batch.originalReady', { done: batch.transcribedItems, total: batch.totalItems }) }}
+                    </span>
                   </div>
                   <Progress
                     v-if="batch.status === 'running' || batch.status === 'queued'"

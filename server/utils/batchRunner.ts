@@ -2,7 +2,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { BatchItemSummary, BatchStepStatus } from '../types/batch';
+import type { BatchItemSummary, BatchOptions } from '../types/batch';
 import { getDb, SUBCAST_PATHS } from './db';
 import { logEvent } from './log';
 import { llmQueue, transcribeQueue, translateQueue } from './queue';
@@ -38,6 +38,31 @@ export interface BatchRunnerAdapter {
 
 interface RunBatchOptions {
   adapter?: BatchRunnerAdapter;
+}
+
+type BatchStage = 'transcribe' | 'translate' | 'insights' | 'diarize';
+
+function executionStrategy(options: BatchOptions): NonNullable<BatchOptions['executionStrategy']> {
+  return options.executionStrategy ?? 'complete_each_file';
+}
+
+function logStageDone(
+  batchId: string,
+  item: BatchItemSummary,
+  options: BatchOptions,
+  stage: BatchStage,
+  startedAt: number,
+): void {
+  logEvent({
+    level: 'info',
+    event: 'batch_item_stage_done',
+    batchId,
+    itemId: item.id,
+    videoSha: item.videoSha,
+    stage,
+    durationMs: Date.now() - startedAt,
+    executionStrategy: executionStrategy(options),
+  });
 }
 
 function terminalFrameError(frame: { event: string; data?: unknown }): Error | null {
@@ -167,27 +192,46 @@ function assertBatchActive(batchId: string): void {
 async function runItem(
   batchId: string,
   item: BatchItemSummary,
-  stepStatus: BatchStepStatus,
   adapter: BatchRunnerAdapter,
-  options: ReturnType<typeof getBatchJob> extends infer T
-    ? T extends { options: infer O } ? O : never
-    : never,
+  options: BatchOptions,
+): Promise<void> {
+  await runItemTranscribeOnly(batchId, item, adapter, options);
+  await runItemEnhancements(batchId, item, adapter, options);
+}
+
+async function runItemTranscribeOnly(
+  batchId: string,
+  item: BatchItemSummary,
+  adapter: BatchRunnerAdapter,
+  options: BatchOptions,
 ): Promise<void> {
   assertBatchActive(batchId);
+  const startedAt = Date.now();
   if (!adapter.hasTranscript(item.videoSha)) {
     markItemStep(item.id, 'transcribe', 'running');
     await adapter.runTranscribe(item.videoSha, options.whisperModel);
     assertBatchActive(batchId);
     markItemStep(item.id, 'transcribe', 'done');
-  } else if (stepStatus.transcribe !== 'done') {
+    logStageDone(batchId, item, options, 'transcribe', startedAt);
+  } else if (item.stepStatus.transcribe !== 'done') {
     markItemStep(item.id, 'transcribe', 'skipped');
+    logStageDone(batchId, item, options, 'transcribe', startedAt);
   }
+}
 
+async function runItemEnhancements(
+  batchId: string,
+  item: BatchItemSummary,
+  adapter: BatchRunnerAdapter,
+  options: BatchOptions,
+): Promise<void> {
   assertBatchActive(batchId);
   const translationJobs: Array<{ lang: string; run: () => Promise<void> }> = [];
   for (const lang of options.targetLangs) {
+    const startedAt = Date.now();
     if (adapter.hasTranslation(item.videoSha, lang)) {
       markItemStep(item.id, 'translate', 'skipped', lang);
+      logStageDone(batchId, item, options, 'translate', startedAt);
       continue;
     }
     markItemStep(item.id, 'translate', 'running', lang);
@@ -198,6 +242,7 @@ async function runItem(
         await adapter.runTranslate(item.videoSha, lang);
         assertBatchActive(batchId);
         markItemStep(item.id, 'translate', 'done', lang);
+        logStageDone(batchId, item, options, 'translate', startedAt);
       },
     });
   }
@@ -210,25 +255,91 @@ async function runItem(
 
   if (options.insights) {
     assertBatchActive(batchId);
+    const startedAt = Date.now();
     if (adapter.hasInsights(item.videoSha, options.insightLanguage ?? 'zh-CN')) {
       markItemStep(item.id, 'insights', 'skipped');
+      logStageDone(batchId, item, options, 'insights', startedAt);
     } else {
       markItemStep(item.id, 'insights', 'running');
       await adapter.runInsights(item.videoSha, options.insightLanguage ?? 'zh-CN');
       assertBatchActive(batchId);
       markItemStep(item.id, 'insights', 'done');
+      logStageDone(batchId, item, options, 'insights', startedAt);
     }
   }
 
   if (options.diarize) {
     assertBatchActive(batchId);
+    const startedAt = Date.now();
     if (adapter.hasDiarization(item.videoSha)) {
       markItemStep(item.id, 'diarize', 'skipped');
+      logStageDone(batchId, item, options, 'diarize', startedAt);
     } else {
       markItemStep(item.id, 'diarize', 'running');
       await adapter.runDiarize(item.videoSha, options.diarizeTopK);
       assertBatchActive(batchId);
       markItemStep(item.id, 'diarize', 'done');
+      logStageDone(batchId, item, options, 'diarize', startedAt);
+    }
+  }
+}
+
+async function runFastFirstBatch(
+  batchId: string,
+  adapter: BatchRunnerAdapter,
+  options: BatchOptions,
+  originalItems: BatchItemSummary[],
+): Promise<void> {
+  for (const originalItem of originalItems) {
+    const currentJob = getBatchJob(batchId);
+    if (!currentJob || currentJob.status === 'canceled') return;
+    const item = currentJob.items.find((candidate) => candidate.id === originalItem.id);
+    if (!item) continue;
+    if (item.status === 'completed' || item.status === 'canceled') continue;
+    if (!markItemStatus(item.id, 'running')) continue;
+    try {
+      await runItemTranscribeOnly(batchId, item, adapter, options);
+      assertBatchActive(batchId);
+    } catch (err) {
+      if (err instanceof BatchCanceledError || isCanceled(batchId)) return;
+      markItemStatus(item.id, 'failed', err instanceof Error ? err.message : String(err));
+      logEvent({
+        level: 'warn',
+        event: 'batch_item_failed',
+        batchId,
+        itemId: item.id,
+        videoSha: item.videoSha,
+        msg: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      recomputeBatchStatus(batchId);
+    }
+  }
+
+  for (const originalItem of originalItems) {
+    const currentJob = getBatchJob(batchId);
+    if (!currentJob || currentJob.status === 'canceled') return;
+    const item = currentJob.items.find((candidate) => candidate.id === originalItem.id);
+    if (!item) continue;
+    if (item.status === 'completed' || item.status === 'failed' || item.status === 'canceled') continue;
+    if (!markItemStatus(item.id, 'running')) continue;
+    try {
+      await runItemEnhancements(batchId, item, adapter, options);
+      assertBatchActive(batchId);
+      markItemStatus(item.id, 'completed');
+    } catch (err) {
+      if (err instanceof BatchCanceledError || isCanceled(batchId)) return;
+      markItemStatus(item.id, 'failed', err instanceof Error ? err.message : String(err));
+      logEvent({
+        level: 'warn',
+        event: 'batch_item_failed',
+        batchId,
+        itemId: item.id,
+        videoSha: item.videoSha,
+        msg: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      recomputeBatchStatus(batchId);
     }
   }
 }
@@ -243,6 +354,12 @@ export async function runBatchOnce(
   if (job.status === 'canceled') return;
 
   markBatchStatus(batchId, 'running');
+  if (executionStrategy(job.options) === 'fast_first') {
+    await runFastFirstBatch(batchId, adapter, job.options, job.items);
+    recomputeBatchStatus(batchId);
+    return;
+  }
+
   for (const originalItem of job.items) {
     const currentJob = getBatchJob(batchId);
     if (!currentJob || currentJob.status === 'canceled') return;
@@ -251,7 +368,7 @@ export async function runBatchOnce(
     if (item.status === 'completed' || item.status === 'canceled') continue;
     if (!markItemStatus(item.id, 'running')) continue;
     try {
-      await runItem(batchId, item, item.stepStatus, adapter, job.options);
+      await runItem(batchId, item, adapter, job.options);
       assertBatchActive(batchId);
       markItemStatus(item.id, 'completed');
     } catch (err) {

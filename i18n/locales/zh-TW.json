@@ -313,6 +313,7 @@
     "defaultName": "批次處理 · {count} 個檔案",
     "uploadProgress": "上傳 {done}/{total}",
     "summary": "{done} 完成 · {failed} 失敗 · 共 {total}",
+    "originalReady": "已生成原始字幕：{done}/{total}",
     "retryFailed": "重試失敗項目",
     "create": {
       "title": "批次處理 {count} 個檔案",
@@ -336,6 +337,7 @@
       "transcribe_translate": "轉錄+翻譯",
       "transcribe_insights": "轉錄+摘要",
       "transcribe_translate_insights": "轉錄+翻譯+摘要",
+      "long_media_fast_first": "優先出字幕",
       "full": "全部步驟"
     },
     "presetDescriptions": {
@@ -343,6 +345,7 @@
       "transcribe_translate": "將執行：轉錄、翻譯。",
       "transcribe_insights": "將執行：轉錄、AI 摘要。",
       "transcribe_translate_insights": "將執行：轉錄、翻譯、AI 摘要。",
+      "long_media_fast_first": "先為所有檔案完成轉錄，再繼續翻譯。AI 摘要和語者辨識可稍後在播放器中追加。",
       "full": "將執行：轉錄、翻譯、AI 摘要、語者辨識。"
     },
     "errors": {

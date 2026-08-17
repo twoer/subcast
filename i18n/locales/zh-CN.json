@@ -313,6 +313,7 @@
     "defaultName": "批量处理 · {count} 个文件",
     "uploadProgress": "上传 {done}/{total}",
     "summary": "{done} 完成 · {failed} 失败 · 共 {total}",
+    "originalReady": "已生成原始字幕：{done}/{total}",
     "retryFailed": "重试失败项",
     "create": {
       "title": "批量处理 {count} 个文件",
@@ -336,6 +337,7 @@
       "transcribe_translate": "转写+翻译",
       "transcribe_insights": "转写+总结",
       "transcribe_translate_insights": "转写+翻译+总结",
+      "long_media_fast_first": "优先出字幕",
       "full": "全部步骤"
     },
     "presetDescriptions": {
@@ -343,6 +345,7 @@
       "transcribe_translate": "将执行：转写、翻译。",
       "transcribe_insights": "将执行：转写、AI 总结。",
       "transcribe_translate_insights": "将执行：转写、翻译、AI 总结。",
+      "long_media_fast_first": "先为所有文件完成转写，再继续翻译。AI 总结和说话人识别可稍后在播放器中追加。",
       "full": "将执行：转写、翻译、AI 总结、说话人识别。"
     },
     "errors": {

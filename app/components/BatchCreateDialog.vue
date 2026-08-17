@@ -18,6 +18,7 @@ type PresetId =
   | 'transcribe_translate'
   | 'transcribe_insights'
   | 'transcribe_translate_insights'
+  | 'long_media_fast_first'
   | 'full';
 
 interface Preset {
@@ -57,6 +58,16 @@ const presets: Preset[] = [
   { id: 'transcribe_translate', icon: Languages, options: { targetLangs: ['zh-CN'], insights: false, diarize: false } },
   { id: 'transcribe_insights', icon: Sparkles, options: { targetLangs: [], insights: true, diarize: false } },
   { id: 'transcribe_translate_insights', icon: Sparkles, options: { targetLangs: ['zh-CN'], insights: true, diarize: false } },
+  {
+    id: 'long_media_fast_first',
+    icon: ListChecks,
+    options: {
+      targetLangs: ['zh-CN'],
+      insights: false,
+      diarize: false,
+      executionStrategy: 'fast_first',
+    },
+  },
   { id: 'full', icon: UsersRound, options: { targetLangs: ['zh-CN'], insights: true, diarize: true } },
 ];
 
@@ -90,6 +101,7 @@ const currentOptions = computed<BatchOptions>(() => {
     insights: preset.options.insights,
     insightLanguage: locale.value.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en',
     diarize: preset.options.diarize,
+    executionStrategy: preset.options.executionStrategy,
   };
 });
 const canStart = computed(() =>
@@ -101,6 +113,14 @@ const canStart = computed(() =>
 watch(selectedPreset, () => {
   if (needsTranslate.value && selectedLangs.value.length === 0) selectedLangs.value = ['zh-CN'];
 });
+
+watch(
+  () => props.open,
+  (open) => {
+    if (!open) return;
+    selectedPreset.value = props.count > 1 ? 'long_media_fast_first' : 'transcribe_insights';
+  },
+);
 
 onMounted(async () => {
   try {
@@ -154,14 +174,14 @@ function start(): void {
     <DialogContent class="max-w-2xl">
       <DialogHeader>
         <DialogTitle class="flex items-center gap-2">
-          <FileStack class="h-4 w-4 text-muted-foreground" />
+          <FileStack class="size-4 shrink-0 text-muted-foreground" />
           {{ t('batch.create.title', { count }) }}
         </DialogTitle>
         <DialogDescription class="pt-1">{{ t('batch.create.desc') }}</DialogDescription>
       </DialogHeader>
 
       <div class="space-y-5">
-        <div class="grid gap-2 sm:grid-cols-5">
+        <div class="grid gap-2 sm:grid-cols-3">
           <button
             v-for="preset in presets"
             :key="preset.id"
@@ -172,8 +192,8 @@ function start(): void {
               : 'border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground'"
             @click="selectedPreset = preset.id"
           >
-            <component :is="preset.icon" class="h-4 w-4" />
-            <span>{{ t(`batch.presets.${preset.id}`) }}</span>
+            <component :is="preset.icon" class="size-4 shrink-0" />
+            <span class="max-w-full break-words leading-tight">{{ t(`batch.presets.${preset.id}`) }}</span>
           </button>
         </div>
 
@@ -242,8 +262,10 @@ function start(): void {
           {{ t('common.cancel') }}
         </Button>
         <Button :disabled="!canStart" @click="start">
-          <Play class="h-4 w-4" />
-          {{ preview?.allReady ? t('batch.create.noWork') : t('batch.create.start') }}
+          <span class="inline-flex items-center gap-1.5">
+            <Play class="size-4 shrink-0" />
+            <span>{{ preview?.allReady ? t('batch.create.noWork') : t('batch.create.start') }}</span>
+          </span>
         </Button>
       </DialogFooter>
     </DialogContent>

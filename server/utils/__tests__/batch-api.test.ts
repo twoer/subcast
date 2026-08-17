@@ -92,11 +92,13 @@ describe('/api/batches', () => {
         insights: true,
         insightLanguage: 'en',
         diarize: true,
+        executionStrategy: 'fast_first',
       },
     }));
 
     expect(res.id).toEqual(expect.any(String));
     expect(getBatchJob(res.id)?.items).toHaveLength(2);
+    expect(getBatchJob(res.id)?.options.executionStrategy).toBe('fast_first');
     expect(startBatch).toHaveBeenCalledWith(res.id);
   });
 
@@ -211,6 +213,21 @@ describe('/api/batches', () => {
         targetLangs: ['../../bad'],
         insights: false,
         diarize: false,
+      },
+    }))).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('rejects invalid batch execution strategies', async () => {
+    await expect(createHandler(eventWithBody({
+      name: 'Bad',
+      preset: 'full',
+      videoShas: [HASH_A],
+      options: {
+        whisperModel: 'base',
+        targetLangs: [],
+        insights: false,
+        diarize: false,
+        executionStrategy: 'surprise_me',
       },
     }))).rejects.toMatchObject({ statusCode: 400 });
   });

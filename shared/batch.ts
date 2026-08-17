@@ -4,6 +4,7 @@ export type BatchJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'ca
 export type BatchItemStatus = BatchJobStatus;
 export type BatchStep = 'transcribe' | 'translate' | 'insights' | 'diarize';
 export type BatchStepState = 'pending' | 'running' | 'done' | 'failed' | 'skipped';
+export type BatchExecutionStrategy = 'complete_each_file' | 'fast_first';
 
 export interface BatchOptions {
   whisperModel: string;
@@ -12,6 +13,7 @@ export interface BatchOptions {
   insightLanguage?: 'zh-CN' | 'en';
   diarize: boolean;
   diarizeTopK?: number;
+  executionStrategy?: BatchExecutionStrategy;
 }
 
 export interface BatchStepStatus {
@@ -30,6 +32,7 @@ export interface BatchJobSummary {
   totalItems: number;
   doneItems: number;
   failedItems: number;
+  transcribedItems: number;
   createdAt: number;
   startedAt: number | null;
   completedAt: number | null;
