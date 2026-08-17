@@ -74,6 +74,32 @@ describe('LlmServer state machine', () => {
     server.dispose();
   });
 
+  it('returns a privacy-safe runtime snapshot without model paths', async () => {
+    const fakeProc = makeFakeProc();
+    const spawnFn = vi.fn(async () => ({ proc: fakeProc, port: 51302 }));
+    const server = new LlmServer({
+      idleShutdownMs: 60_000,
+      modelPath: '/Users/alice/private/models/qwen3-8b.gguf',
+      spawnFn,
+    });
+
+    await server.ensureLease({ modelId: '8b' });
+    const snapshot = server.snapshot();
+
+    expect(snapshot).toMatchObject({
+      state: 'running',
+      modelId: '8b',
+      runtimeProfileId: activeRuntimeProfile().id,
+      idleShutdownMs: 60_000,
+      activeRequests: 0,
+    });
+    expect(snapshot.idleDeadlineAt).toEqual(expect.any(Number));
+    expect(snapshot).not.toHaveProperty('modelPath');
+    expect(snapshot).not.toHaveProperty('port');
+    expect(JSON.stringify(snapshot)).not.toMatch(/\/Users|\.gguf|argv|stderr/);
+    server.dispose();
+  });
+
   it('ensureLease() stops and respawns when the requested model changes', async () => {
     const firstProc = makeFakeProc();
     const secondProc = makeFakeProc();
@@ -114,6 +140,79 @@ describe('LlmServer state machine', () => {
     await vi.runAllTimersAsync();
     expect(server.state).toBe('idle');
     vi.useRealTimers();
+  });
+
+  it('exposes and clears the idle auto-release deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(1_000_000);
+      const fakeProc = makeFakeProc();
+      (fakeProc.kill as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        process.nextTick(() => fakeProc.emit('exit', 0));
+      });
+      const spawnFn = vi.fn(async () => ({ proc: fakeProc, port: 51302 }));
+      const server = new LlmServer({ idleShutdownMs: 5_000, spawnFn });
+
+      await server.ensure();
+
+      expect(server.snapshot()).toMatchObject({
+        state: 'running',
+        idleDeadlineAt: 1_005_000,
+      });
+
+      vi.advanceTimersByTime(5_001);
+      await vi.runAllTimersAsync();
+
+      expect(server.snapshot()).toMatchObject({
+        state: 'idle',
+        modelId: null,
+        runtimeProfileId: null,
+        idleDeadlineAt: null,
+      });
+      server.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not arm idle shutdown while a request is active', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(2_000_000);
+      const fakeProc = makeFakeProc();
+      (fakeProc.kill as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        process.nextTick(() => fakeProc.emit('exit', 0));
+      });
+      const spawnFn = vi.fn(async () => ({ proc: fakeProc, port: 51302 }));
+      const server = new LlmServer({ idleShutdownMs: 5_000, spawnFn });
+
+      await server.ensure();
+      const release = server.beginRequest();
+
+      expect(server.snapshot()).toMatchObject({
+        state: 'running',
+        activeRequests: 1,
+        idleDeadlineAt: null,
+      });
+
+      vi.advanceTimersByTime(10_000);
+      await vi.runOnlyPendingTimersAsync();
+      expect(server.state).toBe('running');
+      expect(fakeProc.kill).not.toHaveBeenCalled();
+
+      release();
+      expect(server.snapshot()).toMatchObject({
+        activeRequests: 0,
+        idleDeadlineAt: 2_015_000,
+      });
+
+      vi.advanceTimersByTime(5_001);
+      await vi.runAllTimersAsync();
+      expect(server.state).toBe('idle');
+      server.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('cancels shutdown if request arrives during stopping', async () => {

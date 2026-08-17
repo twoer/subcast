@@ -103,6 +103,7 @@ async function saveSlice(slice: Partial<Settings>): Promise<void> {
 async function saveActiveModels(): Promise<void> {
   if (!draft.value) return;
   await saveSlice({
+    transcribeEngine: draft.value.transcribeEngine,
     whisperModel: draft.value.whisperModel,
     llmModel: draft.value.llmModel,
   });

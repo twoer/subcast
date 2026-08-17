@@ -19,9 +19,13 @@
 import { createError, defineEventHandler } from 'h3';
 import { existsSync } from 'node:fs';
 import { loadSettings } from '../../utils/settings';
+import { getDb } from '../../utils/db';
 import { listInstalledWhisperModels } from '../../utils/whisperInstalled';
 import { isSenseVoiceReady, senseVoiceModelDir } from '../../utils/sensevoice';
 import { taskModelPolicyDecisions } from '../../utils/taskModelPolicy';
+import { getLlmServer } from '../../utils/llmServer';
+import { getWhisperServer } from '../../utils/whisperServer';
+import { detectSubcastSidecars } from '../../utils/sidecarProcessStatus';
 import { scanLlmModels, findLegacyQwen25Models } from '../../../desktop/modelManager/llmScan';
 import { LLM_MODELS, type LlmModelId } from '#shared/llmModels';
 import { llmModelPath, llmModelsDir } from '../../../desktop/modelManager/llmInstall';
@@ -30,6 +34,47 @@ interface InstalledLlmRow {
   name: LlmModelId;
   filename: string;
   sizeBytes: number;
+}
+
+interface RunningTranscribeTasks {
+  count: number;
+  engines: string[];
+}
+
+function runningLlmTaskCount(): number {
+  try {
+    const row = getDb()
+      .prepare(
+        `SELECT
+           (SELECT COUNT(*) FROM translate_tasks WHERE status='running') +
+           (SELECT COUNT(*) FROM polish_tasks WHERE status='running') +
+           (SELECT COUNT(*) FROM insight_tasks WHERE status='running') AS n`,
+      )
+      .get() as { n?: number } | undefined;
+    return Math.max(0, row?.n ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
+function runningTranscribeTasks(): RunningTranscribeTasks {
+  try {
+    const rows = getDb()
+      .prepare(
+        `SELECT COALESCE(model, 'auto') AS engine, COUNT(*) AS n
+         FROM transcribe_tasks
+         WHERE status='running'
+         GROUP BY COALESCE(model, 'auto')
+         ORDER BY n DESC`,
+      )
+      .all() as { engine?: string; n?: number }[];
+    return {
+      count: rows.reduce((sum, row) => sum + Math.max(0, row.n ?? 0), 0),
+      engines: rows.flatMap((row) => (row.engine ? [row.engine] : [])),
+    };
+  } catch {
+    return { count: 0, engines: [] };
+  }
 }
 
 async function listInstalledLlmModels(): Promise<InstalledLlmRow[]> {
@@ -80,9 +125,41 @@ export default defineEventHandler(async (event) => {
     process.env.SUBCAST_DESKTOP === 'true'
       ? await findLegacyQwen25Models(llmModelsDir()).catch(() => [])
       : [];
+  const runtime = getLlmServer().snapshot();
+  const runningTasks = runningLlmTaskCount();
+  const transcribeTasks = runningTranscribeTasks();
+  const whisperRuntime = getWhisperServer().snapshot();
+  const sidecars = await detectSubcastSidecars();
+  const observedRuntime =
+    runtime.state === 'idle' && sidecars.llamaServer
+      ? {
+          ...runtime,
+          state: 'running' as const,
+          modelId: runtime.modelId ?? settings.llmModel ?? null,
+          idleDeadlineAt: null,
+        }
+      : runtime;
+  const observedWhisperRuntime =
+    whisperRuntime.state === 'idle' && sidecars.whisperServer
+      ? {
+          ...whisperRuntime,
+          state: 'running' as const,
+          idleDeadlineAt: null,
+        }
+      : whisperRuntime;
+  const effectiveRuntime =
+    runningTasks > 0 && observedRuntime.activeRequests === 0
+      ? {
+          ...observedRuntime,
+          state: observedRuntime.state === 'idle' ? 'running' : observedRuntime.state,
+          modelId: observedRuntime.modelId ?? settings.llmModel ?? null,
+          idleDeadlineAt: null,
+          activeRequests: runningTasks,
+        }
+      : observedRuntime;
 
   return {
-    transcribeEngine: settings.transcribeEngine ?? 'sensevoice',
+    transcribeEngine: settings.transcribeEngine ?? 'auto',
     whisper: {
       active: settings.whisperModel,
       installed: whisperInstalled.map((m) => ({
@@ -94,8 +171,15 @@ export default defineEventHandler(async (event) => {
       ready: isSenseVoiceReady(),
       dir: senseVoiceModelDir(),
     },
+    transcribeRuntime: {
+      state: transcribeTasks.count > 0 ? 'running' : observedWhisperRuntime.state,
+      activeTasks: transcribeTasks.count,
+      engines: transcribeTasks.engines,
+      whisper: observedWhisperRuntime,
+    },
     llm: {
       active: settings.llmModel,
+      runtime: effectiveRuntime,
       installed: llmInstalled,
       needsDownload: llmNeedsDownload,
       taskPolicies: settings.llmModel

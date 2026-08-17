@@ -21,7 +21,7 @@
 
 import type { Component } from 'vue';
 import {
-  Plus, Boxes, RefreshCw, Trash2, AlertTriangle, CheckCircle2, Languages, Sparkles, WandSparkles,
+  Activity, Plus, Boxes, RefreshCw, Trash2, AlertTriangle, CheckCircle2, Languages, Sparkles, WandSparkles,
 } from 'lucide-vue-next';
 import {
   Select,
@@ -32,7 +32,7 @@ import {
 } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { WHISPER_MODEL_NAMES } from '#shared/whisperModels';
-import { LLM_MODELS, llmDisplayName, type LlmModelId, type LlmTaskKind } from '#shared/llmModels';
+import { LLM_MODELS, isLlmModelId, llmDisplayName, type LlmModelId, type LlmTaskKind } from '#shared/llmModels';
 import { Badge } from '~/components/ui/badge';
 import { fmtBytes } from '~/utils/format';
 import type { Settings, Hardware, TranscribeEngine } from '@/types/settings';
@@ -54,12 +54,33 @@ const emit = defineEmits<{
 interface WhisperModelRow { name: string; sizeBytes: number }
 interface LlmModelRow { name: LlmModelId; filename: string; sizeBytes: number }
 interface LegacyLlmRow { filename: string; sizeBytes: number }
+type LlmRuntimeState = 'idle' | 'starting' | 'running' | 'stopping';
+interface LlmRuntimeSnapshot {
+  state: LlmRuntimeState;
+  modelId: string | null;
+  runtimeProfileId: string | null;
+  idleShutdownMs: number;
+  idleDeadlineAt: number | null;
+  activeRequests?: number;
+}
+interface TranscribeRuntimeSnapshot {
+  state: LlmRuntimeState;
+  activeTasks: number;
+  engines: string[];
+  whisper?: {
+    state: LlmRuntimeState;
+    idleShutdownMs: number;
+    idleDeadlineAt: number | null;
+  };
+}
 interface ModelsResp {
   transcribeEngine?: TranscribeEngine;
+  transcribeRuntime?: TranscribeRuntimeSnapshot;
   whisper: { active: string; installed: WhisperModelRow[] };
   sensevoice?: { ready: boolean };
   llm: {
     active: LlmModelId | undefined;
+    runtime?: LlmRuntimeSnapshot;
     installed: LlmModelRow[];
     needsDownload?: boolean;
     taskPolicies?: LlmTaskPolicyDecision[];
@@ -110,6 +131,8 @@ const modelsData = ref<ModelsResp | null>(null);
 const modelsLoading = ref(false);
 const modelsErr = ref<string | null>(null);
 const pendingDelete = ref<DeleteTarget | null>(null);
+let modelsRequestInFlight = false;
+let modelsRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
 // SenseVoice install state (download-only, single fixed model).
 const svInstall = ref<SenseVoiceInstallSnapshot | null>(null);
@@ -119,7 +142,105 @@ let svPollTimer: ReturnType<typeof setInterval> | null = null;
 const llmInstall = ref<LlmInstallSnapshot | null>(null);
 let llmPollTimer: ReturnType<typeof setInterval> | null = null;
 
+const runtimeNow = ref(Date.now());
+let runtimeClockTimer: ReturnType<typeof setInterval> | null = null;
+
 const llmNeedsDownload = computed(() => modelsData.value?.llm.needsDownload === true);
+const transcribeRuntime = computed(() => modelsData.value?.transcribeRuntime ?? null);
+const llmRuntime = computed(() => modelsData.value?.llm.runtime ?? null);
+const transcribeRuntimeCountdownMs = computed(() => {
+  const deadline = transcribeRuntime.value?.whisper?.idleDeadlineAt;
+  if (!deadline) return null;
+  return Math.max(0, deadline - runtimeNow.value);
+});
+const transcribeRuntimeEngineLabel = computed(() => {
+  const engine = transcribeRuntime.value?.engines[0];
+  if (engine === 'whisper' || engine === 'sensevoice' || engine === 'auto') return engineName(engine);
+  return engine || engineName(draft.value?.transcribeEngine ?? 'auto');
+});
+const transcribeRuntimeStateLabel = computed(() => {
+  const runtime = transcribeRuntime.value;
+  if (!runtime || runtime.state === 'idle') return t('settings.models.runtimeIdle');
+  if (runtime.state === 'starting') return t('settings.models.runtimeStarting');
+  if (runtime.state === 'stopping') return t('settings.models.runtimeStopping');
+  if (runtime.activeTasks > 0) return t('settings.models.runtimeActive');
+  return t('settings.models.runtimeRunning');
+});
+const transcribeRuntimeBadgeVariant = computed(() => {
+  const state = transcribeRuntime.value?.state ?? 'idle';
+  if (state === 'running') return 'active';
+  if (state === 'idle') return 'outline';
+  return 'secondary';
+});
+const transcribeRuntimeDetail = computed(() => {
+  const runtime = transcribeRuntime.value;
+  if (!runtime || runtime.state === 'idle') return t('settings.models.transcribeRuntimeIdleDetail');
+  if (runtime.activeTasks > 0) {
+    return t('settings.models.transcribeRuntimeActiveDetail', {
+      engine: transcribeRuntimeEngineLabel.value,
+      count: runtime.activeTasks,
+    });
+  }
+  if (runtime.state === 'starting') return t('settings.models.transcribeRuntimeStartingDetail');
+  if (runtime.state === 'stopping') return t('settings.models.transcribeRuntimeStoppingDetail');
+  const countdownMs = transcribeRuntimeCountdownMs.value;
+  if (countdownMs !== null) {
+    return t('settings.models.transcribeRuntimeAutoRelease', {
+      engine: transcribeRuntimeEngineLabel.value,
+      duration: formatRuntimeDuration(countdownMs),
+    });
+  }
+  return t('settings.models.transcribeRuntimeRunningDetail', {
+    engine: transcribeRuntimeEngineLabel.value,
+  });
+});
+const llmRuntimeModelName = computed(() => {
+  const runtimeModel = llmRuntime.value?.modelId;
+  if (isLlmModelId(runtimeModel)) return llmDisplayName(runtimeModel);
+  const configuredModel = draft.value?.llmModel;
+  return configuredModel ? llmDisplayName(configuredModel) : t('settings.models.notConfigured');
+});
+const llmRuntimeCountdownMs = computed(() => {
+  const deadline = llmRuntime.value?.idleDeadlineAt;
+  if (!deadline) return null;
+  return Math.max(0, deadline - runtimeNow.value);
+});
+const llmRuntimeStateLabel = computed(() => {
+  const state = llmRuntime.value?.state ?? 'idle';
+  if (state === 'starting') return t('settings.models.runtimeStarting');
+  if (state === 'running') {
+    return (llmRuntime.value?.activeRequests ?? 0) > 0
+      ? t('settings.models.runtimeActive')
+      : t('settings.models.runtimeRunning');
+  }
+  if (state === 'stopping') return t('settings.models.runtimeStopping');
+  return t('settings.models.runtimeIdle');
+});
+const llmRuntimeBadgeVariant = computed(() => {
+  const state = llmRuntime.value?.state ?? 'idle';
+  if (state === 'running') return 'active';
+  if (state === 'idle') return 'outline';
+  return 'secondary';
+});
+const llmRuntimeDetail = computed(() => {
+  const runtime = llmRuntime.value;
+  if (!runtime || runtime.state === 'idle') return t('settings.models.runtimeIdleDetail');
+  if (runtime.state === 'starting') {
+    return t('settings.models.runtimeStartingDetail', { model: llmRuntimeModelName.value });
+  }
+  if (runtime.state === 'stopping') return t('settings.models.runtimeStoppingDetail');
+  if ((runtime.activeRequests ?? 0) > 0) {
+    return t('settings.models.runtimeActiveDetail', { model: llmRuntimeModelName.value });
+  }
+  const countdownMs = llmRuntimeCountdownMs.value;
+  if (countdownMs !== null) {
+    return t('settings.models.runtimeAutoRelease', {
+      model: llmRuntimeModelName.value,
+      duration: formatRuntimeDuration(countdownMs),
+    });
+  }
+  return t('settings.models.runtimeRunningDetail', { model: llmRuntimeModelName.value });
+});
 const llmTaskPolicyRows = computed<UserFacingLlmTaskPolicy[]>(() => {
   const policies = modelsData.value?.llm.taskPolicies ?? [];
   return USER_FACING_LLM_TASKS.flatMap((task) => {
@@ -152,6 +273,17 @@ function llmTaskPolicyLabel(task: UserFacingLlmTask): string {
   return t('settings.models.taskPolicyInsight');
 }
 
+function formatRuntimeDuration(ms: number): string {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  if (totalSeconds < 60) {
+    return t('settings.models.runtimeDurationSeconds', { n: totalSeconds });
+  }
+  return t('settings.models.runtimeDurationMinutes', {
+    m: Math.floor(totalSeconds / 60),
+    s: totalSeconds % 60,
+  });
+}
+
 const senseVoiceReady = computed(() => modelsData.value?.sensevoice?.ready ?? false);
 const anyWhisperInstalled = computed(() => (modelsData.value?.whisper.installed.length ?? 0) > 0);
 const engineHint = computed(() => {
@@ -174,19 +306,28 @@ const dirtyModels = computed(() => {
   return (
     draft.value.whisperModel !== settings.value.whisperModel
     || draft.value.llmModel !== settings.value.llmModel
-    || (draft.value.transcribeEngine ?? 'sensevoice') !== (settings.value.transcribeEngine ?? 'sensevoice')
+    || (draft.value.transcribeEngine ?? 'auto') !== (settings.value.transcribeEngine ?? 'auto')
   );
 });
 
-async function loadModels(): Promise<void> {
-  modelsLoading.value = true;
-  modelsErr.value = null;
+async function loadModels(opts: { silent?: boolean } = {}): Promise<void> {
+  if (modelsRequestInFlight) return;
+  modelsRequestInFlight = true;
+  if (!opts.silent) {
+    modelsLoading.value = true;
+    modelsErr.value = null;
+  }
   try {
     modelsData.value = await $fetch<ModelsResp>('/api/desktop/models');
   } catch (e) {
-    modelsErr.value = e instanceof Error ? e.message : 'failed to load models';
+    if (!opts.silent) {
+      modelsErr.value = e instanceof Error ? e.message : 'failed to load models';
+    }
   } finally {
-    modelsLoading.value = false;
+    modelsRequestInFlight = false;
+    if (!opts.silent) {
+      modelsLoading.value = false;
+    }
   }
 }
 
@@ -352,18 +493,28 @@ async function deleteLegacyLlm(): Promise<void> {
 }
 
 onBeforeUnmount(() => {
+  if (modelsRefreshTimer) clearInterval(modelsRefreshTimer);
   if (svPollTimer) clearInterval(svPollTimer);
   if (llmPollTimer) clearInterval(llmPollTimer);
+  if (runtimeClockTimer) clearInterval(runtimeClockTimer);
 });
 
 function resetActiveModelsDraft(): void {
   if (!draft.value || !settings.value) return;
   draft.value.whisperModel = settings.value.whisperModel;
   draft.value.llmModel = settings.value.llmModel;
+  draft.value.transcribeEngine = settings.value.transcribeEngine;
 }
 
 onMounted(() => {
   void loadModels();
+  modelsRefreshTimer = setInterval(() => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    void loadModels({ silent: true });
+  }, 5000);
+  runtimeClockTimer = setInterval(() => {
+    runtimeNow.value = Date.now();
+  }, 1000);
 });
 </script>
 
@@ -386,7 +537,7 @@ onMounted(() => {
             <!-- 显式插槽：SelectValue 默认取选中项 textContent，
                  会把选项里的徽标文字（如「中文更快」）一起带进触发器 -->
             <SelectValue>
-              <span>{{ engineName(draft.transcribeEngine ?? 'sensevoice') }}</span>
+              <span>{{ engineName(draft.transcribeEngine ?? 'auto') }}</span>
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -400,6 +551,27 @@ onMounted(() => {
           </SelectContent>
         </Select>
         <p class="text-xs text-muted-foreground">{{ t('settings.transcribeEngineHint') }}</p>
+        <div
+          v-if="transcribeRuntime"
+          class="mt-3 rounded-md bg-accent/30 px-2 py-2"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <span class="flex min-w-0 items-center gap-2 text-sm text-foreground">
+              <Activity class="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span class="truncate">{{ t('settings.models.transcribeRuntimeTitle') }}</span>
+            </span>
+            <Badge
+              :variant="transcribeRuntimeBadgeVariant"
+              size="sm"
+              class="shrink-0 uppercase tracking-wider"
+            >
+              {{ transcribeRuntimeStateLabel }}
+            </Badge>
+          </div>
+          <p class="mt-1 text-xs text-muted-foreground">
+            {{ transcribeRuntimeDetail }}
+          </p>
+        </div>
         <Alert v-if="engineHint" variant="destructive" class="mt-2">
           <AlertTriangle class="h-4 w-4" />
           <AlertDescription>{{ engineHint }}</AlertDescription>
@@ -461,9 +633,31 @@ onMounted(() => {
         </p>
 
         <div
-          v-if="llmNeedsDownload || llmTaskPolicyRows.length > 0"
+          v-if="llmNeedsDownload || llmRuntime || llmTaskPolicyRows.length > 0"
           class="mt-3 space-y-3 border-t border-border/50 pt-3"
         >
+          <div
+            v-if="llmRuntime"
+            class="rounded-md bg-accent/30 px-2 py-2"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <span class="flex min-w-0 items-center gap-2 text-sm text-foreground">
+                <Activity class="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <span class="truncate">{{ t('settings.models.runtimeTitle') }}</span>
+              </span>
+              <Badge
+                :variant="llmRuntimeBadgeVariant"
+                size="sm"
+                class="shrink-0 uppercase tracking-wider"
+              >
+                {{ llmRuntimeStateLabel }}
+              </Badge>
+            </div>
+            <p class="mt-1 text-xs text-muted-foreground">
+              {{ llmRuntimeDetail }}
+            </p>
+          </div>
+
           <Alert
             v-if="llmNeedsDownload && !(llmInstall && llmInstall.state === 'running')"
             variant="destructive"

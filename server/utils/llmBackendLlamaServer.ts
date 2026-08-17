@@ -164,170 +164,180 @@ function optionalNumber(value: unknown): number | undefined {
 export class LlamaServerBackend implements LLMBackend {
   async chat(opts: LLMChatOptions): Promise<LLMChatResult> {
     let lease = await getLlmServer().ensureLease({ modelId: opts.modelId });
+    const releaseRequest = getLlmServer().beginRequest();
     let coldStart = lease.coldStart;
     const startedAt = Date.now();
-    for (let attempt = 0; ; attempt++) {
-      let res: Response;
-      try {
-        res = await fetch(endpoint(lease, '/v1/chat/completions'), {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(buildBody(opts, false)),
-          signal: composeSignal(opts),
-        });
-      } catch (err) {
-        if (isConnectionFailure(err) && canRetry(opts, attempt)) {
-          await sleep(TRANSIENT_RETRY_DELAYS_MS[attempt]!);
-          lease = await getLlmServer().ensureLease({ modelId: opts.modelId });
-          coldStart ||= lease.coldStart;
-          continue;
+    try {
+      for (let attempt = 0; ; attempt++) {
+        let res: Response;
+        try {
+          res = await fetch(endpoint(lease, '/v1/chat/completions'), {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(buildBody(opts, false)),
+            signal: composeSignal(opts),
+          });
+        } catch (err) {
+          if (isConnectionFailure(err) && canRetry(opts, attempt)) {
+            await sleep(TRANSIENT_RETRY_DELAYS_MS[attempt]!);
+            lease = await getLlmServer().ensureLease({ modelId: opts.modelId });
+            coldStart ||= lease.coldStart;
+            continue;
+          }
+          throw err;
         }
-        throw err;
-      }
-      if (!res.ok) {
-        // Surface the response body so callers can distinguish e.g. OOM
-        // ("ggml_metal_graph_compute: ...") from other 5xx and react.
-        const text = await res.text().catch(() => '<no body>');
-        if (res.status >= 500 && canRetry(opts, attempt)) {
-          await sleep(TRANSIENT_RETRY_DELAYS_MS[attempt]!);
-          lease = await getLlmServer().ensureLease({ modelId: opts.modelId });
-          coldStart ||= lease.coldStart;
-          continue;
+        if (!res.ok) {
+          // Surface the response body so callers can distinguish e.g. OOM
+          // ("ggml_metal_graph_compute: ...") from other 5xx and react.
+          const text = await res.text().catch(() => '<no body>');
+          if (res.status >= 500 && canRetry(opts, attempt)) {
+            await sleep(TRANSIENT_RETRY_DELAYS_MS[attempt]!);
+            lease = await getLlmServer().ensureLease({ modelId: opts.modelId });
+            coldStart ||= lease.coldStart;
+            continue;
+          }
+          if (res.status >= 500) getLlmServer().noteHttpFailure();
+          throw new Error(`llama-server returned ${res.status}: ${text}`);
         }
-        if (res.status >= 500) getLlmServer().noteHttpFailure();
-        throw new Error(`llama-server returned ${res.status}: ${text}`);
+        const body = (await res.json()) as ChatResponseBody;
+        // Natural completion — clear the consecutive-failure counter so a
+        // single recovered crash earlier in the session doesn't latch us into
+        // MODEL_UNUSABLE on the next spawn cycle.
+        getLlmServer().noteSuccess();
+        return {
+          content: stripThinkBlocks(body.choices?.[0]?.message?.content ?? ''),
+          finishReason: normalizeFinishReason(body.choices?.[0]?.finish_reason),
+          usage: {
+            promptTokens: optionalNumber(body.usage?.prompt_tokens),
+            completionTokens: optionalNumber(body.usage?.completion_tokens),
+          },
+          timing: {
+            prefillMs: optionalNumber(body.timings?.prompt_ms),
+            decodeMs: optionalNumber(body.timings?.predicted_ms),
+            totalMs: Date.now() - startedAt,
+          },
+          retries: attempt,
+          coldStart,
+        };
       }
-      const body = (await res.json()) as ChatResponseBody;
-      // Natural completion — clear the consecutive-failure counter so a
-      // single recovered crash earlier in the session doesn't latch us into
-      // MODEL_UNUSABLE on the next spawn cycle.
-      getLlmServer().noteSuccess();
-      return {
-        content: stripThinkBlocks(body.choices?.[0]?.message?.content ?? ''),
-        finishReason: normalizeFinishReason(body.choices?.[0]?.finish_reason),
-        usage: {
-          promptTokens: optionalNumber(body.usage?.prompt_tokens),
-          completionTokens: optionalNumber(body.usage?.completion_tokens),
-        },
-        timing: {
-          prefillMs: optionalNumber(body.timings?.prompt_ms),
-          decodeMs: optionalNumber(body.timings?.predicted_ms),
-          totalMs: Date.now() - startedAt,
-        },
-        retries: attempt,
-        coldStart,
-      };
+    } finally {
+      releaseRequest();
     }
   }
 
   async *chatStream(opts: LLMChatOptions): AsyncIterable<LLMChunk> {
     let lease = await getLlmServer().ensureLease({ modelId: opts.modelId });
+    const releaseRequest = getLlmServer().beginRequest();
     // Retry only PRE-response failures — once the SSE stream has started
     // delivering bytes, a mid-stream break cannot be transparently
     // replayed to the consumer.
     let res: Response;
-    for (let attempt = 0; ; attempt++) {
-      try {
-        res = await fetch(endpoint(lease, '/v1/chat/completions'), {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(buildBody(opts, true)),
-          signal: composeSignal(opts),
-        });
-      } catch (err) {
-        if (isConnectionFailure(err) && canRetry(opts, attempt)) {
+    try {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          res = await fetch(endpoint(lease, '/v1/chat/completions'), {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(buildBody(opts, true)),
+            signal: composeSignal(opts),
+          });
+        } catch (err) {
+          if (isConnectionFailure(err) && canRetry(opts, attempt)) {
+            await sleep(TRANSIENT_RETRY_DELAYS_MS[attempt]!);
+            lease = await getLlmServer().ensureLease({ modelId: opts.modelId });
+            continue;
+          }
+          throw err;
+        }
+        if (res.ok && res.body) break;
+        const text = res.body ? await res.text().catch(() => '<no body>') : '<no body>';
+        if (res.status >= 500 && canRetry(opts, attempt)) {
           await sleep(TRANSIENT_RETRY_DELAYS_MS[attempt]!);
           lease = await getLlmServer().ensureLease({ modelId: opts.modelId });
           continue;
         }
-        throw err;
+        if (res.status >= 500) getLlmServer().noteHttpFailure();
+        throw new Error(`llama-server stream returned ${res.status}: ${text}`);
       }
-      if (res.ok && res.body) break;
-      const text = res.body ? await res.text().catch(() => '<no body>') : '<no body>';
-      if (res.status >= 500 && canRetry(opts, attempt)) {
-        await sleep(TRANSIENT_RETRY_DELAYS_MS[attempt]!);
-        lease = await getLlmServer().ensureLease({ modelId: opts.modelId });
-        continue;
-      }
-      if (res.status >= 500) getLlmServer().noteHttpFailure();
-      throw new Error(`llama-server stream returned ${res.status}: ${text}`);
-    }
 
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = '';
-    // Drops any `<think>…</think>` block that leaks into content deltas
-    // despite DISABLE_THINKING_KWARGS (marker may straddle deltas).
-    const thinkFilter = new ThinkStreamFilter();
-    try {
-      while (true) {
-        let chunk: ReadableStreamReadResult<Uint8Array>;
-        try {
-          chunk = await reader.read();
-        } catch (err) {
-          // Stream errored — most commonly because the caller-supplied
-          // signal aborted. Yield the synthetic cancel marker per spec
-          // before re-throwing or returning, depending on whether this
-          // was the user's abort or an actual network failure.
-          if (opts.signal?.aborted) {
-            yield { delta: '', finishReason: 'cancel' };
-            return;
-          }
-          throw err;
-        }
-        const { value, done } = chunk;
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split('\n');
-        buf = lines.pop() ?? '';
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith('data:')) continue;
-          const payload = trimmed.slice(5).trim();
-          if (payload === '[DONE]') {
-            // Treat [DONE] as natural stop and reset the failure counter —
-            // a server that streams to completion is healthy regardless of
-            // whether an explicit `finish_reason: stop` event preceded it.
-            getLlmServer().noteSuccess();
-            yield { delta: thinkFilter.flush(), finishReason: 'stop' };
-            return;
-          }
-          let parsed: ChatResponseBody;
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      // Drops any `<think>…</think>` block that leaks into content deltas
+      // despite DISABLE_THINKING_KWARGS (marker may straddle deltas).
+      const thinkFilter = new ThinkStreamFilter();
+      try {
+        while (true) {
+          let chunk: ReadableStreamReadResult<Uint8Array>;
           try {
-            parsed = JSON.parse(payload) as ChatResponseBody;
-          } catch {
-            // Malformed SSE event — skip and keep going. llama-server
-            // occasionally emits keep-alive lines we don't care about.
-            continue;
-          }
-          const choice = parsed.choices?.[0];
-          const rawDelta = choice?.delta?.content ?? '';
-          const delta = rawDelta ? thinkFilter.push(rawDelta) : '';
-          const finish = choice?.finish_reason;
-          const finishReason: LLMChunk['finishReason'] =
-            finish === 'length' ? 'length' : finish === 'stop' ? 'stop' : undefined;
-          if (finishReason) {
-            const tail = thinkFilter.flush();
-            const merged = delta + tail;
-            // Only `'stop'` (natural completion) counts as success — a
-            // `'length'` finish means we hit max_tokens, which still
-            // indicates a healthy server but the spec calls for resetting
-            // the counter only on natural stop per Task 1.5.
-            if (finishReason === 'stop') {
-              getLlmServer().noteSuccess();
+            chunk = await reader.read();
+          } catch (err) {
+            // Stream errored — most commonly because the caller-supplied
+            // signal aborted. Yield the synthetic cancel marker per spec
+            // before re-throwing or returning, depending on whether this
+            // was the user's abort or an actual network failure.
+            if (opts.signal?.aborted) {
+              yield { delta: '', finishReason: 'cancel' };
+              return;
             }
-            yield { delta: merged, finishReason };
-            return;
+            throw err;
           }
-          if (delta) {
-            yield { delta };
+          const { value, done } = chunk;
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop() ?? '';
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data:')) continue;
+            const payload = trimmed.slice(5).trim();
+            if (payload === '[DONE]') {
+              // Treat [DONE] as natural stop and reset the failure counter —
+              // a server that streams to completion is healthy regardless of
+              // whether an explicit `finish_reason: stop` event preceded it.
+              getLlmServer().noteSuccess();
+              yield { delta: thinkFilter.flush(), finishReason: 'stop' };
+              return;
+            }
+            let parsed: ChatResponseBody;
+            try {
+              parsed = JSON.parse(payload) as ChatResponseBody;
+            } catch {
+              // Malformed SSE event — skip and keep going. llama-server
+              // occasionally emits keep-alive lines we don't care about.
+              continue;
+            }
+            const choice = parsed.choices?.[0];
+            const rawDelta = choice?.delta?.content ?? '';
+            const delta = rawDelta ? thinkFilter.push(rawDelta) : '';
+            const finish = choice?.finish_reason;
+            const finishReason: LLMChunk['finishReason'] =
+              finish === 'length' ? 'length' : finish === 'stop' ? 'stop' : undefined;
+            if (finishReason) {
+              const tail = thinkFilter.flush();
+              const merged = delta + tail;
+              // Only `'stop'` (natural completion) counts as success — a
+              // `'length'` finish means we hit max_tokens, which still
+              // indicates a healthy server but the spec calls for resetting
+              // the counter only on natural stop per Task 1.5.
+              if (finishReason === 'stop') {
+                getLlmServer().noteSuccess();
+              }
+              yield { delta: merged, finishReason };
+              return;
+            }
+            if (delta) {
+              yield { delta };
+            }
           }
         }
+      } finally {
+        // Best-effort: release the reader so the underlying connection
+        // can be reused. Ignore errors — the stream may already be closed.
+        try { reader.releaseLock(); } catch { /* noop */ }
       }
     } finally {
-      // Best-effort: release the reader so the underlying connection
-      // can be reused. Ignore errors — the stream may already be closed.
-      try { reader.releaseLock(); } catch { /* noop */ }
+      releaseRequest();
     }
   }
 }

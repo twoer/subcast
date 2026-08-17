@@ -39,6 +39,15 @@ export interface LlmServerOptions {
   spawnFn?: (request: LlmServerSpawnRequest) => Promise<SpawnResult>;
 }
 
+export interface LlmServerSnapshot {
+  state: LlmServerState;
+  modelId: string | null;
+  runtimeProfileId: string | null;
+  idleShutdownMs: number;
+  idleDeadlineAt: number | null;
+  activeRequests: number;
+}
+
 /**
  * argv for llama-server. Exported pure function so tests can pin the
  * concurrency-critical flags (`--parallel`, `--ctx-size`) without
@@ -108,6 +117,8 @@ export class LlmServer {
   private currentModelPath: string | null = null;
   private currentRuntimeProfile: RuntimeProfile | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  private idleDeadlineAt: number | null = null;
+  private activeRequests = 0;
   private opts: LlmServerOptions;
   private readyPromise: Promise<void> | null = null;
   private stopPromise: Promise<void> | null = null;
@@ -143,6 +154,17 @@ export class LlmServer {
     return this.port;
   }
 
+  snapshot(): LlmServerSnapshot {
+    return {
+      state: this._state,
+      modelId: this.currentModelId,
+      runtimeProfileId: this.currentRuntimeProfile?.id ?? null,
+      idleShutdownMs: this.opts.idleShutdownMs ?? 0,
+      idleDeadlineAt: this.idleDeadlineAt,
+      activeRequests: this.activeRequests,
+    };
+  }
+
   /**
    * Reset the idle-unload timer if the server is running; no-op
    * otherwise (never spawns). Called by long-lived waiters — e.g. a
@@ -152,6 +174,20 @@ export class LlmServer {
    */
   touch(): void {
     if (this._state === 'running') this.armIdleTimer();
+  }
+
+  beginRequest(): () => void {
+    this.activeRequests += 1;
+    this.clearIdleTimer();
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.activeRequests = Math.max(0, this.activeRequests - 1);
+      if (this.activeRequests === 0 && this._state === 'running') {
+        this.armIdleTimer();
+      }
+    };
   }
 
   /**
@@ -263,6 +299,8 @@ export class LlmServer {
       this.currentModelId = null;
       this.currentModelPath = null;
       this.currentRuntimeProfile = null;
+      this.activeRequests = 0;
+      this.clearIdleTimer();
       // Signal-killed exits arrive with `code === null` (signal name is in
       // the second handler arg). Those are us — graceful idle shutdown via
       // SIGTERM/SIGKILL — and must not bump the failure counter. Anything
@@ -361,14 +399,31 @@ export class LlmServer {
   }
 
   private armIdleTimer(): void {
+    if (this.activeRequests > 0) {
+      this.clearIdleTimer();
+      return;
+    }
     if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleDeadlineAt = Date.now() + (this.opts.idleShutdownMs ?? 0);
     this.idleTimer = setTimeout(() => {
       void this.stop();
     }, this.opts.idleShutdownMs);
   }
 
+  private clearIdleTimer(): void {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+    this.idleDeadlineAt = null;
+  }
+
   async stop(): Promise<void> {
-    if (this._state !== 'running') return;
+    if (this._state !== 'running') {
+      this.clearIdleTimer();
+      return;
+    }
+    this.clearIdleTimer();
     this._state = 'stopping';
     this.stopPromise = this.doStop();
     try {
@@ -400,10 +455,7 @@ export class LlmServer {
   }
 
   dispose(): void {
-    if (this.idleTimer) {
-      clearTimeout(this.idleTimer);
-      this.idleTimer = null;
-    }
+    this.clearIdleTimer();
     if (this._state === 'running') void this.stop();
   }
 }
@@ -414,13 +466,17 @@ export class LlmServer {
 // is intentionally NOT set here — `realSpawn()` reads it from
 // `loadSettings().llmModel` at spawn time so tier switches in the
 // Settings UI take effect on the next ensure() without an app restart.
-let instance: LlmServer | null = null;
+type LlmServerGlobal = typeof globalThis & {
+  __subcastLlmServer?: LlmServer | null;
+};
+const llmServerGlobal = globalThis as LlmServerGlobal;
+
 export function getLlmServer(opts?: LlmServerOptions): LlmServer {
-  if (instance === null) {
-    instance = new LlmServer({
+  if (!llmServerGlobal.__subcastLlmServer) {
+    llmServerGlobal.__subcastLlmServer = new LlmServer({
       binaryPath: process.env.SUBCAST_LLM_BINARY_PATH,
       ...opts,
     });
   }
-  return instance;
+  return llmServerGlobal.__subcastLlmServer;
 }

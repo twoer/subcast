@@ -25,6 +25,12 @@ export interface WhisperServerOptions {
   spawnFn?: () => Promise<SpawnResult>;
 }
 
+export interface WhisperServerSnapshot {
+  state: WhisperServerState;
+  idleShutdownMs: number;
+  idleDeadlineAt: number | null;
+}
+
 /**
  * Lifecycle owner for the whisper-server sidecar, mirroring `LlmServer`.
  * Keeping the whisper.cpp model resident removes the per-chunk
@@ -55,6 +61,7 @@ export class WhisperServer {
   private proc: ChildProcess | null = null;
   private port: number | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  private idleDeadlineAt: number | null = null;
   private opts: WhisperServerOptions;
   private readyPromise: Promise<void> | null = null;
   private stopPromise: Promise<void> | null = null;
@@ -72,6 +79,14 @@ export class WhisperServer {
 
   getPort(): number | null {
     return this.port;
+  }
+
+  snapshot(): WhisperServerSnapshot {
+    return {
+      state: this._state,
+      idleShutdownMs: this.opts.idleShutdownMs ?? 0,
+      idleDeadlineAt: this.idleDeadlineAt,
+    };
   }
 
   async ensure(): Promise<void> {
@@ -110,6 +125,7 @@ export class WhisperServer {
       this._state = 'idle';
       this.proc = null;
       this.port = null;
+      this.clearIdleTimer();
       // Signal-killed exits (`code === null`) are our own idle shutdown.
       // Anything else is a crash: the next chunk's ensure() silently
       // re-spawns (≈1-2 s model reload) and, without this log, the cost
@@ -186,13 +202,26 @@ export class WhisperServer {
 
   private armIdleTimer(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleDeadlineAt = Date.now() + (this.opts.idleShutdownMs ?? 0);
     this.idleTimer = setTimeout(() => {
       void this.stop();
     }, this.opts.idleShutdownMs);
   }
 
+  private clearIdleTimer(): void {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+    this.idleDeadlineAt = null;
+  }
+
   async stop(): Promise<void> {
-    if (this._state !== 'running') return;
+    if (this._state !== 'running') {
+      this.clearIdleTimer();
+      return;
+    }
+    this.clearIdleTimer();
     this._state = 'stopping';
     this.stopPromise = this.doStop();
     try {
@@ -220,10 +249,7 @@ export class WhisperServer {
   }
 
   dispose(): void {
-    if (this.idleTimer) {
-      clearTimeout(this.idleTimer);
-      this.idleTimer = null;
-    }
+    this.clearIdleTimer();
     if (this._state === 'running') void this.stop();
   }
 }
@@ -254,10 +280,14 @@ function whisperThreads(): number {
 // Lazy singleton (getLlmServer pattern). `binaryPath` comes from the
 // packaged resources dir via whisperPaths; `modelPath` stays unset so
 // spawn re-reads the Settings tier.
-let instance: WhisperServer | null = null;
+type WhisperServerGlobal = typeof globalThis & {
+  __subcastWhisperServer?: WhisperServer | null;
+};
+const whisperServerGlobal = globalThis as WhisperServerGlobal;
+
 export function getWhisperServer(opts?: WhisperServerOptions): WhisperServer {
-  if (instance === null) {
-    instance = new WhisperServer({ threads: whisperThreads(), ...opts });
+  if (!whisperServerGlobal.__subcastWhisperServer) {
+    whisperServerGlobal.__subcastWhisperServer = new WhisperServer({ threads: whisperThreads(), ...opts });
   }
-  return instance;
+  return whisperServerGlobal.__subcastWhisperServer;
 }
