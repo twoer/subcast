@@ -30,6 +30,17 @@ export default defineConfig({
   sitemap: { hostname: siteUrl },
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: `${base}logo.svg` }],
+    [
+      'script',
+      {},
+      `var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement("script");
+  hm.src = "https://hm.baidu.com/hm.js?5476c85b635f88da5680b6bfa0ff27a9";
+  var s = document.getElementsByTagName("script")[0];
+  s.parentNode.insertBefore(hm, s);
+})();`,
+    ],
     // 注册 ziyuan.baidu.com 并完成站点验证后，取消注释填入实际 token
     // ['meta', { name: 'baidu-site-verification', content: 'codeva-XXXX' }],
     [
