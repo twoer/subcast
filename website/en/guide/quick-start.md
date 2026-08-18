@@ -13,6 +13,8 @@ First launch opens a setup wizard:
 
 Drag a video or audio file into the window (or use the import button). Transcription starts immediately — subtitles stream in while it runs, so you can start watching right away.
 
+Drop multiple files at once and Subcast runs them as a batch: it finishes transcription and core subtitle output across the batch first, so you can inspect individual videos sooner; translation, summaries and other enhancements continue afterward.
+
 URL import works too: paste a link and the local yt-dlp sidecar fetches it.
 
 ## 3. Translate / summarize

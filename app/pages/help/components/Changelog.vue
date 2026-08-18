@@ -14,6 +14,15 @@ const { t } = useI18n();
 
 const CHANGELOG = [
   {
+    version: '0.5.2',
+    date: '2026-08-18',
+    items: [
+      'help.changelog.v052.fastFirst',
+      'help.changelog.v052.runtimeStatus',
+      'help.changelog.v052.taskClarity',
+    ],
+  },
+  {
     version: '0.5.0',
     date: '2026-08-16',
     items: [

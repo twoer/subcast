@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.2 — 2026-08-18
+
+### 新增 / Added
+- **长音视频批处理更早出结果**：批处理新增 fast-first 执行策略，先让整批文件尽快完成转写和关键字幕结果，再继续跑后续增强任务。用户可以更早打开单个视频检查字幕，不用等整批文件全部跑完才看到价值。
+  **Earlier results for long batch jobs**: batch processing now supports a fast-first execution strategy, finishing transcription and core subtitle results across the batch before continuing enhancement work. Users can inspect individual videos sooner instead of waiting for the full batch to complete.
+- **模型运行状态可视化**：设置页拆分为「转写模型运行状态」和「AI 模型运行状态」，分别显示 Whisper/SenseVoice 与 Qwen3 是否运行、已加载或等待自动释放。
+  **Visible model runtime status**: Settings now separates transcription model runtime from AI model runtime, showing whether Whisper/SenseVoice or Qwen3 is running, loaded, or waiting for automatic release.
+- **AI 任务模型说明**：设置页展示翻译、字幕润色、AI 摘要分别会使用哪个本地 Qwen3 档位，并提示缺失模型或回退策略。
+  **AI task model clarity**: Settings shows which local Qwen3 tier powers translation, subtitle polish, and AI summaries, including missing-model and fallback guidance.
+
+### 改进 / Changed
+- 播放器和任务队列里的模型错误、长 Insight 进度、翻译状态更清楚，减少「是不是卡住了」的误判。
+  Player and queue states now explain model errors, long Insight progress, and translation status more clearly, reducing false "is it stuck?" moments.
+- 模型资源状态在开发热更新或 runtime owner 丢失引用时仍会从 Subcast 自己的 sidecar 进程兜底判断，避免运行中误报未加载。
+  Model runtime status now falls back to Subcast-owned sidecar processes if the in-process runtime owner loses track of them, avoiding false "not loaded" reports while work is still running.
+
 ## 0.4.8 — 2026-06-22
 
 ### 修复 / Fixed

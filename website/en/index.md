@@ -41,11 +41,14 @@ features:
     title: Subtitle export
     details: Export mono-lingual, bilingual, or multi-lingual subtitles (VTT / SRT / TXT) in one click.
   - icon: ⚡
-    title: Streaming transcription
-    details: Start watching while transcription runs. Interrupted tasks resume where they left off.
+    title: Streaming + batch
+    details: Start watching while transcription runs. Multi-file batches finish transcription and core subtitle output first, then continue enhancement work.
   - icon: 🔍
     title: Full-text search
     details: A persistent search box in the player with match highlighting and Enter-to-cycle.
+  - icon: 🧭
+    title: Visible model status
+    details: Settings separates transcription and AI model runtime, so you can see when each model is running, loaded, or waiting to auto-release.
 ---
 
 <HomeCompare lang="en" />

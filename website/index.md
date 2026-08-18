@@ -41,11 +41,14 @@ features:
     title: 字幕导出
     details: 单语 / 双语 / 多语字幕一键导出（VTT / SRT / TXT）。
   - icon: ⚡
-    title: 流式转写
-    details: 转写过程中即可开始观看，无需等整段跑完。支持断点续跑。
+    title: 流式 + 批处理
+    details: 转写过程中即可开始观看；多文件批处理会先完成整批转写和关键字幕结果，再继续增强任务。
   - icon: 🔍
     title: 全文搜索
     details: 播放器内常驻搜索框，匹配高亮，Enter 循环跳转。
+  - icon: 🧭
+    title: 模型状态可见
+    details: 设置页区分转写模型与 AI 模型运行状态，看清何时运行、加载或自动释放。
 ---
 
 <HomeCompare />

@@ -526,6 +526,11 @@
       "changelog": "更新紀錄"
     },
     "changelog": {
+      "v052": {
+        "fastFirst": "長影音批次處理更早出結果：fast-first 會先讓整批檔案盡快完成轉寫與關鍵字幕結果，再繼續跑後續增強任務。",
+        "runtimeStatus": "設定頁拆分「轉寫模型運行狀態」與「AI 模型運行狀態」，能看清 Whisper/SenseVoice 與 Qwen3 何時運行、載入或自動釋放。",
+        "taskClarity": "模型錯誤、長 AI 摘要進度、翻譯狀態與各 AI 任務使用的 Qwen3 檔位更清楚，減少「是不是卡住了」的誤判。"
+      },
       "v050": {
         "qwen3": "大模型升級到 Qwen3：翻譯、潤色、AI 摘要的多語言品質大幅提升，同等級模型體積近乎減半，8GB 記憶體機型也能跑 8B 級。",
         "sensevoice": "新增 SenseVoice 轉寫引擎（預設「自動」模式）：中文識別又快又準，依音訊語言自動在 SenseVoice / Whisper 間分發，英文內容自動用 Whisper 取得詞級時間軸。",

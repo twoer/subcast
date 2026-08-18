@@ -526,6 +526,11 @@
       "changelog": "Novedades"
     },
     "changelog": {
+      "v052": {
+        "fastFirst": "Los lotes largos muestran resultados útiles antes: fast-first termina la transcripción y los subtítulos principales de todo el lote antes de continuar con las mejoras.",
+        "runtimeStatus": "Ajustes separa el estado del modelo de transcripción y el del modelo de IA, para ver cuándo Whisper/SenseVoice y Qwen3 están ejecutando, cargados o esperando la liberación automática.",
+        "taskClarity": "Los errores de modelo, el progreso de Insights largos, el estado de traducción y el nivel Qwen3 usado por cada tarea de IA son más claros, reduciendo falsos \"¿se quedó atascado?\"."
+      },
       "v050": {
         "qwen3": "LLM actualizado a Qwen3: gran mejora de calidad multilingüe en traducción, pulido y resúmenes de IA, con la mitad del tamaño del modelo por nivel: el nivel 8B ahora cabe en máquinas de 8 GB.",
         "sensevoice": "Nuevo motor de transcripción SenseVoice (modo «automático» por defecto): reconocimiento CJK rápido y preciso, con distribución automática entre SenseVoice y Whisper según el idioma del audio; el inglés va a Whisper para marcas de tiempo por palabra.",

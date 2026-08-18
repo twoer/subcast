@@ -22,10 +22,10 @@ Drop in a video or audio file; everything else happens locally:
 - ✨ **AI transcript polish** — the local Qwen3 fixes homophone typos, normalizes mixed Chinese/English tokens (a i → AI) and adds punctuation; the original transcript is preserved, switch between raw/polished with one click
 - 🌍 **Multilingual translation** — local Qwen3 translates to any target language, switchable live in the player; export mono/bilingual/multi-lingual subtitles (VTT / SRT / TXT)
 - 📝 **AI summaries + chapters** — one-click streaming summaries with clickable chapter markers
-- ⚡ **Streaming UX** — start watching while transcription runs; interrupted tasks resume from the last chunk
+- ⚡ **Streaming + batch UX** — start watching while transcription runs; multi-file batches finish transcription and core subtitle output first, then continue enhancement work
 - 🗣 **Speaker diarization** — separate speakers automatically, rename them, re-run with a different count
 - 🔗 **URL import** — paste a link from YouTube / Bilibili and 1500+ sites, auto-downloaded and transcribed (only content you're entitled to — see the [disclaimer](./DISCLAIMER.md))
-- 🔒 **Privacy first** — no accounts, no telemetry, no subscriptions; safe for confidential meetings, interviews and internal material
+- 🔒 **Privacy first** — no accounts, no telemetry, no subscriptions; Settings shows when transcription and AI models are running, loaded, or waiting to auto-release
 
 ## Quick start (macOS)
 

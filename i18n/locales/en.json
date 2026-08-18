@@ -526,6 +526,11 @@
       "changelog": "Changelog"
     },
     "changelog": {
+      "v052": {
+        "fastFirst": "Long batch jobs show useful results earlier: fast-first finishes transcription and core subtitle output across the batch before continuing enhancement work.",
+        "runtimeStatus": "Settings now separates transcription model runtime from AI model runtime, so you can see when Whisper/SenseVoice and Qwen3 are running, loaded, or waiting to auto-release.",
+        "taskClarity": "Model errors, long AI Insight progress, translation state, and the Qwen3 tier used by each AI task are clearer, reducing false \"is it stuck?\" moments."
+      },
       "v050": {
         "qwen3": "LLM upgraded to Qwen3: big multilingual quality gains for translation, polish and AI insights, with roughly half the model size per tier — the 8B tier now fits 8 GB machines.",
         "sensevoice": "New SenseVoice transcription engine (default \"auto\" mode): fast, accurate CJK recognition, dispatched automatically between SenseVoice and Whisper by audio language; English content goes to Whisper for word-level timestamps.",
