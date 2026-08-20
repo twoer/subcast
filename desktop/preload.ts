@@ -51,6 +51,9 @@ if (api) {
         ipcRenderer.off('subcast:pause-media', listener);
       };
     },
+    getAgentAccessStatus: () => ipcRenderer.invoke('subcast:agent-access-status'),
+    enableAgentAccess: () => ipcRenderer.invoke('subcast:enable-agent-access'),
+    disableAgentAccess: () => ipcRenderer.invoke('subcast:disable-agent-access'),
   });
 } else {
   console.warn('[subcast preload] no --subcast-api arg found; window.subcast unavailable');

@@ -6,7 +6,7 @@
  *
  * Flow:
  *   1. Generate a session token; build the env both children must share
- *      (SUBCAST_DESKTOP=true, SUBCAST_API_TOKEN, SUBCAST_HOME pointing at
+ *      (SUBCAST_DESKTOP=true, session and agent tokens, SUBCAST_HOME pointing at
  *      a repo-local `.dev-userdata`, SUBCAST_RESOURCES_PATH at `resources/`,
  *      SUBCAST_DEV_URL telling Electron main to skip Nitro embedding).
  *   2. Compile electron main (one-shot tsc) — required because
@@ -103,6 +103,7 @@ const env = {
   ...process.env,
   SUBCAST_DESKTOP: 'true',
   SUBCAST_API_TOKEN: randomUUID(),
+  SUBCAST_AGENT_ACCESS_TOKEN: randomUUID(),
   SUBCAST_HOME: userDataDir,
   SUBCAST_RESOURCES_PATH: resourcesDir,
   ...(llamaServerPath ? { SUBCAST_LLM_BINARY_PATH: llamaServerPath } : {}),

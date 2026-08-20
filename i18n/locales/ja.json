@@ -209,6 +209,7 @@
       "languages": "言語",
       "format": "形式",
       "download": "ダウンロード",
+      "mediaBundle": "メディア資料パックを書き出す",
       "includeSpeakers": "話者ラベルを含める（識別済みの場合）",
       "hintAtLeastOne": "少なくとも 1 つの言語を選択してください。",
       "hintExactly2": "バイリンガル字幕には言語を 2 つ選択してください。"
@@ -367,7 +368,28 @@
     "tabs": {
       "overview": "概要",
       "preferences": "環境設定",
-      "models": "モデル"
+      "models": "モデル",
+      "assistant": "AI アシスタント"
+    },
+    "assistant": {
+      "title": "ローカル AI アシスタント",
+      "description": "設定済みのローカル MCP クライアントが、このアプリセッション中に Subcast を呼び出せるようにします。",
+      "enabled": "このセッションで有効",
+      "disabled": "無効",
+      "enabledHint": "ローカル AI クライアントは、メディアの取り込み、文字起こしと AI Insights の開始、資料パックの書き出しを行えます。",
+      "disabledHint": "アクセスを有効にしてから、AI クライアントで Subcast MCP を設定してください。",
+      "refresh": "状態を更新",
+      "enable": "ローカル AI エージェントアクセスを有効化",
+      "disable": "アクセスを取り消す",
+      "sessionHint": "アクセスにはモデルに表示されない一時的なローカル認証情報を使用し、Subcast の終了時に削除されます。",
+      "actionFailed": "ローカル AI エージェントアクセスを更新できませんでした。",
+      "consentTitle": "ローカル AI エージェントアクセスを有効化",
+      "consentDescription": "設定済みのローカル MCP クライアントは、このアプリセッション中に Subcast ツールを呼び出せます。",
+      "consentScopeTitle": "許可される操作",
+      "consentScopeDescription": "メディアの取り込み、文字起こしと AI Insights の開始、資料パックの書き出し。",
+      "consentSessionTitle": "このセッションのみ",
+      "consentSessionDescription": "認証情報はローカルに留まり、モデルに表示されません。いつでも取り消せ、Subcast の終了時にも削除されます。",
+      "consentConfirm": "アクセスを有効化"
     },
     "models": {
       "noEngineInstalled": "エンジンモデルが未インストールです — 下の SenseVoice または Whisper モデルをダウンロードしないと文字起こしに失敗します。",

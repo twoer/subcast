@@ -63,6 +63,45 @@ pnpm test              # 测试
 
 前置依赖与桌面打包细节见 [CONTRIBUTING.md](./CONTRIBUTING.md)、[AGENTS.md](./AGENTS.md) 与 [`docs/`](./docs/)；打包命令：`pnpm build:desktop:mac`。
 
+## 给 AI 助手使用
+
+仓库包含两种面向 AI 助手的本机集成：Codex skill 用于工作流指引；MCP Server 可让 Codex、Claude Desktop 等客户端直接调用 Subcast 工具。先打开 Subcast，在「设置 → AI 助手」中启用本机访问。访问授权仅在本次应用运行期间有效，且不会要求你在聊天中粘贴桌面会话 token。
+
+安装 Codex skill：
+
+```bash
+pnpm skill:install
+```
+
+它会安装到 `~/.codex/skills/subcast`；已安装旧版本时显式执行 `pnpm skill:install -- --force`。
+
+安装版优先使用 MCP。在客户端配置中加入：
+
+```json
+{
+  "mcpServers": {
+    "subcast": {
+      "command": "/Applications/Subcast.app/Contents/Resources/subcast-mcp"
+    }
+  }
+}
+```
+
+从源码开发时可改用：
+
+```json
+{
+  "mcpServers": {
+    "subcast": {
+      "command": "node",
+      "args": ["/absolute/path/to/subcast/desktop-dist/subcastMcp.js"]
+    }
+  }
+}
+```
+
+源码方式先执行一次 `pnpm build:desktop:main` 生成入口。安装版启动器会随 v0.5.3 桌面发行包提供。完整说明见官网指南：[AI 助手](https://twoer.github.io/subcast/guide/ai-assistant)。
+
 ## License
 
 [Apache-2.0](./LICENSE) © 2026 twoer —— 完全免费，可自由使用、修改、分发（含商业用途）。第三方组件声明见 [NOTICES.md](./NOTICES.md)。

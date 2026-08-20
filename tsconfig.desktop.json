@@ -23,6 +23,7 @@
   "include": [
     "desktop/main.ts",
     "desktop/nitroEmbed.ts",
+    "desktop/subcastMcp.ts",
     "desktop/types.ts",
     "desktop/trayMenu.ts",
     "desktop/menu.ts",

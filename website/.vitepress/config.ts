@@ -12,6 +12,7 @@ const zhGuideSidebar = [
   { text: '快速上手', link: '/guide/quick-start' },
   { text: '转写引擎', link: '/guide/transcribe' },
   { text: '翻译与 AI 摘要', link: '/guide/translate-insights' },
+  { text: 'AI 助手', link: '/guide/ai-assistant' },
   { text: '模型管理', link: '/guide/models' },
   { text: '常见问题', link: '/guide/faq' },
 ];
@@ -21,6 +22,7 @@ const enGuideSidebar = [
   { text: 'Quick Start', link: '/en/guide/quick-start' },
   { text: 'Transcription Engines', link: '/en/guide/transcribe' },
   { text: 'Translation & AI Summaries', link: '/en/guide/translate-insights' },
+  { text: 'AI Assistant', link: '/en/guide/ai-assistant' },
   { text: 'Model Management', link: '/en/guide/models' },
   { text: 'FAQ', link: '/en/guide/faq' },
 ];

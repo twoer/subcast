@@ -63,6 +63,45 @@ pnpm test              # tests
 
 Prerequisites and desktop packaging details: [CONTRIBUTING.md](./CONTRIBUTING.md), [AGENTS.md](./AGENTS.md) and [`docs/`](./docs/); packaging command: `pnpm build:desktop:mac`.
 
+## Use With AI Agents
+
+The repository provides two local integrations for AI agents: a Codex skill for workflow guidance, and an MCP server that lets Codex, Claude Desktop, and other clients call Subcast tools directly. First open Subcast and enable local access in Settings > AI Assistant. Access lasts only for that app session and never asks users to paste a desktop session token into chat.
+
+Install the Codex skill:
+
+```bash
+pnpm skill:install
+```
+
+It installs to `~/.codex/skills/subcast`; use `pnpm skill:install -- --force` to intentionally replace an existing copy.
+
+For the packaged app, use MCP with this client configuration:
+
+```json
+{
+  "mcpServers": {
+    "subcast": {
+      "command": "/Applications/Subcast.app/Contents/Resources/subcast-mcp"
+    }
+  }
+}
+```
+
+For source development, use this instead:
+
+```json
+{
+  "mcpServers": {
+    "subcast": {
+      "command": "node",
+      "args": ["/absolute/path/to/subcast/desktop-dist/subcastMcp.js"]
+    }
+  }
+}
+```
+
+Run `pnpm build:desktop:main` once to create the source entry point. The packaged launcher ships with the v0.5.3 desktop release. Full guide: [AI Assistant](https://twoer.github.io/subcast/en/guide/ai-assistant).
+
 ## License
 
 [Apache-2.0](./LICENSE) © 2026 twoer — free to use, modify and distribute (including commercially). Third-party notices: [NOTICES.md](./NOTICES.md).

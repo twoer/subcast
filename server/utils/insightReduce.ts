@@ -19,15 +19,20 @@ export interface PartialInsight {
   chapters: Chapter[];
 }
 
+const PARTIAL_SUMMARY_MAX_CHARS = 700;
+const PARTIAL_BULLET_MAX_CHARS = 220;
+const PARTIAL_TITLE_MAX_CHARS = 90;
+const PARTIAL_DESCRIPTION_MAX_CHARS = 180;
+
 export const PARTIAL_INSIGHT_SCHEMA: Record<string, unknown> = {
   type: 'object',
   additionalProperties: false,
   required: ['summary', 'summaryBullets', 'chapters'],
   properties: {
-    summary: { type: 'string' },
+    summary: { type: 'string', maxLength: PARTIAL_SUMMARY_MAX_CHARS },
     summaryBullets: {
       type: 'array',
-      items: { type: 'string' },
+      items: { type: 'string', maxLength: PARTIAL_BULLET_MAX_CHARS },
       minItems: 0,
       maxItems: 5,
     },
@@ -41,8 +46,8 @@ export const PARTIAL_INSIGHT_SCHEMA: Record<string, unknown> = {
         required: ['startMs', 'title', 'description'],
         properties: {
           startMs: { type: 'number' },
-          title: { type: 'string' },
-          description: { type: 'string' },
+          title: { type: 'string', maxLength: PARTIAL_TITLE_MAX_CHARS },
+          description: { type: 'string', maxLength: PARTIAL_DESCRIPTION_MAX_CHARS },
         },
       },
     },
@@ -51,6 +56,27 @@ export const PARTIAL_INSIGHT_SCHEMA: Record<string, unknown> = {
 
 function langName(uiLanguage: string): string {
   return LANG_NAMES[uiLanguage] ?? 'English';
+}
+
+function compactText(value: string, maxChars: number): string {
+  const text = value.trim().replace(/\s+/g, ' ');
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
+}
+
+function compactPartialInsight(partial: PartialInsight): PartialInsight {
+  return {
+    summary: compactText(partial.summary, PARTIAL_SUMMARY_MAX_CHARS),
+    summaryBullets: partial.summaryBullets
+      .slice(0, 5)
+      .map((item) => compactText(item, PARTIAL_BULLET_MAX_CHARS))
+      .filter(Boolean),
+    chapters: partial.chapters.slice(0, 5).map((chapter) => ({
+      startMs: chapter.startMs,
+      title: compactText(chapter.title, PARTIAL_TITLE_MAX_CHARS),
+      description: compactText(chapter.description, PARTIAL_DESCRIPTION_MAX_CHARS),
+    })).filter((chapter) => chapter.title),
+  };
 }
 
 export function buildInsightMapMessages(input: {
@@ -86,6 +112,7 @@ export function buildInsightReduceMessages(input: {
   uiLanguage: 'zh-CN' | 'en';
   partials: readonly PartialInsight[];
 }): LLMMessage[] {
+  const compactPartials = input.partials.map(compactPartialInsight);
   const system = [
     'You are reducing partial video summaries into one final video insight.',
     `LANGUAGE: All output text MUST be in ${langName(input.uiLanguage)}.`,
@@ -106,7 +133,7 @@ export function buildInsightReduceMessages(input: {
 
   const user = [
     'PARTIAL INSIGHTS JSON:',
-    JSON.stringify(input.partials),
+    JSON.stringify(compactPartials),
   ].join('\n\n');
 
   return [
@@ -153,9 +180,11 @@ export function parsePartialInsight(raw: string): PartialInsight {
   }
   const obj = parsed as Record<string, unknown>;
   return {
-    summary: typeof obj.summary === 'string' ? obj.summary : '',
-    summaryBullets: asStringArray(obj.summaryBullets),
-    chapters: asChapters(obj.chapters),
+    ...compactPartialInsight({
+      summary: typeof obj.summary === 'string' ? obj.summary : '',
+      summaryBullets: asStringArray(obj.summaryBullets),
+      chapters: asChapters(obj.chapters),
+    }),
   };
 }
 

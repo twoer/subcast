@@ -209,6 +209,7 @@
       "languages": "语言",
       "format": "格式",
       "download": "下载",
+      "mediaBundle": "导出媒体资料包",
       "includeSpeakers": "包含说话人标签（已识别时）",
       "hintAtLeastOne": "至少选择一种语言。",
       "hintExactly2": "双语字幕需要恰好选 2 种语言。"
@@ -367,7 +368,28 @@
     "tabs": {
       "overview": "概览",
       "preferences": "偏好",
-      "models": "模型"
+      "models": "模型",
+      "assistant": "AI 助手"
+    },
+    "assistant": {
+      "title": "本机 AI 助手",
+      "description": "允许已配置的本机 MCP 客户端在本次运行期间调用 Subcast。",
+      "enabled": "本次会话已授权",
+      "disabled": "未授权",
+      "enabledHint": "本机 AI 客户端可以调用导入、转写、AI 洞察和资料包导出。",
+      "disabledHint": "启用后，需要在 AI 客户端中配置 Subcast MCP。",
+      "refresh": "刷新状态",
+      "enable": "启用本机 AI 助手访问",
+      "disable": "撤销访问",
+      "sessionHint": "授权使用临时本机凭据，不会显示给模型；Subcast 退出后会自动失效。",
+      "actionFailed": "无法更新本机 AI 助手访问状态。",
+      "consentTitle": "启用本机 AI 助手访问",
+      "consentDescription": "确认后，已配置的本机 MCP 客户端可以在当前 Subcast 会话中调用工具。",
+      "consentScopeTitle": "允许的操作",
+      "consentScopeDescription": "导入媒体、启动转写和 AI 洞察，以及导出媒体资料包。",
+      "consentSessionTitle": "仅限本次会话",
+      "consentSessionDescription": "凭据只保留在本机，不会显示给模型；你可随时撤销，退出 Subcast 后也会自动移除。",
+      "consentConfirm": "确认启用"
     },
     "models": {
       "noEngineInstalled": "未安装任何引擎模型 — 请在下方下载 SenseVoice 或 Whisper 模型，否则转写会失败。",

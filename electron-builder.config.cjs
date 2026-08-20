@@ -177,6 +177,13 @@ function buildExtraResources() {
     }
   }
 
+  // MCP clients launch this small wrapper instead of needing to know the
+  // Electron binary or the app.asar layout. It reuses the packaged Electron
+  // runtime in Node mode and starts desktop-dist/subcastMcp.js over stdio.
+  if (process.platform === 'darwin') {
+    out.push({ from: 'scripts/subcast-mcp.sh', to: 'subcast-mcp' });
+  }
+
   return out;
 }
 
@@ -234,6 +241,14 @@ async function ensureExecutable(context) {
         console.warn(`[afterPack] codesign ${target} failed:`, err.message);
       }
     }
+  }
+
+  const mcpLauncher = join(resourcesDir, 'subcast-mcp');
+  try {
+    await access(mcpLauncher);
+    await chmod(mcpLauncher, 0o755);
+  } catch {
+    // The launcher is currently macOS-only, so absence is expected elsewhere.
   }
 }
 

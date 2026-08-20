@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script setup lang="ts">
 import {
-  Cpu, Sliders, Boxes,
+  Bot, Cpu, Sliders, Boxes,
   LayoutDashboard,
 } from 'lucide-vue-next';
 import {
@@ -11,6 +11,7 @@ import {
   TabsContent,
 } from '@/components/ui/tabs';
 import Models from './components/Models.vue';
+import AgentAccess from './components/AgentAccess.vue';
 import type { Settings, Hardware } from '@/types/settings';
 import { llmDisplayName } from '#shared/llmModels';
 
@@ -34,15 +35,16 @@ const { px: cueFontPx, load: loadCueFontSize, save: saveCueFontSize, MIN_PX: CUE
 
 // All tab ids, plus a computed visible list that hides desktop-only tabs
 // in the web build. `models` is the only desktop-gated tab today.
-type TabId = 'overview' | 'preferences' | 'models';
+type TabId = 'overview' | 'preferences' | 'models' | 'assistant';
 
 const TABS = computed<Array<{ id: TabId; labelKey: string; icon: typeof Cpu }>>(() => {
   const all: Array<{ id: TabId; labelKey: string; icon: typeof Cpu }> = [
     { id: 'overview',    labelKey: 'settings.tabs.overview',    icon: LayoutDashboard },
     { id: 'preferences', labelKey: 'settings.tabs.preferences', icon: Sliders },
     { id: 'models',      labelKey: 'settings.tabs.models',      icon: Boxes },
+    { id: 'assistant',   labelKey: 'settings.tabs.assistant',   icon: Bot },
   ];
-  return all.filter((t) => (t.id === 'models' ? desktop.isDesktop : true));
+  return all.filter((t) => (t.id === 'models' || t.id === 'assistant' ? desktop.isDesktop : true));
 });
 
 const currentTab = ref<TabId>('overview');
@@ -189,8 +191,10 @@ onBeforeUnmount(() => {
             :value="tab.id"
             class="h-9 justify-start gap-2 px-3 text-muted-foreground data-[state=active]:bg-accent data-[state=active]:text-foreground data-[state=active]:shadow-none md:w-full"
           >
-            <component :is="tab.icon" class="h-3.5 w-3.5" />
-            {{ t(tab.labelKey) }}
+            <span class="inline-flex items-center gap-2">
+              <component :is="tab.icon" class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>{{ t(tab.labelKey) }}</span>
+            </span>
           </TabsTrigger>
         </TabsList>
 
@@ -407,6 +411,10 @@ onBeforeUnmount(() => {
               :saved-at="savedAt"
               @save="saveActiveModels"
             />
+          </TabsContent>
+
+          <TabsContent v-if="desktop.isDesktop" value="assistant" class="mt-0 focus-visible:outline-none">
+            <AgentAccess />
           </TabsContent>
 
         </div>

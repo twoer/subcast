@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.3 — 2026-08-20
+
+### 新增 / Added
+- **本机 AI 助手访问**：设置页新增「AI 助手」入口，用户可为当前 Subcast 会话显式启用本机 agent 访问。授权只在本次应用运行期间有效，Subcast 不会要求用户把桌面会话 token 粘贴到聊天里。
+  **Local AI Assistant access**: Settings now includes an AI Assistant entry where users can explicitly enable local agent access for the current Subcast session. Access lasts only for the running app session, and Subcast never asks users to paste a desktop session token into chat.
+- **Subcast MCP Server**：安装版随包提供 `subcast-mcp` 启动器，Codex、Claude Desktop 等 MCP 客户端可通过授权的本机通道导入媒体、检查状态、启动转写 / Insights，并导出证据包。
+  **Subcast MCP Server**: packaged builds include a `subcast-mcp` launcher so Codex, Claude Desktop, and other MCP clients can import media, check readiness, start transcription / Insights, and export evidence packs through the authorized local channel.
+- **Codex skill 与媒体包导出**：仓库内置 `skills/subcast`，并提供 `pnpm skill:install` 安装命令。媒体包导出会生成 manifest、转写稿、SRT、章节 / 摘要占位或缓存结果、sources 映射和 deliverable，方便后续 agent 做可追溯分析。
+  **Codex skill and media-pack export**: the repo now ships `skills/subcast` plus `pnpm skill:install`. Media-pack export produces a manifest, transcript, SRT, chapter / summary placeholders or cached outputs, source maps, and a deliverable for timestamped downstream agent work.
+
+### 改进 / Changed
+- Agent 控制 API 使用独立授权头与脱敏响应，只返回 hash 前缀、状态和下一步动作，不向 agent 泄露原始路径、文件名或桌面内部 token。
+  The agent control API uses a separate authorization header and redacted responses, returning only hash prefixes, readiness, and next actions instead of exposing original paths, filenames, or desktop-internal tokens.
+- 新增 harness 命令覆盖预检、app-backed 端到端流程、bundle 导出和评分，便于在真实本机 Subcast home 下验证 agent 工作流是否已经可发布。
+  New harness commands cover preflight, app-backed end-to-end runs, bundle export, and scoring, making it easier to validate agent workflows against a real local Subcast home before release.
+
 ## 0.5.2 — 2026-08-18
 
 ### 新增 / Added

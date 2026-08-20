@@ -20,6 +20,10 @@ export interface SubcastWindowAPI {
   apiPort: number;
 }
 
+export interface AgentAccessStatus {
+  enabled: boolean;
+}
+
 /**
  * Function surface exposed alongside SubcastWindowAPI on `window.subcast`.
  * Kept separate because functions can't be JSON-serialized through
@@ -50,10 +54,16 @@ export interface SubcastWindowFns {
    */
   // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- returning void (no unsubscribe needed) is a valid "optional cleanup" contract
   onPauseMedia(callback: (reason: 'hide' | 'minimize') => void): (() => void) | void;
+  /** Read whether the current Subcast session has enabled local AI agent access. */
+  getAgentAccessStatus(): Promise<AgentAccessStatus>;
+  /** Request local AI agent access. The Electron main process shows the consent dialog. */
+  enableAgentAccess(): Promise<AgentAccessStatus>;
+  /** Immediately revoke local AI agent access for the current app session. */
+  disableAgentAccess(): Promise<AgentAccessStatus>;
 }
 
 declare global {
   interface Window {
-    subcast?: SubcastWindowAPI;
+    subcast?: SubcastWindowAPI & SubcastWindowFns;
   }
 }

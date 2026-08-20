@@ -1,6 +1,6 @@
 {
   "name": "subcast",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "private": true,
   "type": "module",
   "main": "desktop-dist/main.js",
@@ -40,6 +40,14 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "subcast:doctor": "node scripts/subcast-doctor.mjs",
+    "subcast:mcp": "node desktop-dist/subcastMcp.js",
+    "skill:install": "node scripts/install-subcast-skill.mjs",
+    "harness:list-candidates": "node scripts/list-subcast-bundle-candidates.mjs",
+    "harness:export-bundle": "node scripts/export-subcast-bundle.mjs",
+    "harness:score-bundle": "node scripts/score-subcast-bundle.mjs",
+    "harness:preflight-run": "node scripts/preflight-subcast-media-run.mjs",
+    "harness:app-flow": "node scripts/run-subcast-app-flow.mjs",
+    "harness:run": "node scripts/run-subcast-harness.mjs",
     "pretest": "node scripts/ensure-sqlite-abi.mjs node",
     "test": "vitest --run",
     "test:run": "node scripts/ensure-sqlite-abi.mjs node && vitest --run",
@@ -74,6 +82,7 @@
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "better-sqlite3": "^12.10.0",
     "bindings": "^1.5.0",
     "check-disk-space": "^3.4.0",
@@ -83,7 +92,8 @@
     "jszip": "^3.10.1",
     "nodejs-whisper": "^0.2.9",
     "onnxruntime-node": "^1.26.0",
-    "sherpa-onnx-node": "^1.13.2"
+    "sherpa-onnx-node": "^1.13.2",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.4",

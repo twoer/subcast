@@ -19,16 +19,8 @@
  */
 
 import { createError, defineEventHandler, readBody } from 'h3';
-import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, stat } from 'node:fs/promises';
-import { extname, join, basename } from 'node:path';
-import { createHash } from 'node:crypto';
-import { pipeline } from 'node:stream/promises';
 
-import { backfillVideoDurationS } from '../../utils/videoDuration';
-
-const VIDEO_EXT = ['.mp4', '.mkv', '.mov', '.webm', '.mp3', '.wav', '.m4a'];
-const MAX_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
+import { importMediaFromPath, MediaImportError } from '../../utils/mediaImport';
 
 interface UploadFromPathBody {
   path?: string;
@@ -45,60 +37,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'path required' });
   }
 
-  // Statting up-front gates the import on existence + size before we
-  // commit to hashing a multi-GB file.
-  let stats;
+  let imported;
   try {
-    stats = await stat(sourcePath);
-  } catch {
-    throw createError({ statusCode: 400, statusMessage: 'path not readable' });
-  }
-  if (!stats.isFile()) {
-    throw createError({ statusCode: 400, statusMessage: 'path is not a file' });
-  }
-  if (stats.size > MAX_BYTES) {
-    throw createError({ statusCode: 400, statusMessage: 'file > 2GB' });
-  }
-  const ext = extname(sourcePath).toLowerCase();
-  if (!VIDEO_EXT.includes(ext)) {
-    throw createError({ statusCode: 400, statusMessage: `unsupported ext ${ext}` });
+    imported = await importMediaFromPath(sourcePath);
+  } catch (err) {
+    const code = err instanceof MediaImportError ? err.code : 'IMPORT_FAILED';
+    throw createError({ statusCode: 400, statusMessage: code });
   }
 
-  await mkdir(SUBCAST_PATHS.tmp, { recursive: true });
-  await mkdir(SUBCAST_PATHS.videos, { recursive: true });
-
-  const originalName = basename(sourcePath);
-  const tmpPath = join(SUBCAST_PATHS.tmp, `${Date.now()}-${originalName}`);
-
-  const hash = createHash('sha256');
-  const tap = new (await import('node:stream')).PassThrough();
-  tap.on('data', (chunk: Buffer) => hash.update(chunk));
-
-  await pipeline(createReadStream(sourcePath), tap, createWriteStream(tmpPath));
-  const sha = hash.digest('hex');
-  const finalPath = join(SUBCAST_PATHS.videos, `${sha}${ext}`);
-
-  // rename across filesystems may fail on some setups (tmp on a different
-  // mount). Falling back to a copy + unlink keeps imports resilient.
-  const { rename, copyFile, unlink } = await import('node:fs/promises');
-  try {
-    await rename(tmpPath, finalPath);
-  } catch {
-    await copyFile(tmpPath, finalPath);
-    await unlink(tmpPath).catch(() => { /* swallow */ });
-  }
-
-  const now = Date.now();
-  const db = getDb();
-  db.prepare(
-    `INSERT INTO videos (sha256, original_name, ext, size_bytes, created_at, last_opened_at)
-     VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT(sha256) DO UPDATE SET last_opened_at = excluded.last_opened_at, deleted_at = NULL`,
-  ).run(sha, originalName, ext, stats.size, now, now);
-
-  // Fire-and-forget duration probe so the library shows a duration for
-  // files imported this way even if they're never transcribed.
-  backfillVideoDurationS(sha, finalPath);
-
-  return { hash: sha };
+  return { hash: imported.hash };
 });

@@ -32,6 +32,7 @@ const READY_POLL_INTERVAL_MS = 100;
 export interface NitroHandle {
   port: number;
   token: string;
+  agentAccessToken: string;
   url: string;
 }
 
@@ -99,6 +100,7 @@ async function waitUntilReady(baseUrl: string, timeoutMs: number): Promise<boole
 
 export async function startNitro(): Promise<NitroHandle> {
   const token = randomUUID();
+  const agentAccessToken = randomUUID();
 
   // Decide port BEFORE importing Nitro — Nitro reads NITRO_PORT at module load.
   const preferred = await probePort(PREFERRED_PORT);
@@ -106,6 +108,7 @@ export async function startNitro(): Promise<NitroHandle> {
   process.env.NITRO_HOST = '127.0.0.1';
   process.env.NITRO_PORT = String(port);
   process.env.SUBCAST_API_TOKEN = token;
+  process.env.SUBCAST_AGENT_ACCESS_TOKEN = agentAccessToken;
   process.env.SUBCAST_DESKTOP = 'true';
   // App version flows into the diagnostic export filename so support
   // tickets can match an uploaded zip back to the release that produced
@@ -168,6 +171,7 @@ export async function startNitro(): Promise<NitroHandle> {
   return {
     port,
     token,
+    agentAccessToken,
     url: baseUrl,
   };
 }
@@ -175,7 +179,7 @@ export async function startNitro(): Promise<NitroHandle> {
 /**
  * HMR-mode counterpart of `startNitro`: skips embedding and just probes an
  * externally-running Nuxt dev server (started by the orchestrator script
- * with the same `SUBCAST_API_TOKEN`/`SUBCAST_DESKTOP`/`SUBCAST_HOME`
+ * with the same session/agent tokens, `SUBCAST_DESKTOP`, and `SUBCAST_HOME`
  * environment so its API surface matches a packaged desktop run).
  *
  * Designed for `scripts/dev-desktop-hot.mjs` workflow: edit Vue, save,
@@ -185,9 +189,10 @@ export async function connectToDevServer(devUrl: string): Promise<NitroHandle> {
   const u = new URL(devUrl);
   const port = Number(u.port) || (u.protocol === 'https:' ? 443 : 80);
   const token = process.env.SUBCAST_API_TOKEN;
-  if (!token) {
+  const agentAccessToken = process.env.SUBCAST_AGENT_ACCESS_TOKEN;
+  if (!token || !agentAccessToken) {
     throw new Error(
-      'SUBCAST_DEV_URL is set but SUBCAST_API_TOKEN is missing — both must be set by the dev-desktop-hot orchestrator.',
+      'SUBCAST_DEV_URL is set but SUBCAST_API_TOKEN or SUBCAST_AGENT_ACCESS_TOKEN is missing.',
     );
   }
   const baseUrl = devUrl.replace(/\/$/, '');
@@ -198,5 +203,5 @@ export async function connectToDevServer(devUrl: string): Promise<NitroHandle> {
   }
 
   process.env.SUBCAST_API_PORT = String(port);
-  return { port, token, url: baseUrl };
+  return { port, token, agentAccessToken, url: baseUrl };
 }

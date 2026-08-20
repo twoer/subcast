@@ -1,0 +1,4 @@
+interface:
+  display_name: "Subcast"
+  short_description: "Control local audio and video with Subcast."
+  default_prompt: "Use $subcast to transcribe this local video and export a timestamped media pack."

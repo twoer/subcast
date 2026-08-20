@@ -38,11 +38,13 @@ const ASCII_WORD_RE = /[A-Za-z0-9_]/;
 const WHITESPACE_RE = /\s/;
 
 export function estimateTextTokens(text: string): number {
+  let chars = 0;
   let cjk = 0;
   let asciiWordChars = 0;
   let punctuation = 0;
   let whitespace = 0;
   for (const char of text) {
+    chars++;
     if (CJK_RE.test(char)) {
       cjk++;
     } else if (ASCII_WORD_RE.test(char)) {
@@ -53,7 +55,9 @@ export function estimateTextTokens(text: string): number {
       punctuation++;
     }
   }
-  return Math.max(1, Math.ceil(cjk + asciiWordChars / 3 + punctuation + whitespace / 8));
+  const structureAware = Math.ceil(cjk + asciiWordChars / 3 + punctuation + whitespace / 8);
+  const tokenizerFloor = Math.ceil(chars / 2);
+  return Math.max(1, structureAware, tokenizerFloor);
 }
 
 function normalizeBudget(overrides: Partial<InsightContextBudget> = {}): InsightContextBudget {

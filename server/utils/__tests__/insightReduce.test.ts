@@ -62,6 +62,31 @@ describe('Insight map/reduce helpers', () => {
     expect(prompt).toContain('## Chapters');
   });
 
+  it('compacts oversized partials before reduce', () => {
+    const partial = parsePartialInsight(JSON.stringify({
+      summary: 's'.repeat(900),
+      summaryBullets: ['b'.repeat(300), 'keep'],
+      chapters: [{
+        startMs: 1000,
+        title: 't'.repeat(120),
+        description: 'd'.repeat(240),
+      }],
+    }));
+    const messages = buildInsightReduceMessages({
+      uiLanguage: 'en',
+      partials: [partial],
+    });
+    const prompt = messages.map((m) => m.content).join('\n');
+
+    expect(partial.summary).toHaveLength(700);
+    expect(partial.summary).toMatch(/\.\.\.$/);
+    expect(partial.summaryBullets[0]).toHaveLength(220);
+    expect(partial.chapters[0]!.title).toHaveLength(90);
+    expect(partial.chapters[0]!.description).toHaveLength(180);
+    expect(prompt).not.toContain('s'.repeat(701));
+    expect(prompt).not.toContain('b'.repeat(221));
+  });
+
   it('finalizes reduced markdown into the existing Insights shape', () => {
     const cues: Cue[] = [
       { startMs: 0, endMs: 900, text: 'a' },

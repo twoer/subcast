@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { Download } from 'lucide-vue-next';
+import { Download, FileArchive } from 'lucide-vue-next';
 import { useI18n } from 'vue-i18n';
 import {
   Dialog,
@@ -89,6 +89,15 @@ function download() {
   window.open(`/api/export?${params.toString()}`, '_self');
   close();
 }
+
+function downloadBundle() {
+  const params = new URLSearchParams({
+    hash: props.hash,
+    recipe: 'generic-archive-pack',
+  });
+  window.open(`/api/export-bundle?${params.toString()}`, '_self');
+  close();
+}
 </script>
 
 <template>
@@ -96,8 +105,8 @@ function download() {
     <DialogContent class="max-w-md">
       <DialogHeader>
         <DialogTitle class="flex items-center gap-2">
-          <Download class="h-4 w-4 text-muted-foreground" />
-          {{ t('player.export.title') }}
+          <Download class="size-4 shrink-0 text-muted-foreground" />
+          <span>{{ t('player.export.title') }}</span>
         </DialogTitle>
       </DialogHeader>
       <div class="space-y-5">
@@ -142,11 +151,19 @@ function download() {
         </div>
         <p v-if="hint" class="text-xs text-muted-foreground">{{ hint }}</p>
       </div>
-      <DialogFooter>
+      <DialogFooter class="gap-2 sm:gap-x-2">
         <Button variant="ghost" @click="close">{{ t('common.cancel') }}</Button>
+        <Button variant="outline" @click="downloadBundle">
+          <span class="inline-flex items-center gap-1.5">
+            <FileArchive class="size-4 shrink-0" />
+            <span>{{ t('player.export.mediaBundle') }}</span>
+          </span>
+        </Button>
         <Button :disabled="!canDownload" @click="download">
-          <Download class="h-4 w-4" />
-          {{ t('player.export.download') }}
+          <span class="inline-flex items-center gap-1.5">
+            <Download class="size-4 shrink-0" />
+            <span>{{ t('player.export.download') }}</span>
+          </span>
         </Button>
       </DialogFooter>
     </DialogContent>

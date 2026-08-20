@@ -28,6 +28,9 @@ interface DesktopApi {
   onOpenFile?: (callback: (path: string) => void) => void;
   // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- returning void (no cleanup) is semantically correct for a "maybe return an unsubscribe" callback
   onPauseMedia?: (callback: (reason: 'hide' | 'minimize') => void) => (() => void) | void;
+  getAgentAccessStatus?: () => Promise<{ enabled: boolean }>;
+  enableAgentAccess?: () => Promise<{ enabled: boolean }>;
+  disableAgentAccess?: () => Promise<{ enabled: boolean }>;
 }
 
 export interface DesktopReactiveState {
@@ -43,6 +46,10 @@ const NOOP_UNSUBSCRIBE = (): void => { /* listener already absent */ };
 let activeOnOpenFile: (cb: (path: string) => void) => void = NOOP;
 // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- see onPauseMedia above
 let activeOnPauseMedia: (cb: (reason: 'hide' | 'minimize') => void) => (() => void) | void = NOOP;
+const NO_AGENT_ACCESS = (): Promise<{ enabled: boolean }> => Promise.resolve({ enabled: false });
+let activeGetAgentAccessStatus: () => Promise<{ enabled: boolean }> = NO_AGENT_ACCESS;
+let activeEnableAgentAccess: () => Promise<{ enabled: boolean }> = NO_AGENT_ACCESS;
+let activeDisableAgentAccess: () => Promise<{ enabled: boolean }> = NO_AGENT_ACCESS;
 
 export function hydrateDesktopStateFromBridge(
   state: DesktopReactiveState,
@@ -54,6 +61,9 @@ export function hydrateDesktopStateFromBridge(
   state.appVersion = bridge.appVersion;
   state.apiPort = bridge.apiPort;
   activeOnPauseMedia = bridge.onPauseMedia ?? NOOP;
+  activeGetAgentAccessStatus = bridge.getAgentAccessStatus ?? NO_AGENT_ACCESS;
+  activeEnableAgentAccess = bridge.enableAgentAccess ?? NO_AGENT_ACCESS;
+  activeDisableAgentAccess = bridge.disableAgentAccess ?? NO_AGENT_ACCESS;
   return bridge.onOpenFile ?? NOOP;
 }
 
@@ -64,6 +74,9 @@ export interface DesktopView {
   readonly apiPort: number | null;
   onOpenFile(callback: (path: string) => void): void;
   onPauseMedia(callback: (reason: 'hide' | 'minimize') => void): () => void;
+  getAgentAccessStatus(): Promise<{ enabled: boolean }>;
+  enableAgentAccess(): Promise<{ enabled: boolean }>;
+  disableAgentAccess(): Promise<{ enabled: boolean }>;
 }
 
 export function useDesktop(): DesktopView {
@@ -92,5 +105,8 @@ export function useDesktop(): DesktopView {
     get apiPort() { return state.value.apiPort; },
     onOpenFile(cb) { activeOnOpenFile(cb); },
     onPauseMedia(cb) { return activeOnPauseMedia(cb) ?? NOOP_UNSUBSCRIBE; },
+    getAgentAccessStatus() { return activeGetAgentAccessStatus(); },
+    enableAgentAccess() { return activeEnableAgentAccess(); },
+    disableAgentAccess() { return activeDisableAgentAccess(); },
   };
 }

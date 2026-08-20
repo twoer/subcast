@@ -32,6 +32,7 @@ interface Bundle {
     reportIssue: string;
     exportDiagnostics: string;
     checkForUpdates: string;
+    enableAgentAccess: string;
   };
   startupFailure: {
     title: string;
@@ -84,6 +85,7 @@ const EN: Bundle = {
     reportIssue: 'Report Issue…',
     exportDiagnostics: 'Export Diagnostics…',
     checkForUpdates: 'Check for Updates…',
+    enableAgentAccess: 'Enable Local AI Agent Access…',
   },
   startupFailure: {
     title: 'Subcast failed to start',
@@ -139,6 +141,7 @@ const ZH: Bundle = {
     reportIssue: '报告问题…',
     exportDiagnostics: '导出诊断…',
     checkForUpdates: '检查更新…',
+    enableAgentAccess: '启用本机 AI 助手访问…',
   },
   startupFailure: {
     title: 'Subcast 启动失败',

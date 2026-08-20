@@ -27,13 +27,14 @@
  *   - Auto-updater (Phase 4).
  */
 
-import { app, BrowserWindow, dialog, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron';
 import type { Tray } from 'electron';
 import windowStateKeeper from 'electron-window-state';
 import { existsSync } from 'node:fs';
 import { join, dirname, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkBundledBinaries, formatMissingForDialog, stripQuarantine } from './binaryCheck.js';
+import { clearAgentAccessProfile, hasAgentAccessProfile, writeAgentAccessProfile } from './agentAccess.js';
 import { exportDiagnostics } from './diagnostics.js';
 import { fmt, i18n } from './i18n.js';
 import {
@@ -48,7 +49,7 @@ import { killOrphans, ORPHAN_SIDECAR_NAMES } from './orphanCleanup.js';
 import { resolveResourcesPath } from './paths.js';
 import { installTray } from './trayMenu.js';
 import { disposeUpdater, installUpdater } from './updater.js';
-import type { SubcastWindowAPI } from './types.js';
+import type { AgentAccessStatus, SubcastWindowAPI } from './types.js';
 
 // Resolve `here` (the desktop-dist/ dir containing main.js + preload.cjs).
 // In dev, import.meta.url works. In a packaged Windows app (asar), it
@@ -77,6 +78,7 @@ let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let nitroApiToken: string | null = null;
 let nitroApiPort: number | null = null;
+let agentAccessToken: string | null = null;
 /**
  * Flipped by tray "Quit", Cmd+Q via menu, or `before-quit` from any other
  * shutdown path. While false, intercepting the close event hides the
@@ -126,6 +128,33 @@ function pauseRendererMedia(reason: 'hide' | 'minimize'): void {
 function requestQuit(): void {
   isQuitting = true;
   app.quit();
+}
+
+function getAgentAccessStatus(): AgentAccessStatus {
+  return {
+    enabled: Boolean(
+      agentAccessToken
+      && nitroApiPort
+      && hasAgentAccessProfile(app.getPath('userData')),
+    ),
+  };
+}
+
+function enableAgentAccess(): AgentAccessStatus {
+  if (!agentAccessToken || !nitroApiPort) return { enabled: false };
+
+  writeAgentAccessProfile({
+    home: app.getPath('userData'),
+    baseUrl: `http://127.0.0.1:${nitroApiPort}`,
+    token: agentAccessToken,
+  });
+
+  return getAgentAccessStatus();
+}
+
+function disableAgentAccess(): AgentAccessStatus {
+  clearAgentAccessProfile(app.getPath('userData'));
+  return { enabled: false };
 }
 
 async function createMainWindow(api: SubcastWindowAPI): Promise<void> {
@@ -220,6 +249,7 @@ async function createMainWindow(api: SubcastWindowAPI): Promise<void> {
 
 async function bootstrap(): Promise<void> {
   await app.whenReady();
+  clearAgentAccessProfile(app.getPath('userData'));
 
   // Reap orphan sidecars left behind by a hard kill (Force Quit, OOM,
   // power loss). When Electron dies without running `before-quit`,
@@ -357,6 +387,14 @@ async function bootstrap(): Promise<void> {
   // Cache for the before-quit shutdown POST.
   nitroApiToken = handle.token;
   nitroApiPort = handle.port;
+  agentAccessToken = handle.agentAccessToken;
+
+  ipcMain.handle('subcast:agent-access-status', () => getAgentAccessStatus());
+  ipcMain.handle('subcast:enable-agent-access', (event) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return { enabled: false };
+    return enableAgentAccess();
+  });
+  ipcMain.handle('subcast:disable-agent-access', () => disableAgentAccess());
 
   // Inject the session token into every request the renderer makes to
   // 127.0.0.1:<port>. This is more reliable than the renderer-side
@@ -446,6 +484,12 @@ async function bootstrap(): Promise<void> {
       },
       onExportDiagnostics: runExportDiagnostics,
       onCheckForUpdates: runCheckForUpdates,
+      onEnableAgentAccess: () => {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        if (!mainWindow.isVisible()) mainWindow.show();
+        mainWindow.focus();
+        mainWindow.webContents.send('subcast:navigate', '/settings#assistant');
+      },
     });
   }
 
@@ -479,6 +523,7 @@ app.on('second-instance', (_event, argv) => {
  * we force-exit. Re-entrant calls bail out via `shutdownDone`.
  */
 async function shutdownNitro(): Promise<void> {
+  clearAgentAccessProfile(app.getPath('userData'));
   if (!nitroApiToken || !nitroApiPort) return;
   try {
     // Internal teardown budget: queue cancel (~2 s per running task) +

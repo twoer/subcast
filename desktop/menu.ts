@@ -27,6 +27,7 @@ export interface MenuWiring {
   onHelp: () => void;
   onExportDiagnostics: () => void;
   onCheckForUpdates: () => void;
+  onEnableAgentAccess: () => void;
 }
 
 function buildHelpSubmenu(wiring: MenuWiring): MenuItemConstructorOptions {
@@ -41,6 +42,11 @@ function buildHelpSubmenu(wiring: MenuWiring): MenuItemConstructorOptions {
       {
         label: m.reportIssue,
         click: () => void shell.openExternal(ISSUES_URL),
+      },
+      { type: 'separator' },
+      {
+        label: m.enableAgentAccess,
+        click: () => wiring.onEnableAgentAccess(),
       },
       { type: 'separator' },
       {

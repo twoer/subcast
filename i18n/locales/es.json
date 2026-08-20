@@ -209,6 +209,7 @@
       "languages": "Idiomas",
       "format": "Formato",
       "download": "Descargar",
+      "mediaBundle": "Exportar paquete multimedia",
       "includeSpeakers": "Incluir etiquetas de hablante (cuando estén disponibles)",
       "hintAtLeastOne": "Selecciona al menos un idioma.",
       "hintExactly2": "Los subtítulos bilingües requieren exactamente 2 idiomas."
@@ -367,7 +368,28 @@
     "tabs": {
       "overview": "Resumen",
       "preferences": "Preferencias",
-      "models": "Modelos"
+      "models": "Modelos",
+      "assistant": "Asistente de IA"
+    },
+    "assistant": {
+      "title": "Asistente de IA local",
+      "description": "Permite que clientes MCP locales configurados llamen a Subcast durante esta sesión.",
+      "enabled": "Activado para esta sesión",
+      "disabled": "No activado",
+      "enabledHint": "Los clientes de IA locales pueden importar medios, iniciar transcripciones e Insights y exportar paquetes.",
+      "disabledHint": "Activa el acceso y configura Subcast MCP en tu cliente de IA.",
+      "refresh": "Actualizar estado",
+      "enable": "Activar acceso del agente de IA local",
+      "disable": "Revocar acceso",
+      "sessionHint": "El acceso usa una credencial local temporal que nunca se muestra a un modelo y se elimina al salir de Subcast.",
+      "actionFailed": "No se pudo actualizar el acceso del agente de IA local.",
+      "consentTitle": "Activar acceso del agente de IA local",
+      "consentDescription": "Los clientes MCP locales configurados podrán llamar a las herramientas de Subcast durante esta sesión.",
+      "consentScopeTitle": "Acciones permitidas",
+      "consentScopeDescription": "Importar medios, iniciar transcripciones e Insights y exportar paquetes de medios.",
+      "consentSessionTitle": "Solo esta sesión",
+      "consentSessionDescription": "La credencial permanece local y nunca se muestra a un modelo. Puedes revocarla en cualquier momento; también se elimina al salir de Subcast.",
+      "consentConfirm": "Activar acceso"
     },
     "models": {
       "noEngineInstalled": "Ningún modelo de motor instalado — descarga SenseVoice o un modelo Whisper abajo, o la transcripción fallará.",

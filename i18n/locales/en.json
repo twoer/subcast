@@ -209,6 +209,7 @@
       "languages": "Languages",
       "format": "Format",
       "download": "Download",
+      "mediaBundle": "Export media pack",
       "includeSpeakers": "Include speaker labels (when available)",
       "hintAtLeastOne": "Select at least one language.",
       "hintExactly2": "Bilingual requires exactly 2 languages."
@@ -367,7 +368,28 @@
     "tabs": {
       "overview": "Overview",
       "preferences": "Preferences",
-      "models": "Models"
+      "models": "Models",
+      "assistant": "AI Assistant"
+    },
+    "assistant": {
+      "title": "Local AI Assistant",
+      "description": "Allow configured local MCP clients to call Subcast during this app session.",
+      "enabled": "Enabled for this session",
+      "disabled": "Not enabled",
+      "enabledHint": "Local AI clients can import media, start transcription and AI Insights, and export media packs.",
+      "disabledHint": "Enable access, then configure Subcast MCP in your AI client.",
+      "refresh": "Refresh status",
+      "enable": "Enable local AI agent access",
+      "disable": "Revoke access",
+      "sessionHint": "Access uses a temporary local credential that is never shown to a model and is removed when Subcast quits.",
+      "actionFailed": "Could not update local AI agent access.",
+      "consentTitle": "Enable local AI agent access",
+      "consentDescription": "Configured local MCP clients will be able to call Subcast tools during this app session.",
+      "consentScopeTitle": "Allowed actions",
+      "consentScopeDescription": "Import media, start transcription and AI Insights, and export media packs.",
+      "consentSessionTitle": "This session only",
+      "consentSessionDescription": "The credential stays local and is never shown to a model. You can revoke it at any time; it is also removed when Subcast quits.",
+      "consentConfirm": "Enable access"
     },
     "models": {
       "noEngineInstalled": "No engine model installed — download SenseVoice below or a Whisper tier, or transcription will fail.",

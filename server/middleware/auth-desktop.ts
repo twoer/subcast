@@ -12,7 +12,9 @@
  * matching `x-subcast-token` header. The token is per-session — main
  * process generates a fresh UUID on each launch and injects it through
  * Electron's `webRequest.onBeforeSendHeaders`. Renderer code never
- * receives or stores the token.
+ * receives or stores the token. A separately scoped agent token can
+ * access only the agent routes and processing streams after explicit
+ * user consent in the desktop app.
  *
  * This blocks same-machine attackers (other apps / browser extensions /
  * rogue scripts) from poking the local API. Remote attackers are already
@@ -35,10 +37,17 @@ export default defineEventHandler((event) => {
 
   const expected = process.env.SUBCAST_API_TOKEN;
   const got = getHeader(event, 'x-subcast-token');
-  if (!expected || got !== expected) {
-    throw createError({
-      statusCode: 401,
-      statusMessage: 'BAD_TOKEN',
-    });
-  }
+  if (expected && got === expected) return;
+
+  const agentExpected = process.env.SUBCAST_AGENT_ACCESS_TOKEN;
+  const agentGot = getHeader(event, 'x-subcast-agent-token');
+  const agentRoute = path.startsWith('/api/agent/')
+    || path === '/api/transcribe'
+    || path === '/api/insights';
+  if (agentExpected && agentGot === agentExpected && agentRoute) return;
+
+  throw createError({
+    statusCode: 401,
+    statusMessage: 'BAD_TOKEN',
+  });
 });
