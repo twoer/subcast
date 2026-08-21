@@ -41,6 +41,8 @@ pnpm-debug.log*
 .claude/
 # ZCode agent-local plan docs (session-specific, contain absolute dev paths)
 .zcode/
+# Agent-local memory files (workbuddy)
+.workbuddy/
 archive/
 dist-electron/
 desktop-dist/
@@ -72,6 +74,10 @@ server/sidecars/__pycache__/
 
 # Local project docs kept out of future commits.
 docs/
+# Local design-system skill artifacts (generated, unreferenced).
+design-system/
+# Root-level blog post drafts — published elsewhere, not part of the app.
+blog-*.md
 
 # Local tooling config (mcporter for autoglm-browser-agent, etc.) — machine-specific.
 config/
