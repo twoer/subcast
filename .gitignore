@@ -39,6 +39,8 @@ pnpm-debug.log*
 
 # Local Claude Code config + early spec-kit drafts (contain absolute dev paths)
 .claude/
+# ZCode agent-local plan docs (session-specific, contain absolute dev paths)
+.zcode/
 archive/
 dist-electron/
 desktop-dist/
